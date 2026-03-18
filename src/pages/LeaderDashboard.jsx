@@ -1,0 +1,4743 @@
+import React, { useState, useMemo } from 'react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line, ComposedChart, ReferenceLine,
+} from 'recharts';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { useData, isFinished } from '../contexts/DataContext.jsx';
+import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
+import { toCSV, downloadCSV, importCSVFile, validateUserCSV, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
+import { SUBJECTS_LIST, WORK_TYPES_LIST } from '../utils/storage.js';
+import { useSheetsSync } from '../contexts/SheetsContext.jsx';
+import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
+import { downloadAttachment } from '../utils/fileStorage.js';
+import { downloadHistoryExcel } from '../utils/excelExport.js';
+import { parseAndGroupFiles, downloadMergedExcel } from '../utils/excelMerge.js';
+import { calcAllMetrics, normalizeMetricToScore, formatDuration } from '../utils/evaluationMetrics';
+import AssignmentTab from '../components/leader/AssignmentTab.jsx';
+import NewProgressTab from '../components/leader/ProgressTab.jsx';
+
+const TABS = [
+  { label: '概要', icon: '📊' },
+  { label: '試験種管理', icon: '📋' },
+  { label: '振り分け', icon: '🔀' },
+  { label: '作業者管理', icon: '👥' },
+  { label: '工数分析', icon: '📈' },
+  { label: '進捗管理', icon: '📉' },
+  { label: '業務募集', icon: '📢' },
+  { label: '作業者評価', icon: '⭐' },
+  { label: 'ファイル統合', icon: '📎' },
+  { label: '使い方', icon: '📖' },
+];
+
+const STATUS_COLORS = { pending: '#f59e0b', assigned: '#3b82f6', in_progress: '#0ea5e9', submitted: '#8b5cf6', completed: '#10b981' };
+const BAR_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444'];
+
+// ---- Helper ----
+const useHelpers = () => {
+  const { getExamTypes, getSchools } = useData();
+  const examTypes = getExamTypes();
+  const schools = getSchools();
+  const examTypeName = (id) => {
+    const et = examTypes.find(e => e.id === id);
+    if (!et) return '不明';
+    const s = schools.find(s => s.id === et.schoolId);
+    return `${s?.name ?? '不明'} / ${et.subject}`;
+  };
+  return { examTypes, schools, examTypeName };
+};
+
+// ---- Overview Tab ----
+const PREDICTION_BADGE = {
+  on_track: { text: '順調', cls: 'bg-green-100 text-green-700' },
+  at_risk: { text: '注意', cls: 'bg-amber-100 text-amber-700' },
+  overdue: { text: '遅延リスク', cls: 'bg-red-100 text-red-700' },
+  insufficient: { text: '工数不足', cls: 'bg-gray-100 text-gray-600' },
+  submitted: { text: '検証待ち', cls: 'bg-purple-100 text-purple-700' },
+  completed: { text: '完了', cls: 'bg-green-100 text-green-700' },
+  unassigned: { text: '未割当', cls: 'bg-amber-100 text-amber-700' },
+};
+
+const OverviewTab = ({ activeSubjects }) => {
+  const { getTasks, getCorrectors, getAssignments, getCapacities, getUsers } = useData();
+  const allTasks = getTasks();
+  const tasks = allTasks.filter(t => activeSubjects.includes(t.subject));
+  const correctors = getCorrectors();
+  const assignments = getAssignments();
+  const capacities = getCapacities();
+
+  const totalCap = capacities.reduce((s, c) => s + c.totalHours, 0);
+  const totalAssigned = assignments.filter(a => !isFinished(a.status)).reduce((s, a) => s + a.assignedHours, 0);
+  const completedTasks = tasks.filter(t => t.status === 'completed').length;
+  const pendingTasks = tasks.filter(t => t.status === 'pending').length;
+  const submittedTasks = tasks.filter(t => t.status === 'submitted').length;
+
+  // 予測計算
+  const predictions = predictAllTasks(assignments, capacities, tasks);
+  const atRiskCount = predictions.filter(p => p.status === 'overdue' || p.status === 'at_risk' || p.status === 'insufficient').length;
+
+  const stats = [
+    { label: '添削者数', value: correctors.length, unit: '人', color: 'bg-purple-50 text-purple-700 border-purple-100' },
+    { label: 'タスク総数', value: tasks.length, unit: '件', color: 'bg-blue-50 text-blue-700 border-blue-100' },
+    { label: '未割当タスク', value: pendingTasks, unit: '件', color: 'bg-amber-50 text-amber-700 border-amber-100' },
+    { label: '遅延リスク', value: atRiskCount, unit: '件', color: atRiskCount > 0 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100' },
+    { label: '検証待ち', value: submittedTasks, unit: '件', color: 'bg-violet-50 text-violet-700 border-violet-100' },
+    { label: '完了タスク', value: completedTasks, unit: '件', color: 'bg-green-50 text-green-700 border-green-100' },
+    { label: '登録工数合計', value: totalCap, unit: 'h', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+    { label: '割当工数合計', value: totalAssigned, unit: 'h', color: 'bg-orange-50 text-orange-700 border-orange-100' },
+  ];
+
+  const [showGapCheck, setShowGapCheck] = useState(false);
+
+  // 振り分け漏れチェック
+  const gapChecks = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const issues = [];
+
+    // 1. 未割当 + 期限迫り
+    tasks.filter(t => t.status === 'pending' && t.deadline).forEach(t => {
+      const daysLeft = Math.ceil((new Date(t.deadline) - new Date()) / 86400000);
+      if (daysLeft <= 7) {
+        issues.push({
+          severity: daysLeft <= 3 ? 'critical' : 'warning',
+          icon: '🚨',
+          message: `「${t.name}」が未割当（期限${daysLeft <= 0 ? '超過' : `まであと${daysLeft}日`}）`,
+        });
+      }
+    });
+
+    // 2. 期限超過（進行中タスク）
+    tasks.filter(t => !isFinished(t.status) && t.status !== 'pending' && t.deadline && t.deadline < today).forEach(t => {
+      issues.push({
+        severity: 'critical',
+        icon: '⏰',
+        message: `「${t.name}」の期限が超過（期限: ${t.deadline}）`,
+      });
+    });
+
+    // 3. 工数不足割当
+    tasks.filter(t => t.status === 'assigned').forEach(t => {
+      const activeAssign = assignments.find(a => a.taskId === t.id && !isFinished(a.status) && a.status !== 'submitted');
+      if (activeAssign && t.requiredHours && activeAssign.assignedHours < t.requiredHours) {
+        const deficit = t.requiredHours - activeAssign.assignedHours;
+        issues.push({
+          severity: 'warning',
+          icon: '⚠️',
+          message: `「${t.name}」の割当工数が不足（${activeAssign.assignedHours}h / 必要${t.requiredHours}h、不足${deficit}h）`,
+        });
+      }
+    });
+
+    // 4. 工数登録あり・割当なし
+    correctors.forEach(c => {
+      const hasActiveCap = capacities.some(cap => cap.userId === c.id && cap.endDate >= today);
+      const hasActiveAssign = assignments.some(a => a.userId === c.id && !isFinished(a.status));
+      if (hasActiveCap && !hasActiveAssign) {
+        issues.push({ severity: 'info', icon: '💤', message: `${c.name} は工数登録あり・割当なし` });
+      }
+    });
+
+    // 5. 工数未登録の添削者
+    correctors.forEach(c => {
+      const hasFutureCap = capacities.some(cap => cap.userId === c.id && cap.endDate >= today);
+      if (!hasFutureCap) {
+        issues.push({ severity: 'info', icon: '📋', message: `${c.name} の工数が未登録です` });
+      }
+    });
+
+    const order = { critical: 0, warning: 1, info: 2 };
+    return issues.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3));
+  }, [tasks, assignments, capacities, correctors]);
+
+  // 科目別予測データ（業務完了予測セクション用）
+  const subjectPredictions = predictAllSubjects(assignments, capacities, allTasks, getUsers());
+  const filteredSubjectPredictions = subjectPredictions.filter(p => activeSubjects.includes(p.subject));
+
+  const SUBJ_STATUS = {
+    on_track: { text: '順調', cls: 'bg-green-100 text-green-700', barColor: 'bg-green-500' },
+    at_risk: { text: '注意', cls: 'bg-yellow-100 text-yellow-700', barColor: 'bg-yellow-500' },
+    overdue: { text: '遅延', cls: 'bg-red-100 text-red-700', barColor: 'bg-red-500' },
+    insufficient: { text: '工数不足', cls: 'bg-gray-100 text-gray-600', barColor: 'bg-gray-400' },
+    completed: { text: '完了', cls: 'bg-green-100 text-green-700', barColor: 'bg-green-500' },
+  };
+
+  // 日付を「3月10日(火)」形式にフォーマット
+  const formatJpDate = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr + 'T00:00:00');
+    const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const dow = dayNames[d.getDay()];
+    return `${month}月${day}日(${dow})`;
+  };
+
+  // 「あと X 日」を計算
+  const daysUntil = (dateStr) => {
+    if (!dateStr) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(dateStr + 'T00:00:00');
+    return Math.ceil((target - today) / 86400000);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {stats.map(s => (
+          <div key={s.label} className={`rounded-xl p-4 border ${s.color}`}>
+            <p className="text-xs font-medium opacity-70">{s.label}</p>
+            <p className="text-2xl font-bold mt-1">{s.value}<span className="text-base font-normal ml-1">{s.unit}</span></p>
+          </div>
+        ))}
+      </div>
+
+      {/* 振り分け漏れチェック */}
+      {gapChecks.length > 0 ? (
+        <div className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-amber-400">
+          <button
+            onClick={() => setShowGapCheck(!showGapCheck)}
+            className="w-full flex items-center justify-between"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <span>🔍</span> 振り分け漏れチェック
+              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                {gapChecks.length}件
+              </span>
+              {gapChecks.some(g => g.severity === 'critical') && (
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                  要対応 {gapChecks.filter(g => g.severity === 'critical').length}件
+                </span>
+              )}
+            </span>
+            <span className="text-gray-400 text-xs">{showGapCheck ? '▲ 閉じる' : '▼ 詳細を表示'}</span>
+          </button>
+          {showGapCheck && (
+            <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+              {gapChecks.map((issue, i) => (
+                <div key={i} className={`flex items-start gap-2 p-2.5 rounded-lg text-sm ${
+                  issue.severity === 'critical' ? 'bg-red-50 text-red-800' :
+                  issue.severity === 'warning' ? 'bg-amber-50 text-amber-800' :
+                  'bg-blue-50 text-blue-800'
+                }`}>
+                  <span className="shrink-0 mt-0.5">{issue.icon}</span>
+                  <span>{issue.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : tasks.length > 0 ? (
+        <div className="bg-green-50 rounded-xl p-4 border border-green-100 flex items-center gap-2">
+          <span>✅</span>
+          <span className="text-sm text-green-700 font-medium">振り分け漏れはありません</span>
+        </div>
+      ) : null}
+
+      {/* 業務完了予測（科目別）— HERO section */}
+      {filteredSubjectPredictions.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <h3 className="text-base font-bold text-gray-800 mb-5 flex items-center gap-2">
+            <span>📅</span> 業務完了予測
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredSubjectPredictions.map(p => {
+              const st = SUBJ_STATUS[p.status] || SUBJ_STATUS.insufficient;
+              const jpDate = formatJpDate(p.predictedDate);
+              const remaining = daysUntil(p.predictedDate);
+              const capacityRatio = p.totalRemainingHours > 0 && p.totalAvailableHours > 0
+                ? Math.round((p.totalAvailableHours / p.totalRemainingHours) * 100)
+                : p.status === 'completed' ? 100 : 0;
+
+              return (
+                <div key={p.subject} className="p-5 border border-gray-200 rounded-xl hover:shadow-md transition-shadow">
+                  {/* Header: subject name + status badge */}
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-base font-bold text-gray-800">{p.subject}</span>
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${st.cls}`}>{st.text}</span>
+                  </div>
+
+                  {/* HERO: predicted completion date */}
+                  {p.predictedDate && (
+                    <div className="mb-3">
+                      <p className="text-2xl font-bold text-blue-600 leading-tight">{jpDate}</p>
+                      {remaining !== null && (
+                        <p className="text-sm font-medium mt-1" style={{ color: remaining <= 0 ? '#10b981' : remaining <= 3 ? '#f59e0b' : '#6b7280' }}>
+                          {remaining <= 0 ? '本日完了見込み' : `あと ${remaining} 日`}
+                        </p>
+                      )}
+                      {p.latestDeadline && (
+                        <p className="text-xs text-gray-400 mt-0.5">期限: {formatJpDate(p.latestDeadline)}</p>
+                      )}
+                    </div>
+                  )}
+                  {!p.predictedDate && p.status === 'completed' && (
+                    <div className="mb-3">
+                      <p className="text-2xl font-bold text-green-600">完了済み</p>
+                    </div>
+                  )}
+                  {!p.predictedDate && p.status === 'insufficient' && (
+                    <div className="mb-3">
+                      <p className="text-lg font-bold text-red-500">完了見込みなし</p>
+                      <p className="text-xs text-red-400 mt-0.5">利用可能な工数が不足しています</p>
+                    </div>
+                  )}
+
+                  {/* Progress bar: available hours vs remaining hours */}
+                  {p.status !== 'completed' && p.totalRemainingHours > 0 && (
+                    <div className="mb-3">
+                      <div className="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>工数充足率 {capacityRatio}%</span>
+                        <span>{p.totalAvailableHours}h / {p.totalRemainingHours}h</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${st.barColor}`}
+                          style={{ width: `${Math.min(100, capacityRatio)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Meta info */}
+                  <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
+                    <p>{p.totalSchools}校 · {p.totalTasks}タスク · 担当者{p.assignedCorrectors}人</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+// ---- 進捗管理タブ（新ProgressTabに移行済み・未使用） ----
+const _OldProgressTab = ({ activeSubjects }) => {
+  const { getTasks, getCorrectors, getAssignments, getCapacities } = useData();
+  const tasks = getTasks().filter(t => activeSubjects.includes(t.subject));
+  const correctors = getCorrectors();
+  const assignments = getAssignments();
+  const capacities = getCapacities();
+
+  const [showTaskDetail, setShowTaskDetail] = useState(false);
+
+  const pieData = [
+    { name: '未割当', value: tasks.filter(t => t.status === 'pending').length, color: '#f59e0b' },
+    { name: '割当済', value: tasks.filter(t => t.status === 'assigned').length, color: '#3b82f6' },
+    { name: '作業中', value: tasks.filter(t => t.status === 'in_progress').length, color: '#0ea5e9' },
+    { name: '提出済', value: tasks.filter(t => t.status === 'submitted').length, color: '#8b5cf6' },
+    { name: '完了', value: tasks.filter(t => isFinished(t.status)).length, color: '#10b981' },
+  ].filter(d => d.value > 0);
+
+  const predictions = predictAllTasks(assignments, capacities, tasks);
+
+  const subjectProgress = useMemo(() => {
+    return SUBJECTS_LIST.filter(s => activeSubjects.includes(s)).map(subject => {
+      const st = tasks.filter(t => t.subject === subject);
+      const total = st.length;
+      if (total === 0) return null;
+      const pending = st.filter(t => t.status === 'pending').length;
+      const assigned = st.filter(t => t.status === 'assigned').length;
+      const inProgress = st.filter(t => t.status === 'in_progress').length;
+      const submitted = st.filter(t => t.status === 'submitted').length;
+      const completed = st.filter(t => isFinished(t.status)).length;
+      const completionRate = Math.round((completed / total) * 100);
+      const totalHours = st.reduce((s, t) => s + (t.requiredHours || 0), 0);
+      const completedHours = st.filter(t => isFinished(t.status)).reduce((s, t) => s + (t.requiredHours || 0), 0);
+      const hoursRate = totalHours > 0 ? Math.round((completedHours / totalHours) * 100) : 0;
+      return { subject, total, pending, assigned, inProgress, submitted, completed, completionRate, totalHours, completedHours, hoursRate };
+    }).filter(Boolean);
+  }, [tasks, activeSubjects]);
+
+  return (
+    <div className="space-y-4">
+      {/* 科目別 業務進捗 */}
+      {subjectProgress.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">科目別 業務進捗</h3>
+          <div className="space-y-4">
+            {subjectProgress.map(sp => (
+              <div key={sp.subject} className="p-4 rounded-xl border border-gray-100 bg-gray-50">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-gray-800">{sp.subject}</span>
+                  <span className="text-xs text-gray-500">
+                    {sp.completed}/{sp.total}件 完了
+                    <span className="ml-2 font-medium text-gray-700">({sp.completionRate}%)</span>
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-4 flex overflow-hidden">
+                  {sp.completed > 0 && (
+                    <div className="bg-green-500 h-full transition-all" style={{ width: `${(sp.completed / sp.total) * 100}%` }} />
+                  )}
+                  {sp.submitted > 0 && (
+                    <div className="bg-purple-500 h-full transition-all" style={{ width: `${(sp.submitted / sp.total) * 100}%` }} />
+                  )}
+                  {sp.inProgress > 0 && (
+                    <div className="bg-sky-500 h-full transition-all" style={{ width: `${(sp.inProgress / sp.total) * 100}%` }} />
+                  )}
+                  {sp.assigned > 0 && (
+                    <div className="bg-blue-500 h-full transition-all" style={{ width: `${(sp.assigned / sp.total) * 100}%` }} />
+                  )}
+                  {sp.pending > 0 && (
+                    <div className="bg-amber-400 h-full transition-all" style={{ width: `${(sp.pending / sp.total) * 100}%` }} />
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
+                  {sp.completed > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>完了 {sp.completed}
+                    </span>
+                  )}
+                  {sp.submitted > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>提出済 {sp.submitted}
+                    </span>
+                  )}
+                  {sp.inProgress > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>作業中 {sp.inProgress}
+                    </span>
+                  )}
+                  {sp.assigned > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>割当済 {sp.assigned}
+                    </span>
+                  )}
+                  {sp.pending > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>未割当 {sp.pending}
+                    </span>
+                  )}
+                  <span className="ml-auto text-gray-400">
+                    工数: {sp.completedHours}h / {sp.totalHours}h ({sp.hoursRate}%)
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* タスクステータス分布 */}
+      {tasks.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">タスクステータス分布</h3>
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" outerRadius={70} dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
+                  {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-2 shrink-0">
+              {pieData.map(d => (
+                <div key={d.name} className="flex items-center gap-2 text-sm">
+                  <span className="w-3 h-3 rounded-full" style={{ background: d.color }}></span>
+                  <span className="text-gray-600">{d.name}: <strong>{d.value}件</strong></span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* タスク進捗予測テーブル（折りたたみ式） */}
+      {predictions.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <button
+            onClick={() => setShowTaskDetail(!showTaskDetail)}
+            className="w-full flex items-center justify-between text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors"
+          >
+            <span>試験種別の詳細予測</span>
+            <span className="text-gray-400 text-xs ml-2">{showTaskDetail ? '▲ 閉じる' : '▼ 詳細を表示'}</span>
+          </button>
+          {showTaskDetail && (
+            <div className="overflow-x-auto mt-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left py-2 px-2 text-gray-500 font-medium">タスク名</th>
+                    <th className="text-left py-2 px-2 text-gray-500 font-medium">担当者</th>
+                    <th className="text-right py-2 px-2 text-gray-500 font-medium">残り工数</th>
+                    <th className="text-right py-2 px-2 text-gray-500 font-medium">予測完了日</th>
+                    <th className="text-right py-2 px-2 text-gray-500 font-medium">期限</th>
+                    <th className="text-center py-2 px-2 text-gray-500 font-medium">状態</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {predictions.map(p => {
+                    const task = tasks.find(t => t.id === p.taskId);
+                    const assignment = assignments.find(a => a.taskId === p.taskId && !isFinished(a.status));
+                    const corrector = assignment ? correctors.find(c => c.id === assignment.userId) : null;
+                    const badge = PREDICTION_BADGE[p.status] || PREDICTION_BADGE.unassigned;
+                    return (
+                      <tr key={p.taskId} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-2 px-2 font-medium text-gray-800">{task?.name ?? '不明'}</td>
+                        <td className="py-2 px-2 text-gray-600">{corrector?.name ?? '—'}</td>
+                        <td className="py-2 px-2 text-right text-gray-600">{p.remainingHours != null ? `${p.remainingHours}h` : '—'}</td>
+                        <td className="py-2 px-2 text-right text-gray-600">{p.predictedDate ?? '—'}</td>
+                        <td className="py-2 px-2 text-right text-gray-600">{p.deadline ?? '—'}</td>
+                        <td className="py-2 px-2 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>{badge.text}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---- daily capacity helpers ----
+const buildDailyData = (capacities, tasks) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const capDates = capacities.flatMap(c => [
+    new Date(c.startDate + 'T00:00:00'),
+    new Date(c.endDate + 'T00:00:00'),
+  ]);
+  const taskDates = tasks
+    .filter(t => !isFinished(t.status) && t.deadline)
+    .map(t => new Date(t.deadline + 'T00:00:00'));
+
+  const allDates = [...capDates, ...taskDates, today];
+  if (allDates.length === 0) return [];
+
+  const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+  const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+
+  // Build day-by-day array
+  const rows = [];
+  const cur = new Date(minDate);
+  while (cur <= maxDate) {
+    const dateStr = cur.toISOString().split('T')[0];
+    const mm = cur.getMonth() + 1;
+    const dd = cur.getDate();
+    const available = capacities
+      .filter(c => c.startDate <= dateStr && c.endDate >= dateStr)
+      .reduce((s, c) => s + c.hoursPerDay, 0);
+    rows.push({ date: dateStr, label: `${mm}/${dd}`, available, workload: 0 });
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // Distribute each task's workload evenly from today → deadline
+  tasks.filter(t => !isFinished(t.status)).forEach(task => {
+    const deadlineStr = task.deadline;
+    const todayStr = today.toISOString().split('T')[0];
+    const span = rows.filter(r => r.date >= todayStr && r.date <= deadlineStr);
+    if (span.length === 0) {
+      // Already past deadline – pile onto first row
+      if (rows.length > 0) rows[0].workload += task.requiredHours;
+    } else {
+      const perDay = task.requiredHours / span.length;
+      span.forEach(r => { r.workload += perDay; });
+    }
+  });
+
+  return rows.map(r => ({
+    label: r.label,
+    date: r.date,
+    利用可能工数: r.available,
+    必要作業工数: Math.round(r.workload * 10) / 10,
+    余剰: Math.round((r.available - r.workload) * 10) / 10,
+    充足: r.available >= r.workload,
+  }));
+};
+
+const CustomDailyTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const available = payload.find(p => p.dataKey === '利用可能工数')?.value ?? 0;
+  const workload = payload.find(p => p.dataKey === '必要作業工数')?.value ?? 0;
+  const balance = Math.round((available - workload) * 10) / 10;
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
+      <p className="font-semibold text-gray-700 mb-1">{label}</p>
+      <p className="text-blue-600">利用可能工数: {available}h</p>
+      <p className="text-orange-500">必要作業工数: {workload}h</p>
+      <p className={`font-semibold mt-1 ${balance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+        {balance >= 0 ? `余剰 +${balance}h` : `不足 ${balance}h`}
+      </p>
+    </div>
+  );
+};
+
+// ---- Capacity Analysis Tab ----
+const CapacityAnalysisTab = ({ activeSubjects }) => {
+  const { getCorrectors, getCapacities, getAssignments, getTasks, getUsers } = useData();
+  const allCorrectors = getCorrectors();
+  const correctors = allCorrectors.filter(c => (c.subjects ?? []).some(s => activeSubjects.includes(s)));
+  const capacities = getCapacities();
+  const assignments = getAssignments();
+  const allTasks = getTasks();
+  const tasks = allTasks.filter(t => activeSubjects.includes(t.subject));
+
+  // 科目別サマリーデータ
+  const subjectSummary = SUBJECTS_LIST.filter(s => activeSubjects.includes(s)).map(subject => {
+    const capable = correctors.filter(c => (c.subjects ?? []).includes(subject));
+    const totalCap = capable.reduce((s, c) =>
+      s + capacities.filter(cap => cap.userId === c.id).reduce((a, cap) => a + cap.totalHours, 0), 0);
+    const assignedH = capable.reduce((s, c) =>
+      s + assignments.filter(a => a.userId === c.id && !isFinished(a.status)).reduce((a, asn) => a + asn.assignedHours, 0), 0);
+    const requiredH = tasks.filter(t => t.subject === subject && !isFinished(t.status)).reduce((s, t) => s + t.requiredHours, 0);
+    return { subject, capable: capable.length, totalCap, assignedH, freeH: Math.max(0, totalCap - assignedH), requiredH };
+  });
+
+  const dailyData = buildDailyData(capacities, tasks);
+  const insufficientDays = dailyData.filter(d => !d.充足 && d.必要作業工数 > 0).length;
+
+  const correctorData = correctors.map(c => {
+    const available = capacities.filter(cap => cap.userId === c.id).reduce((s, cap) => s + cap.totalHours, 0);
+    const assigned = assignments.filter(a => a.userId === c.id && !isFinished(a.status)).reduce((s, a) => s + a.assignedHours, 0);
+    return {
+      name: c.name.replace(' ', '\n'),
+      登録工数: available,
+      割当工数: assigned,
+      空き工数: Math.max(0, available - assigned),
+    };
+  });
+
+  const [historyRange, setHistoryRange] = useState({ startDate: '', endDate: '' });
+  const [showHistory, setShowHistory] = useState(false);
+
+  const allCapacities = getCapacities();
+  const allUsers = getUsers ? getUsers() : [];
+
+  const filteredCapacities = allCapacities.filter(c => {
+    if (historyRange.startDate && c.endDate < historyRange.startDate) return false;
+    if (historyRange.endDate && c.startDate > historyRange.endDate) return false;
+    return true;
+  });
+
+  const capacityHistoryData = filteredCapacities.map(c => {
+    const user = allUsers.find(u => u.id === c.userId);
+    return {
+      userName: user?.name ?? '不明',
+      userLoginId: user?.loginId ?? '',
+      startDate: c.startDate,
+      endDate: c.endDate,
+      hoursPerDay: c.hoursPerDay,
+      totalHours: c.totalHours,
+      note: c.note ?? '',
+    };
+  });
+
+  const allAssignments = getAssignments ? getAssignments() : [];
+  const assignmentHistoryData = allAssignments.map(a => {
+    const task = tasks.find(t => t.id === a.taskId);
+    const user = allUsers.find(u => u.id === a.userId);
+    return {
+      taskName: task?.name || '',
+      subject: task?.subject || '',
+      workType: task?.workType || '',
+      correctorName: user?.name || '',
+      correctorLoginId: user?.loginId || '',
+      assignedHours: a.assignedHours || '',
+      actualHours: a.actualHours || '',
+      status: a.status,
+      assignedAt: a.assignedAt ? a.assignedAt.slice(0, 10) : '',
+      submittedAt: a.submittedAt ? a.submittedAt.slice(0, 10) : '',
+    };
+  });
+
+  const handleExportHistoryCSV = () => {
+    const csv = toCSV(capacityHistoryData, CAPACITY_CSV_COLUMNS);
+    const range = historyRange.startDate || historyRange.endDate
+      ? `${historyRange.startDate || '開始'}〜${historyRange.endDate || '現在'}`
+      : '全期間';
+    downloadCSV(csv, `工数履歴_${range}.csv`);
+  };
+
+  const handleExportHistoryExcel = () => {
+    const range = historyRange.startDate || historyRange.endDate
+      ? `${historyRange.startDate || '開始'}〜${historyRange.endDate || '現在'}`
+      : '全期間';
+    downloadHistoryExcel(capacityHistoryData, assignmentHistoryData, range);
+  };
+
+  return (
+    <div className="space-y-4">
+
+      {/* ===== 日別工数充足グラフ ===== */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700">日別 工数充足状況</h3>
+            <p className="text-xs text-gray-400 mt-0.5">利用可能工数 vs 必要作業工数（タスクを期限まで均等配分）</p>
+          </div>
+          {insufficientDays > 0 && (
+            <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full font-medium shrink-0">
+              工数不足: {insufficientDays}日
+            </span>
+          )}
+        </div>
+
+        {dailyData.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-8">工数またはタスクデータがありません</p>
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={260}>
+              <ComposedChart data={dailyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 10 }} unit="h" width={36} />
+                <Tooltip content={<CustomDailyTooltip />} />
+                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                <ReferenceLine y={0} stroke="#e5e7eb" />
+                <Bar
+                  dataKey="利用可能工数"
+                  fill="#93c5fd"
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={28}
+                >
+                  {dailyData.map((entry, i) => (
+                    <Cell key={i} fill={entry.充足 ? '#93c5fd' : '#fca5a5'} />
+                  ))}
+                </Bar>
+                <Bar
+                  dataKey="必要作業工数"
+                  fill="#fb923c"
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={28}
+                  fillOpacity={0.85}
+                />
+                <Line
+                  dataKey="余剰"
+                  name="余剰/不足工数"
+                  type="monotone"
+                  stroke="#6366f1"
+                  strokeWidth={2}
+                  dot={false}
+                  strokeDasharray="4 2"
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+
+            {/* 凡例補足 */}
+            <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-sm bg-blue-300 inline-block"></span>充足日（利用可能工数）
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-sm bg-red-300 inline-block"></span>工数不足日
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-sm bg-orange-400 inline-block"></span>必要作業工数
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-5 h-0.5 bg-indigo-500 inline-block" style={{borderTop:'2px dashed #6366f1'}}></span>余剰/不足ライン
+              </span>
+            </div>
+
+            {/* 日別サマリーテーブル（工数不足日のみ） */}
+            {insufficientDays > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-medium text-red-600 mb-1">⚠ 工数不足の日</p>
+                <div className="flex flex-wrap gap-2">
+                  {dailyData.filter(d => !d.充足 && d.必要作業工数 > 0).map(d => (
+                    <div key={d.date} className="text-xs bg-red-50 border border-red-100 rounded-lg px-2 py-1">
+                      <span className="font-medium text-red-700">{d.label}</span>
+                      <span className="text-red-400 ml-1">
+                        ({d.利用可能工数}h 可 / {d.必要作業工数}h 必要)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ===== 添削者別グラフ ===== */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-1">添削者別 工数状況</h3>
+        <p className="text-xs text-gray-400 mb-4">登録工数・割当工数・空き工数の比較</p>
+        {correctorData.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-8">データがありません</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={correctorData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} unit="h" width={36} />
+              <Tooltip formatter={(v) => `${v}時間`} />
+              <Legend />
+              <Bar dataKey="登録工数" fill="#93c5fd" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="割当工数" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="空き工数" fill="#bbf7d0" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ===== 添削者別詳細 ===== */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">添削者別 工数詳細</h3>
+        <div className="space-y-3">
+          {correctors.map(c => {
+            const data = correctorData.find(d => d.name === c.name.replace(' ', '\n'));
+            if (!data) return null;
+            const pct = data.登録工数 > 0 ? Math.min(100, Math.round((data.割当工数 / data.登録工数) * 100)) : 0;
+            return (
+              <div key={c.id} className="p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div>
+                    <span className="text-sm font-medium text-gray-800">{c.name}</span>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {(c.subjects ?? []).length === 0
+                        ? <span className="text-xs text-gray-300">科目未設定</span>
+                        : (c.subjects ?? []).map(s => (
+                          <span key={s} className="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">{s}</span>
+                        ))}
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-500">{data.割当工数}h / {data.登録工数}h</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                    style={{ width: `${pct}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-xs text-gray-400">稼働率: {pct}%</span>
+                  <span className="text-xs text-green-600 font-medium">空き: {data.空き工数}h</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ===== 科目別 工数サマリー ===== */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-1">科目別 工数サマリー</h3>
+        <p className="text-xs text-gray-400 mb-4">担当可能な添削者の工数 vs 必要作業工数</p>
+        <div className="space-y-3">
+          {subjectSummary.map(row => {
+            const pct = row.totalCap > 0 ? Math.min(100, Math.round((row.requiredH / row.totalCap) * 100)) : 0;
+            const shortage = row.totalCap < row.requiredH;
+            return (
+              <div key={row.subject} className={`p-4 rounded-xl border ${shortage ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-gray-50'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-800">{row.subject}</span>
+                    <span className="text-xs text-gray-400">担当者: {row.capable}人</span>
+                    {shortage && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">工数不足</span>}
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    必要 <strong className={shortage ? 'text-red-600' : 'text-gray-700'}>{row.requiredH}h</strong>
+                    {' / '}空き <strong className="text-green-600">{row.freeH}h</strong>
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${shortage ? 'bg-red-400' : pct >= 70 ? 'bg-amber-400' : 'bg-green-400'}`}
+                    style={{ width: `${pct}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between mt-1 text-xs text-gray-400">
+                  <span>登録工数合計: {row.totalCap}h</span>
+                  <span>割当済: {row.assignedH}h</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+        {/* 工数履歴セクション */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-gray-700">📅 工数履歴</h4>
+            <button onClick={() => setShowHistory(!showHistory)}
+              className="text-xs text-blue-500 hover:text-blue-700">
+              {showHistory ? '▲ 閉じる' : '▼ 詳細を表示'}
+            </button>
+          </div>
+
+          {showHistory && (
+            <>
+              <div className="flex flex-wrap items-end gap-3 mb-4">
+                <div>
+                  <label className="text-xs text-gray-500">開始日</label>
+                  <input type="date" value={historyRange.startDate}
+                    onChange={e => setHistoryRange(p => ({ ...p, startDate: e.target.value }))}
+                    className="block mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">終了日</label>
+                  <input type="date" value={historyRange.endDate}
+                    onChange={e => setHistoryRange(p => ({ ...p, endDate: e.target.value }))}
+                    className="block mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />
+                </div>
+                <button onClick={() => setHistoryRange({ startDate: '', endDate: '' })}
+                  className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg">
+                  リセット
+                </button>
+                <div className="ml-auto flex gap-2">
+                  <button onClick={handleExportHistoryCSV}
+                    className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg transition">
+                    📤 CSV出力
+                  </button>
+                  <button onClick={handleExportHistoryExcel}
+                    className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg transition">
+                    📤 Excel出力
+                  </button>
+                </div>
+              </div>
+
+              {/* 工数登録一覧 */}
+              <h5 className="text-xs font-semibold text-gray-600 mb-2">工数登録一覧（{capacityHistoryData.length}件）</h5>
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-2 text-gray-500 font-medium">作業者</th>
+                      <th className="text-left py-2 px-2 text-gray-500 font-medium">ID</th>
+                      <th className="text-left py-2 px-2 text-gray-500 font-medium">期間</th>
+                      <th className="text-right py-2 px-2 text-gray-500 font-medium">日/h</th>
+                      <th className="text-right py-2 px-2 text-gray-500 font-medium">合計h</th>
+                      <th className="text-left py-2 px-2 text-gray-500 font-medium">備考</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {capacityHistoryData.length === 0 ? (
+                      <tr><td colSpan={6} className="text-center py-4 text-gray-400">データがありません</td></tr>
+                    ) : capacityHistoryData.map((c, i) => (
+                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-2 px-2">{c.userName}</td>
+                        <td className="py-2 px-2 font-mono text-blue-600">{c.userLoginId}</td>
+                        <td className="py-2 px-2">{c.startDate} 〜 {c.endDate}</td>
+                        <td className="py-2 px-2 text-right">{c.hoursPerDay}</td>
+                        <td className="py-2 px-2 text-right font-medium">{c.totalHours}</td>
+                        <td className="py-2 px-2 text-gray-500">{c.note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {capacityHistoryData.length > 0 && (
+                    <tfoot>
+                      <tr className="border-t border-gray-200 font-medium">
+                        <td colSpan={4} className="py-2 px-2 text-right text-gray-600">合計:</td>
+                        <td className="py-2 px-2 text-right text-blue-700">
+                          {capacityHistoryData.reduce((s, c) => s + (Number(c.totalHours) || 0), 0)}h
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+
+              {/* 作業実績一覧 */}
+              <h5 className="text-xs font-semibold text-gray-600 mb-2">作業実績一覧（{assignmentHistoryData.length}件）</h5>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-2 text-gray-500 font-medium">タスク</th>
+                      <th className="text-left py-2 px-2 text-gray-500 font-medium">科目</th>
+                      <th className="text-left py-2 px-2 text-gray-500 font-medium">担当者</th>
+                      <th className="text-right py-2 px-2 text-gray-500 font-medium">予定h</th>
+                      <th className="text-right py-2 px-2 text-gray-500 font-medium">実績h</th>
+                      <th className="text-left py-2 px-2 text-gray-500 font-medium">ステータス</th>
+                      <th className="text-left py-2 px-2 text-gray-500 font-medium">提出日</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assignmentHistoryData.length === 0 ? (
+                      <tr><td colSpan={7} className="text-center py-4 text-gray-400">データがありません</td></tr>
+                    ) : assignmentHistoryData.map((a, i) => (
+                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-2 px-2">{a.taskName}</td>
+                        <td className="py-2 px-2">{a.subject}</td>
+                        <td className="py-2 px-2">{a.correctorName}</td>
+                        <td className="py-2 px-2 text-right">{a.assignedHours}</td>
+                        <td className="py-2 px-2 text-right font-medium">{a.actualHours || '-'}</td>
+                        <td className="py-2 px-2">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${
+                            a.status === 'completed' || a.status === 'approved' ? 'bg-green-100 text-green-700' :
+                            a.status === 'submitted' ? 'bg-blue-100 text-blue-700' :
+                            a.status === 'in_progress' ? 'bg-sky-100 text-sky-700' :
+                            a.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {a.status === 'assigned' ? '割当済' : a.status === 'in_progress' ? '作業中' :
+                             a.status === 'submitted' ? '提出済' :
+                             a.status === 'approved' || a.status === 'completed' ? '完了' :
+                             a.status === 'rejected' ? '差し戻し' : a.status}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2 text-gray-500">{a.submittedAt || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+    </div>
+  );
+};
+
+// ---- Task & Assignment Tab (試験種管理) ----
+const TaskAndAssignmentTab = ({ activeSubjects }) => {
+  const {
+    getTasks, addTask, updateTask, deleteTask,
+    getAssignments, deleteAssignment, updateAssignment,
+    getCorrectors, getCapacities, forceRefresh,
+    getExamInputs, getTimeLogs, getTaskTotalTime, getDaimonTotalTime, getUsers,
+    getAllData, applyAutoAssignResult,
+  } = useData();
+  const { user } = useAuth();
+
+  const allTasks = getTasks();
+  const tasks = allTasks.filter(t => activeSubjects.includes(t.subject));
+  const assignments = getAssignments();
+  const correctors = getCorrectors();
+  const capacities = getCapacities();
+
+  // Sub-tab navigation
+  const [section, setSection] = useState(0);
+
+  // Task form state
+  const [form, setForm] = useState({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false });
+  const [editId, setEditId] = useState(null);
+  const [error, setError] = useState('');
+
+  // Task list state
+  const [sortKey, setSortKey] = useState('deadline');
+  const [sortAsc, setSortAsc] = useState(true);
+  const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [subjectFilter, setSubjectFilter] = useState('all');
+  const [workTypeFilter, setWorkTypeFilter] = useState('all');
+  const [deadlineFrom, setDeadlineFrom] = useState('');
+  const [deadlineTo, setDeadlineTo] = useState('');
+  const [workerFilter, setWorkerFilter] = useState('all');
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+
+  // Assignment filter state
+  const [assignSubjectFilter, setAssignSubjectFilter] = useState('all');
+  const [assignWorkTypeFilter, setAssignWorkTypeFilter] = useState('all');
+  const [assignDeadlineFrom, setAssignDeadlineFrom] = useState('');
+  const [assignDeadlineTo, setAssignDeadlineTo] = useState('');
+  const [showAssignSearch, setShowAssignSearch] = useState(false);
+
+  // Assignment state
+  const [message, setMessage] = useState('');
+  const [manualSelect, setManualSelect] = useState({});
+  const [previewData, setPreviewData] = useState(null);
+  const [editedProposals, setEditedProposals] = useState([]);
+
+  // --- Task helpers ---
+  const handleSort = (key) => {
+    if (sortKey === key) setSortAsc(a => !a);
+    else { setSortKey(key); setSortAsc(true); }
+  };
+
+  const filteredTasks = tasks.filter(t => {
+    if (searchText && !t.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+    if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+    if (subjectFilter !== 'all' && t.subject !== subjectFilter) return false;
+    if (workTypeFilter !== 'all' && t.workType !== workTypeFilter) return false;
+    if (deadlineFrom && t.deadline < deadlineFrom) return false;
+    if (deadlineTo && t.deadline > deadlineTo) return false;
+    if (workerFilter !== 'all') {
+      const a = assignments.find(x => x.taskId === t.id);
+      if (!a || a.userId !== workerFilter) return false;
+    }
+    return true;
+  });
+
+  const sortedTasks = [...filteredTasks].sort((a, b) => {
+    let va = a[sortKey] ?? '';
+    let vb = b[sortKey] ?? '';
+    if (sortKey === 'requiredHours') { va = Number(va); vb = Number(vb); }
+    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return sortAsc ? cmp : -cmp;
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setError('');
+    if (!form.subject) { setError('科目を選択してください'); return; }
+    if (!form.workType) { setError('作業内容を選択してください'); return; }
+    if (editId) {
+      updateTask(editId, { ...form, requiredHours: Number(form.requiredHours) });
+      setEditId(null);
+    } else {
+      addTask({ ...form, requiredHours: Number(form.requiredHours), viking: !!form.viking });
+    }
+    setForm({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false });
+  };
+
+  const handleEdit = (task) => {
+    setEditId(task.id);
+    setForm({ name: task.name, subject: task.subject ?? '', workType: task.workType ?? '', requiredHours: task.requiredHours, deadline: task.deadline, sheetsUrl: task.sheetsUrl ?? '', viking: !!task.viking });
+    setSection(0);
+  };
+
+  const statusConfig = {
+    pending: { text: '未割当', cls: 'bg-amber-100 text-amber-700' },
+    assigned: { text: '割当済', cls: 'bg-blue-100 text-blue-700' },
+    in_progress: { text: '作業中', cls: 'bg-sky-100 text-sky-700' },
+    submitted: { text: '提出済', cls: 'bg-purple-100 text-purple-700' },
+    completed: { text: '完了', cls: 'bg-green-100 text-green-700' },
+  };
+
+  // --- Assignment helpers ---
+  const allPendingTasks = tasks.filter(t => t.status === 'pending' && !t.viking);
+  const pendingTasks = allPendingTasks.filter(t => {
+    if (assignSubjectFilter !== 'all' && t.subject !== assignSubjectFilter) return false;
+    if (assignWorkTypeFilter !== 'all' && t.workType !== assignWorkTypeFilter) return false;
+    if (assignDeadlineFrom && t.deadline < assignDeadlineFrom) return false;
+    if (assignDeadlineTo && t.deadline > assignDeadlineTo) return false;
+    return true;
+  });
+  const assignedTasks = tasks.filter(t => t.status === 'assigned' || t.status === 'in_progress');
+
+  const handleAutoAssign = () => {
+    const proposals = previewAutoAssign(getAllData());
+    if (proposals.length === 0) {
+      setMessage('振り分けできるタスクがありませんでした');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
+    setPreviewData(proposals);
+    setEditedProposals(proposals.map(p => ({ taskId: p.taskId, userId: p.userId, assignedHours: p.assignedHours })));
+  };
+
+  const handleManualAssign = (taskId) => {
+    const userId = manualSelect[taskId];
+    if (!userId) return;
+    const result = manualAssign(taskId, userId, getAllData());
+    applyAutoAssignResult(result);
+    setManualSelect(prev => ({ ...prev, [taskId]: '' }));
+    setMessage('手動振り分けしました');
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  const getAssignedUser = (taskId) => {
+    const a = assignments.find(x => x.taskId === taskId);
+    if (!a) return null;
+    return correctors.find(c => c.id === a.userId);
+  };
+
+  const getEligibleCorrectors = (subject) => {
+    return correctors.filter(c => (c.subjects ?? []).includes(subject));
+  };
+
+  const TASK_CSV_COLUMNS = [
+    { key: 'taskName', header: 'タスク名' },
+    { key: 'subject', header: '科目' },
+    { key: 'workType', header: '作業内容' },
+    { key: 'requiredHours', header: '必要工数' },
+    { key: 'deadline', header: '期限' },
+    { key: 'status', header: 'ステータス' },
+    { key: 'correctorName', header: '担当者' },
+  ];
+
+  const statusLabelMap = { pending: '未割当', assigned: '割当済', in_progress: '作業中', submitted: '提出済', completed: '完了' };
+
+  const handleExportTasksCSV = () => {
+    const users = getUsers();
+    const data = sortedTasks.map(t => {
+      const a = assignments.find(x => x.taskId === t.id);
+      const u = a ? users.find(u => u.id === a.userId) : null;
+      return {
+        taskName: t.name,
+        subject: t.subject || '',
+        workType: t.workType || '',
+        requiredHours: t.requiredHours,
+        deadline: t.deadline || '',
+        status: statusLabelMap[t.status] || t.status,
+        correctorName: u?.name || '',
+      };
+    });
+    const csv = toCSV(data, TASK_CSV_COLUMNS);
+    downloadCSV(csv, `タスク一覧_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  const clearTaskFilters = () => {
+    setSearchText('');
+    setStatusFilter('all');
+    setSubjectFilter('all');
+    setWorkTypeFilter('all');
+    setDeadlineFrom('');
+    setDeadlineTo('');
+    setWorkerFilter('all');
+  };
+
+  const clearAssignFilters = () => {
+    setAssignSubjectFilter('all');
+    setAssignWorkTypeFilter('all');
+    setAssignDeadlineFrom('');
+    setAssignDeadlineTo('');
+  };
+
+  const handleExportAssignmentsCSV = () => {
+    const allAssignments = getAssignments();
+    const allTasksList = getTasks();
+    const users = getUsers();
+    const data = allAssignments.map(a => {
+      const task = allTasksList.find(t => t.id === a.taskId);
+      const u = users.find(u => u.id === a.userId);
+      return {
+        taskName: task?.name || '',
+        subject: task?.subject || '',
+        workType: task?.workType || '',
+        correctorName: u?.name || '',
+        correctorLoginId: u?.loginId || '',
+        assignedHours: a.assignedHours || '',
+        actualHours: a.actualHours || '',
+        status: a.status,
+        assignedAt: a.assignedAt ? a.assignedAt.slice(0, 10) : '',
+        submittedAt: a.submittedAt ? a.submittedAt.slice(0, 10) : '',
+      };
+    });
+    const csv = toCSV(data, ASSIGNMENT_CSV_COLUMNS);
+    downloadCSV(csv, `振り分け結果_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Sub-tab navigation */}
+      <div className="flex gap-1 mb-4 flex-wrap">
+        {['タスク登録', 'タスク一覧', '割当済み', '実績'].map((label, i) => (
+          <button key={i} onClick={() => setSection(i)}
+            className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${section === i ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {message && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
+          {message}
+        </div>
+      )}
+
+      {/* ===== Section 0: タスク登録 ===== */}
+      {section === 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">{editId ? '試験種を編集' : '新しい試験種を追加'}</h3>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">試験種名</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="例：〇〇中学校 国語 第2回"
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">科目</label>
+                <select
+                  value={form.subject}
+                  onChange={e => setForm({ ...form, subject: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="">選択してください</option>
+                  {SUBJECTS_LIST.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">作業内容</label>
+                <select
+                  value={form.workType}
+                  onChange={e => setForm({ ...form, workType: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="">選択してください</option>
+                  {WORK_TYPES_LIST.map(w => (
+                    <option key={w} value={w}>{w}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">必要工数（時間）</label>
+              <input
+                type="number"
+                value={form.requiredHours}
+                onChange={e => setForm({ ...form, requiredHours: e.target.value })}
+                min="1" max="500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">期限</label>
+              <input
+                type="date"
+                value={form.deadline}
+                onChange={e => setForm({ ...form, deadline: e.target.value })}
+                className="w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                作業スプレッドシート URL
+                <span className="ml-1 text-gray-400 font-normal">（任意）作業者に共有するスプシのURL</span>
+              </label>
+              <input
+                type="url"
+                value={form.sheetsUrl}
+                onChange={e => setForm({ ...form, sheetsUrl: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="viking-check"
+                checked={form.viking}
+                onChange={e => setForm({ ...form, viking: e.target.checked })}
+                className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-orange-500"
+              />
+              <label htmlFor="viking-check" className="text-sm font-medium text-gray-700">
+                🛡 VIKINGタスク
+                <span className="ml-1 text-gray-400 font-normal">（添削者が自分で取れるタスク）</span>
+              </label>
+            </div>
+            {error && <p className="text-red-500 text-xs">{error}</p>}
+            <div className="flex gap-2">
+              <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+                {editId ? '更新' : '追加'}
+              </button>
+              {editId && (
+                <button type="button" onClick={() => { setEditId(null); setForm({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false }); }}
+                  className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg transition">
+                  キャンセル
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ===== Section 1: タスク一覧 ===== */}
+      {section === 1 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 className="text-sm font-semibold text-gray-700">試験種一覧（{filteredTasks.length}件）</h3>
+            {tasks.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { key: 'deadline', label: '期限' },
+                  { key: 'subject', label: '科目' },
+                  { key: 'workType', label: '作業内容' },
+                  { key: 'status', label: 'ステータス' },
+                  { key: 'requiredHours', label: '工数' },
+                  { key: 'name', label: '名前' },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => handleSort(key)}
+                    className={`text-xs px-2.5 py-1 rounded-lg border transition font-medium ${sortKey === key ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    {label}{sortKey === key ? (sortAsc ? ' ↑' : ' ↓') : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Search & status filter */}
+          <div className="flex gap-2 mb-2 flex-wrap">
+            <input
+              type="text"
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              placeholder="タスク名で検索..."
+              className="flex-1 min-w-[180px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="all">全て</option>
+              <option value="pending">未割当</option>
+              <option value="assigned">割当済</option>
+              <option value="submitted">提出済</option>
+              <option value="completed">完了</option>
+            </select>
+            <button
+              onClick={() => setShowAdvancedSearch(v => !v)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition font-medium ${showAdvancedSearch ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+            >
+              {showAdvancedSearch ? '▲ 詳細検索' : '▼ 詳細検索'}
+            </button>
+            <button
+              onClick={handleExportTasksCSV}
+              disabled={filteredTasks.length === 0}
+              className="text-xs px-3 py-1.5 rounded-lg border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-40 transition font-medium"
+            >
+              CSV出力
+            </button>
+          </div>
+          {showAdvancedSearch && (
+            <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">科目</label>
+                  <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="all">すべて</option>
+                    {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">作業内容</label>
+                  <select value={workTypeFilter} onChange={e => setWorkTypeFilter(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="all">すべて</option>
+                    {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">作業者</label>
+                  <select value={workerFilter} onChange={e => setWorkerFilter(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="all">すべて</option>
+                    {correctors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">期限（開始）</label>
+                  <input type="date" value={deadlineFrom} onChange={e => setDeadlineFrom(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">期限（終了）</label>
+                  <input type="date" value={deadlineTo} onChange={e => setDeadlineTo(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div className="flex items-end">
+                  <button onClick={clearTaskFilters}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 transition">
+                    条件クリア
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {filteredTasks.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-6">試験種がありません</p>
+          ) : (
+            <div className="space-y-2">
+              {sortedTasks.map(task => {
+                const sc = statusConfig[task.status] ?? { text: task.status, cls: 'bg-gray-100 text-gray-600' };
+                const assignment = assignments.find(a => a.taskId === task.id);
+                return (
+                  <div key={task.id} className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg hover:bg-gray-50 transition">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sc.cls}`}>{sc.text}</span>
+                        <span className="text-sm font-medium text-gray-800 truncate">{task.name}</span>
+                        {task.viking && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">🛡 VIKING</span>
+                        )}
+                        {task.sheetsUrl && (
+                          <a href={task.sheetsUrl} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-1.5 py-0.5 rounded transition"
+                            title="作業スプレッドシートを開く">🔗 スプシ</a>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {task.subject}{task.workType ? ` · ${task.workType}` : ''} · {task.requiredHours}h · 期限: {task.deadline}
+                      </p>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button onClick={() => handleEdit(task)} className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded transition">編集</button>
+                      <button onClick={() => { if (confirm(`「${task.name}」を削除しますか？`)) deleteTask(task.id); }}
+                        className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded transition">削除</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== Section 2: 振り分け（AssignmentTabに移行済み） ===== */}
+      {false && section === -1 && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700">自動振り分け</h3>
+                <p className="text-xs text-gray-400 mt-0.5">未割当の全タスクを評価・工数をもとに自動で振り分けます</p>
+              </div>
+              <button
+                onClick={handleAutoAssign}
+                disabled={allPendingTasks.length === 0}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+              >
+                🔀 自動振り分け実行
+              </button>
+            </div>
+            {allPendingTasks.length === 0 ? (
+              <p className="text-green-600 text-xs">未割当のタスクはありません</p>
+            ) : (
+              <p className="text-amber-600 text-xs">未割当タスク: {allPendingTasks.length}件</p>
+            )}
+
+            {previewData && (
+              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <h4 className="text-sm font-bold text-blue-800 mb-3">📋 振り分けプレビュー（{editedProposals.length}件）</h4>
+                <p className="text-xs text-blue-600 mb-3">担当者の変更や個別除外が可能です。確認後「確定する」を押してください。</p>
+                <div className="space-y-2">
+                  {previewData.map((p, idx) => {
+                    const edited = editedProposals.find(e => e.taskId === p.taskId);
+                    if (!edited) return null;
+                    return (
+                      <div key={p.taskId} className="flex items-center gap-2 bg-white rounded-lg p-3 border border-blue-100">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">{p.taskName}</p>
+                          <p className="text-xs text-gray-500">{p.subject} {p.workType && `· ${p.workType}`}</p>
+                        </div>
+                        <select
+                          value={edited.userId}
+                          onChange={e => setEditedProposals(prev => prev.map(ep =>
+                            ep.taskId === p.taskId ? { ...ep, userId: e.target.value } : ep
+                          ))}
+                          className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white min-w-[140px]"
+                        >
+                          {p.eligibleCorrectors.map(c => (
+                            <option key={c.id} value={c.id}>{c.name} (スコア: {c.score})</option>
+                          ))}
+                        </select>
+                        <span className="text-sm text-gray-600 whitespace-nowrap">{p.assignedHours}h</span>
+                        <button
+                          onClick={() => setEditedProposals(prev => prev.filter(ep => ep.taskId !== p.taskId))}
+                          className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded transition whitespace-nowrap"
+                        >
+                          ✕ 除外
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {editedProposals.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-3">全てのタスクが除外されました</p>
+                )}
+                <div className="flex gap-2 mt-4 justify-end">
+                  <button
+                    onClick={() => { setPreviewData(null); setEditedProposals([]); }}
+                    className="text-sm text-gray-600 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    disabled={editedProposals.length === 0}
+                    onClick={() => {
+                      const result = confirmAutoAssign(editedProposals, getAllData());
+                      applyAutoAssignResult(result);
+                      setMessage(`${result.newAssignments.length}件のタスクを振り分けました`);
+                      setPreviewData(null);
+                      setEditedProposals([]);
+                      setTimeout(() => setMessage(''), 4000);
+                    }}
+                    className="text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg transition"
+                  >
+                    確定する（{editedProposals.length}件）
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {allPendingTasks.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm p-5">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <h3 className="text-sm font-semibold text-gray-700">手動振り分け（未割当タスク {pendingTasks.length}/{allPendingTasks.length}件）</h3>
+                <button
+                  onClick={() => setShowAssignSearch(v => !v)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition font-medium ${showAssignSearch ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                >
+                  {showAssignSearch ? '▲ 絞り込み' : '▼ 絞り込み'}
+                </button>
+              </div>
+              {showAssignSearch && (
+                <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-0.5">科目</label>
+                      <select value={assignSubjectFilter} onChange={e => setAssignSubjectFilter(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="all">すべて</option>
+                        {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-0.5">作業内容</label>
+                      <select value={assignWorkTypeFilter} onChange={e => setAssignWorkTypeFilter(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="all">すべて</option>
+                        {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-0.5">期限（開始）</label>
+                      <input type="date" value={assignDeadlineFrom} onChange={e => setAssignDeadlineFrom(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-0.5">期限（終了）</label>
+                      <input type="date" value={assignDeadlineTo} onChange={e => setAssignDeadlineTo(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
+                    </div>
+                    <div className="flex items-end">
+                      <button onClick={clearAssignFilters}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 transition">
+                        条件クリア
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-3">
+                {pendingTasks.length === 0 ? (
+                  <p className="text-gray-400 text-sm text-center py-4">条件に一致するタスクがありません</p>
+                ) : pendingTasks.map(task => {
+                  const eligible = getEligibleCorrectors(task.subject);
+                  return (
+                    <div key={task.id} className="p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                      <p className="text-sm font-medium text-gray-800 mb-1">{task.name}</p>
+                      <p className="text-xs text-gray-500 mb-2">{task.subject}{task.workType ? ` · ${task.workType}` : ''} · {task.requiredHours}h · 期限: {task.deadline}</p>
+                      {eligible.length === 0 ? (
+                        <p className="text-xs text-red-500">担当可能な添削者がいません</p>
+                      ) : (
+                        <div className="flex gap-2">
+                          <select
+                            value={manualSelect[task.id] ?? ''}
+                            onChange={e => setManualSelect(prev => ({ ...prev, [task.id]: e.target.value }))}
+                            className="flex-1 text-sm px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                          >
+                            <option value="">添削者を選択...</option>
+                            {eligible.map(c => {
+                              const totalCap = capacities.filter(cap => cap.userId === c.id).reduce((s, cap) => s + cap.totalHours, 0);
+                              const usedHours = assignments.filter(a => a.userId === c.id && !isFinished(a.status)).reduce((s, a) => s + a.assignedHours, 0);
+                              const free = Math.max(0, totalCap - usedHours);
+                              return (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}（空き工数: {free}h）
+                                </option>
+                              );
+                            })}
+                          </select>
+                          <button
+                            onClick={() => handleManualAssign(task.id)}
+                            disabled={!manualSelect[task.id]}
+                            className="text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg transition"
+                          >
+                            割り当て
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== Section 2: 割当済み ===== */}
+      {section === 2 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">割当済みタスク（{assignedTasks.length}件）</h3>
+          {assignedTasks.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-4">割当済みのタスクはありません</p>
+          ) : (
+            <div className="space-y-2">
+              {assignedTasks.map(task => {
+                const assignedUser = getAssignedUser(task.id);
+                const assignment = assignments.find(a => a.taskId === task.id);
+                const examInputs = getExamInputs(task.id);
+                const inputStatus = examInputs[0]?.status;
+                return (
+                  <div key={task.id} className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-gray-800">{task.name}</p>
+                        {task.sheetsUrl && (
+                          <a href={task.sheetsUrl} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-1.5 py-0.5 rounded transition">
+                            🔗 スプシ
+                          </a>
+                        )}
+                        {inputStatus === 'submitted' && (
+                          <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">📊 スプシ提出済</span>
+                        )}
+                        {inputStatus === 'draft' && (
+                          <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">📝 下書き</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {task.subject}{task.workType ? ` · ${task.workType}` : ''} · {task.requiredHours}h ·
+                        担当: <strong>{assignedUser?.name ?? '不明'}</strong>
+                        {(() => {
+                          const totalSec = getTaskTotalTime(task.id);
+                          if (!totalSec) return null;
+                          const h = Math.floor(totalSec / 3600);
+                          const m = Math.floor((totalSec % 3600) / 60);
+                          const s = totalSec % 60;
+                          const timeStr = h > 0 ? `${h}時間${m}分` : m > 0 ? `${m}分${s}秒` : `${s}秒`;
+                          return <span className="text-xs text-gray-500 ml-2">⏱ {timeStr}</span>;
+                        })()}
+                        {assignment?.note && <span className="ml-1 text-gray-400">({assignment.note})</span>}
+                      </p>
+                      {inputStatus === 'submitted' && examInputs[0] && (
+                        <p className="text-xs text-green-600 mt-0.5">
+                          大問 {examInputs[0].大問リスト?.length ?? 0} /
+                          問 {examInputs[0].大問リスト?.reduce((s, d) => s + (d.問リスト?.length ?? 0), 0) ?? 0} 入力済
+                        </p>
+                      )}
+                      {/* 大問別作業時間 */}
+                      {(() => {
+                        const totalSec = getTaskTotalTime(task.id);
+                        if (!totalSec || totalSec <= 0) return null;
+                        const logs = getTimeLogs({ taskId: task.id });
+                        const daimonIds = [...new Set(logs.map(l => l.daimonId))].filter(d => d != null).sort((a, b) => a - b);
+                        if (daimonIds.length === 0) return null;
+                        const fmtS = (s) => { const h = Math.floor(s/3600); const m = Math.floor((s%3600)/60); const sec = s%60; if (h>0) return `${h}h${m}m`; if (m>0) return `${m}m${sec}s`; return `${sec}s`; };
+                        return (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {daimonIds.map(did => {
+                              const dSec = getDaimonTotalTime(task.id, did);
+                              return (
+                                <span key={did} className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100">
+                                  大問{did}: {fmtS(dSec)}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <button
+                      onClick={() => { if (assignment && confirm('割り当てを解除しますか？')) deleteAssignment(assignment.id); }}
+                      className="shrink-0 text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded transition"
+                    >
+                      解除
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== Section 3: 実績 ===== */}
+      {section === 3 && (() => {
+        const completedAssignments = assignments.filter(a => a.status === 'completed');
+        if (completedAssignments.length === 0) {
+          return (
+            <div className="bg-white rounded-xl shadow-sm p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">実績レポート</h3>
+              <p className="text-gray-400 text-sm text-center py-6">完了済みのタスクはありません</p>
+            </div>
+          );
+        }
+        const totalPlanned = completedAssignments.reduce((s, a) => {
+          const t = tasks.find(t => t.id === a.taskId);
+          return s + (t?.requiredHours ?? 0);
+        }, 0);
+        const totalActual = completedAssignments.reduce((s, a) => s + (a.actualHours ?? 0), 0);
+        return (
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700">実績レポート</h3>
+                <p className="text-xs text-gray-400 mt-0.5">提出済み業務の工数実績</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-400">合計実績</p>
+                <p className="text-sm font-bold text-green-700">{totalActual}h <span className="text-gray-400 font-normal text-xs">/ 予定 {totalPlanned}h</span></p>
+              </div>
+              <button onClick={handleExportAssignmentsCSV}
+                className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg transition ml-2">
+                📤 CSV出力
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left py-2 pr-3 text-gray-500 font-medium">試験種名</th>
+                    <th className="text-left py-2 pr-3 text-gray-500 font-medium">科目</th>
+                    <th className="text-left py-2 pr-3 text-gray-500 font-medium">作業内容</th>
+                    <th className="text-left py-2 pr-3 text-gray-500 font-medium">作業者</th>
+                    <th className="text-right py-2 pr-3 text-gray-500 font-medium">予定工数</th>
+                    <th className="text-right py-2 pr-3 text-gray-500 font-medium">実績工数</th>
+                    <th className="text-right py-2 text-gray-500 font-medium">提出日</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {[...completedAssignments]
+                    .sort((a, b) => new Date(b.submittedAt ?? b.assignedAt) - new Date(a.submittedAt ?? a.assignedAt))
+                    .map(assignment => {
+                      const task = tasks.find(t => t.id === assignment.taskId);
+                      const corrector = correctors.find(c => c.id === assignment.userId);
+                      const diff = assignment.actualHours != null && task
+                        ? assignment.actualHours - task.requiredHours : null;
+                      return (
+                        <tr key={assignment.id} className="hover:bg-gray-50 transition">
+                          <td className="py-2 pr-3 text-gray-800 font-medium">
+                            <div className="flex items-center gap-1">
+                              {task?.name ?? '不明'}
+                              {task?.sheetsUrl && (
+                                <a href={task.sheetsUrl} target="_blank" rel="noopener noreferrer"
+                                  className="text-green-500 hover:text-green-700">🔗</a>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 pr-3 text-gray-600">{task?.subject ?? '—'}</td>
+                          <td className="py-2 pr-3 text-gray-600">{task?.workType ?? '—'}</td>
+                          <td className="py-2 pr-3 text-gray-700 font-medium">{corrector?.name ?? '不明'}</td>
+                          <td className="py-2 pr-3 text-right text-gray-600">{task?.requiredHours ?? '—'}h</td>
+                          <td className="py-2 pr-3 text-right">
+                            {assignment.actualHours != null ? (
+                              <span className={`font-semibold ${diff != null && diff > 0 ? 'text-red-600' : diff != null && diff < 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                                {assignment.actualHours}h
+                                {diff != null && diff !== 0 && (
+                                  <span className="text-xs ml-1">({diff > 0 ? '+' : ''}{diff}h)</span>
+                                )}
+                              </span>
+                            ) : <span className="text-gray-400">未入力</span>}
+                          </td>
+                          <td className="py-2 text-right text-gray-400">
+                            {assignment.submittedAt
+                              ? new Date(assignment.submittedAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })
+                              : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+};
+
+
+// ---- Exam Processing Tab (試験種処理) ----
+const _fmtSec = (s) => {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}時間${m}分`;
+  if (m > 0) return `${m}分${sec}秒`;
+  return `${sec}秒`;
+};
+
+const ExamProcessingTab = ({ activeSubjects }) => {
+  const {
+    getTasks, getAssignments, updateAssignment, getCorrectors,
+    getExamInputs, getTimeLogs, getTaskTotalTime, getDaimonTotalTime,
+    getRejectionCategories, getRejectionSeverities, getRejections, addRejection,
+    getVerificationItems, getVerificationResults, initVerificationResults, toggleVerificationResult,
+  } = useData();
+  const { user } = useAuth();
+
+  const allTasks = getTasks();
+  const tasks = allTasks.filter(t => activeSubjects.includes(t.subject));
+  const assignments = getAssignments();
+  const correctors = getCorrectors();
+
+  const [reviewingId, setReviewingId] = useState(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [rejectionItems, setRejectionItems] = useState([]);
+  const [rejItemForm, setRejItemForm] = useState({ categoryId: '', severityId: '', note: '' });
+  const [message, setMessage] = useState('');
+  const [verifyFilter, setVerifyFilter] = useState('all');
+  const [epSubjectFilter, setEpSubjectFilter] = useState('all');
+  const [epWorkTypeFilter, setEpWorkTypeFilter] = useState('all');
+  const [epDateFrom, setEpDateFrom] = useState('');
+  const [epDateTo, setEpDateTo] = useState('');
+  const [epWorkerFilter, setEpWorkerFilter] = useState('all');
+  const [showEpSearch, setShowEpSearch] = useState(false);
+  const [openChecklistId, setOpenChecklistId] = useState(null);
+
+  // 検証対象: submitted(検証待ち/検証中) + approved(検証済み)
+  const allVerifiable = assignments.filter(a =>
+    (a.status === 'submitted' || a.status === 'approved') && tasks.some(t => t.id === a.taskId)
+  );
+
+  const getVerifyStatus = (a) => {
+    if (a.status === 'approved') return 'verified';
+    if (a.verificationStatus === 'reviewing') return 'reviewing';
+    return 'waiting';
+  };
+
+  const VERIFY_LABELS = { all: 'すべて', waiting: '検証待ち', reviewing: '検証中', verified: '検証済み' };
+  const VERIFY_COLORS = { waiting: 'bg-yellow-100 text-yellow-700', reviewing: 'bg-blue-100 text-blue-700', verified: 'bg-green-100 text-green-700' };
+  const VERIFY_BADGES = { waiting: '検証待ち', reviewing: '検証中', verified: '検証済み' };
+
+  const filteredAssignments = allVerifiable.filter(a => {
+    if (verifyFilter !== 'all' && getVerifyStatus(a) !== verifyFilter) return false;
+    const task = tasks.find(t => t.id === a.taskId);
+    if (epSubjectFilter !== 'all' && task?.subject !== epSubjectFilter) return false;
+    if (epWorkTypeFilter !== 'all' && task?.workType !== epWorkTypeFilter) return false;
+    if (epWorkerFilter !== 'all' && a.userId !== epWorkerFilter) return false;
+    if (epDateFrom && a.submittedAt && a.submittedAt.slice(0, 10) < epDateFrom) return false;
+    if (epDateTo && a.submittedAt && a.submittedAt.slice(0, 10) > epDateTo) return false;
+    return true;
+  });
+
+  const clearEpFilters = () => {
+    setEpSubjectFilter('all');
+    setEpWorkTypeFilter('all');
+    setEpDateFrom('');
+    setEpDateTo('');
+    setEpWorkerFilter('all');
+  };
+
+  const EP_CSV_COLUMNS = [
+    { key: 'taskName', header: 'タスク名' },
+    { key: 'subject', header: '科目' },
+    { key: 'workType', header: '作業内容' },
+    { key: 'correctorName', header: '担当者' },
+    { key: 'actualHours', header: '実績工数' },
+    { key: 'submittedAt', header: '提出日' },
+    { key: 'verifyStatus', header: '検証ステータス' },
+  ];
+
+  const VERIFY_STATUS_LABEL = { waiting: '検証待ち', reviewing: '検証中', verified: '検証済み' };
+
+  const handleExportEpCSV = () => {
+    const data = filteredAssignments.map(a => {
+      const task = tasks.find(t => t.id === a.taskId);
+      const corrector = correctors.find(c => c.id === a.userId);
+      return {
+        taskName: task?.name || '',
+        subject: task?.subject || '',
+        workType: task?.workType || '',
+        correctorName: corrector?.name || '',
+        actualHours: a.actualHours ?? '',
+        submittedAt: a.submittedAt ? a.submittedAt.slice(0, 10) : '',
+        verifyStatus: VERIFY_STATUS_LABEL[getVerifyStatus(a)] || '',
+      };
+    });
+    const csv = toCSV(data, EP_CSV_COLUMNS);
+    downloadCSV(csv, `試験種処理_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  const countByStatus = { waiting: 0, reviewing: 0, verified: 0 };
+  allVerifiable.forEach(a => { countByStatus[getVerifyStatus(a)]++; });
+
+  return (
+    <div className="space-y-4">
+      {message && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
+          {message}
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        {/* フィルターバー */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          {['all', 'waiting', 'reviewing', 'verified'].map(key => (
+            <button key={key} onClick={() => setVerifyFilter(key)}
+              className={`text-xs px-3 py-1.5 rounded-full transition font-medium ${
+                verifyFilter === key ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}>
+              {VERIFY_LABELS[key]}
+              {key !== 'all' && <span className="ml-1 opacity-70">({countByStatus[key]})</span>}
+              {key === 'all' && <span className="ml-1 opacity-70">({allVerifiable.length})</span>}
+            </button>
+          ))}
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={() => setShowEpSearch(v => !v)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition font-medium ${showEpSearch ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+            >
+              {showEpSearch ? '▲ 詳細検索' : '▼ 詳細検索'}
+            </button>
+            <button
+              onClick={handleExportEpCSV}
+              disabled={filteredAssignments.length === 0}
+              className="text-xs px-3 py-1.5 rounded-lg border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-40 transition font-medium"
+            >
+              CSV出力
+            </button>
+          </div>
+        </div>
+        {showEpSearch && (
+          <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">科目</label>
+                <select value={epSubjectFilter} onChange={e => setEpSubjectFilter(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                  <option value="all">すべて</option>
+                  {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">作業内容</label>
+                <select value={epWorkTypeFilter} onChange={e => setEpWorkTypeFilter(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                  <option value="all">すべて</option>
+                  {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">作業者</label>
+                <select value={epWorkerFilter} onChange={e => setEpWorkerFilter(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                  <option value="all">すべて</option>
+                  {correctors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">提出日（開始）</label>
+                <input type="date" value={epDateFrom} onChange={e => setEpDateFrom(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">提出日（終了）</label>
+                <input type="date" value={epDateTo} onChange={e => setEpDateTo(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div className="flex items-end">
+                <button onClick={clearEpFilters}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 transition">
+                  条件クリア
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">
+          {verifyFilter === 'all' ? '検証対象' : VERIFY_LABELS[verifyFilter]}（{filteredAssignments.length}件）
+        </h3>
+
+        {filteredAssignments.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-4">該当するタスクはありません</p>
+        ) : (
+        <div className="space-y-3">
+          {filteredAssignments.map(a => {
+            const task = tasks.find(t => t.id === a.taskId);
+            const corrector = correctors.find(c => c.id === a.userId);
+            const examInputs = getExamInputs(a.taskId);
+            const isReviewing = reviewingId === a.id;
+            const vStatus = getVerifyStatus(a);
+            return (
+              <div key={a.id} className={`p-4 border rounded-xl ${
+                vStatus === 'verified' ? 'bg-green-50 border-green-100' :
+                vStatus === 'reviewing' ? 'bg-blue-50 border-blue-100' :
+                'bg-purple-50 border-purple-100'
+              }`}>
+                <div className="space-y-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-gray-800">{task?.name ?? '不明'}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${VERIFY_COLORS[vStatus]}`}>{VERIFY_BADGES[vStatus]}</span>
+                      {a.rejectionCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">差し戻し回数: {a.rejectionCount}回</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      担当: <strong>{corrector?.name ?? '不明'}</strong>
+                      {task?.subject && ` · ${task.subject}`}
+                      {a.actualHours != null && ` · 実績: ${a.actualHours}h`}
+                      {a.submittedAt && ` · 提出日: ${new Date(a.submittedAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}`}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {task?.sheetsUrl && (
+                        <a href={task.sheetsUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-1.5 py-0.5 rounded transition">
+                          🔗 スプシ
+                        </a>
+                      )}
+                      {examInputs.length > 0 && (
+                        <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">📊 入力データあり</span>
+                      )}
+                    </div>
+                    {/* 添付ファイル表示 */}
+                    {a.attachments && a.attachments.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-medium text-gray-600 mb-1">📎 添付ファイル（{a.attachments.length}件）</p>
+                        <div className="flex flex-wrap gap-1">
+                          {a.attachments.map(att => (
+                            <button key={att.id}
+                              onClick={() => downloadAttachment(att.id, att.fileName)}
+                              className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded-lg transition border border-blue-200">
+                              📥 {att.fileName} ({(att.fileSize / 1024).toFixed(0)}KB)
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* 大問別作業時間 */}
+                    {(() => {
+                      const totalSec = getTaskTotalTime(task?.id);
+                      if (!totalSec || totalSec <= 0) return null;
+                      const logs = getTimeLogs({ taskId: task.id });
+                      const daimonIds = [...new Set(logs.map(l => l.daimonId))].sort((a, b) => {
+                        if (a === null) return 1; if (b === null) return -1; return a - b;
+                      });
+                      return (
+                        <div className="mt-2">
+                          <p className="text-xs font-medium text-gray-600 mb-1">⏱ 大問別作業時間</p>
+                          <div className="flex flex-wrap gap-1">
+                            {daimonIds.map(did => {
+                              const dSec = getDaimonTotalTime(task.id, did);
+                              const pct = Math.round((dSec / totalSec) * 100);
+                              return (
+                                <span key={did ?? 'null'} className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-lg border border-gray-200">
+                                  {did != null ? `大問${did}` : 'その他'}: {_fmtSec(dSec)} ({pct}%)
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {vStatus === 'waiting' && (
+                      <button
+                        onClick={() => {
+                          updateAssignment(a.id, { verificationStatus: 'reviewing' });
+                          initVerificationResults(a.id, task?.subject, user?.id);
+                          setOpenChecklistId(a.id);
+                          setMessage('検証を開始しました');
+                          setTimeout(() => setMessage(''), 3000);
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition text-sm font-medium"
+                      >
+                        検証開始
+                      </button>
+                    )}
+                    {vStatus === 'reviewing' && (
+                      <button
+                        onClick={() => setOpenChecklistId(openChecklistId === a.id ? null : a.id)}
+                        className={`px-4 py-2 rounded-xl transition text-sm font-medium ${openChecklistId === a.id ? 'bg-blue-700 text-white' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                      >
+                        {openChecklistId === a.id ? 'チェックリストを閉じる' : '検証チェックリスト'}
+                      </button>
+                    )}
+                    {vStatus !== 'verified' && (
+                    <button
+                      onClick={() => {
+                        // 検証チェックリストの必須項目チェック
+                        const results = getVerificationResults(a.id) || [];
+                        const allItems = getVerificationItems(task?.subject) || [];
+                        const uncheckedRequired = results.filter(r => {
+                          const item = allItems.find(vi => vi.id === r.verificationItemId);
+                          return item?.isRequired && !r.checked;
+                        });
+                        if (uncheckedRequired.length > 0) {
+                          const itemNames = uncheckedRequired.map(r => {
+                            const item = allItems.find(vi => vi.id === r.verificationItemId);
+                            return item?.name || '不明';
+                          }).join('、');
+                          if (!window.confirm(`以下の必須検証項目が未チェックです。承認しますか？\n\n${itemNames}`)) return;
+                        }
+                        updateAssignment(a.id, { status: 'approved', verificationStatus: 'verified', reviewedAt: new Date().toISOString() });
+                        setOpenChecklistId(null);
+                        setMessage('検証済みにしました');
+                        setTimeout(() => setMessage(''), 3000);
+                      }}
+                      className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition text-sm font-medium"
+                    >
+                      承認
+                    </button>
+                    )}
+                    {vStatus !== 'verified' && (
+                    <button
+                      onClick={() => { setReviewingId(isReviewing ? null : a.id); setReviewNote(''); setRejectionItems([]); }}
+                      className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition text-sm font-medium"
+                    >
+                      差し戻し
+                    </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 検証チェックリストパネル */}
+                {openChecklistId === a.id && vStatus === 'reviewing' && (() => {
+                  const results = getVerificationResults(a.id) || [];
+                  const allItems = getVerificationItems(task?.subject) || [];
+                  const checkedCount = results.filter(r => r.checked).length;
+                  const totalCount = results.length;
+                  const progress = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0;
+
+                  // グループ分け: 全科目共通 vs 科目固有
+                  const commonResults = results.filter(r => {
+                    const item = allItems.find(vi => vi.id === r.verificationItemId);
+                    return item && !item.subject;
+                  });
+                  const subjectResults = results.filter(r => {
+                    const item = allItems.find(vi => vi.id === r.verificationItemId);
+                    return item && item.subject;
+                  });
+
+                  return (
+                    <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-blue-700">検証チェックリスト</p>
+                        <span className="text-xs text-blue-600">{checkedCount} / {totalCount} 完了</span>
+                      </div>
+
+                      {/* プログレスバー */}
+                      <div className="w-full bg-blue-100 rounded-full h-2">
+                        <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                      </div>
+
+                      {totalCount === 0 ? (
+                        <p className="text-xs text-gray-500">検証項目が登録されていません。マスタタブで追加してください。</p>
+                      ) : (
+                        <>
+                          {/* 全科目共通 */}
+                          {commonResults.length > 0 && (
+                            <div>
+                              <p className="text-[11px] font-semibold text-gray-500 mb-1.5">📋 全科目共通</p>
+                              <div className="space-y-1">
+                                {commonResults.sort((a, b) => {
+                                  const ia = allItems.find(vi => vi.id === a.verificationItemId);
+                                  const ib = allItems.find(vi => vi.id === b.verificationItemId);
+                                  return (ia?.sortOrder || 0) - (ib?.sortOrder || 0);
+                                }).map(r => {
+                                  const item = allItems.find(vi => vi.id === r.verificationItemId);
+                                  if (!item) return null;
+                                  return (
+                                    <label key={r.id} className={`flex items-start gap-2 p-2 rounded-lg cursor-pointer transition ${r.checked ? 'bg-green-50 border border-green-200' : 'bg-white border border-gray-200 hover:border-blue-300'}`}>
+                                      <input type="checkbox" checked={r.checked}
+                                        onChange={() => toggleVerificationResult(r.id)}
+                                        className="mt-0.5 rounded border-gray-300" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`text-sm ${r.checked ? 'text-green-700 line-through' : 'text-gray-800'}`}>{item.name}</span>
+                                          {item.isRequired && <span className="text-[10px] bg-red-100 text-red-600 px-1 py-0.5 rounded-full">必須</span>}
+                                          {r.checked
+                                            ? <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full">OK</span>
+                                            : <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">未確認</span>
+                                          }
+                                        </div>
+                                        {item.description && <p className="text-[11px] text-gray-400 mt-0.5">{item.description}</p>}
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 科目固有 */}
+                          {subjectResults.length > 0 && (
+                            <div>
+                              <p className="text-[11px] font-semibold text-gray-500 mb-1.5">📝 {task?.subject}固有</p>
+                              <div className="space-y-1">
+                                {subjectResults.sort((a, b) => {
+                                  const ia = allItems.find(vi => vi.id === a.verificationItemId);
+                                  const ib = allItems.find(vi => vi.id === b.verificationItemId);
+                                  return (ia?.sortOrder || 0) - (ib?.sortOrder || 0);
+                                }).map(r => {
+                                  const item = allItems.find(vi => vi.id === r.verificationItemId);
+                                  if (!item) return null;
+                                  return (
+                                    <label key={r.id} className={`flex items-start gap-2 p-2 rounded-lg cursor-pointer transition ${r.checked ? 'bg-green-50 border border-green-200' : 'bg-white border border-gray-200 hover:border-blue-300'}`}>
+                                      <input type="checkbox" checked={r.checked}
+                                        onChange={() => toggleVerificationResult(r.id)}
+                                        className="mt-0.5 rounded border-gray-300" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`text-sm ${r.checked ? 'text-green-700 line-through' : 'text-gray-800'}`}>{item.name}</span>
+                                          {item.isRequired && <span className="text-[10px] bg-red-100 text-red-600 px-1 py-0.5 rounded-full">必須</span>}
+                                          {r.checked
+                                            ? <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full">OK</span>
+                                            : <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">未確認</span>
+                                          }
+                                        </div>
+                                        {item.description && <p className="text-[11px] text-gray-400 mt-0.5">{item.description}</p>}
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {isReviewing && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl space-y-3">
+                    <p className="text-xs font-semibold text-red-700">差し戻し詳細を入力してください</p>
+
+                    {/* 差し戻し項目追加フォーム */}
+                    <div className="flex flex-wrap gap-2 items-end">
+                      <select value={rejItemForm.categoryId}
+                        onChange={e => setRejItemForm(f => ({ ...f, categoryId: e.target.value }))}
+                        className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 min-w-[120px]">
+                        <option value="">カテゴリ選択</option>
+                        {(() => {
+                          const task = tasks.find(t => t.id === a.taskId);
+                          return (getRejectionCategories(task?.subject) || []).map(cat => (
+                            <option key={cat.id} value={cat.id}>{cat.name}{cat.subject ? ` (${cat.subject})` : ''}</option>
+                          ));
+                        })()}
+                      </select>
+                      <select value={rejItemForm.severityId}
+                        onChange={e => setRejItemForm(f => ({ ...f, severityId: e.target.value }))}
+                        className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 min-w-[100px]">
+                        <option value="">重大度</option>
+                        {(getRejectionSeverities() || []).sort((a, b) => a.level - b.level).map(sev => (
+                          <option key={sev.id} value={sev.id}>{sev.name} (Lv.{sev.level})</option>
+                        ))}
+                      </select>
+                      <input type="text" placeholder="詳細メモ" value={rejItemForm.note}
+                        onChange={e => setRejItemForm(f => ({ ...f, note: e.target.value }))}
+                        className="flex-1 min-w-[120px] text-xs border border-gray-300 rounded-lg px-2 py-1.5" />
+                      <button onClick={() => {
+                        if (!rejItemForm.categoryId || !rejItemForm.severityId) return;
+                        setRejectionItems(prev => [...prev, { ...rejItemForm }]);
+                        setRejItemForm({ categoryId: '', severityId: '', note: '' });
+                      }}
+                        className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg transition">
+                        + 追加
+                      </button>
+                    </div>
+
+                    {/* 追加済みアイテム一覧 */}
+                    {rejectionItems.length > 0 && (
+                      <div className="space-y-1">
+                        {rejectionItems.map((item, idx) => {
+                          const cat = (getRejectionCategories() || []).find(c => c.id === item.categoryId);
+                          const sev = (getRejectionSeverities() || []).find(s => s.id === item.severityId);
+                          return (
+                            <div key={idx} className="flex items-center gap-2 bg-white rounded-lg p-2 text-xs">
+                              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: sev?.color || '#999' }}></span>
+                              <span className="font-medium">{cat?.name || '不明'}</span>
+                              <span className="text-gray-500">（{sev?.name || '不明'}）</span>
+                              {item.note && <span className="text-gray-600 truncate">{item.note}</span>}
+                              <button onClick={() => setRejectionItems(prev => prev.filter((_, i) => i !== idx))}
+                                className="ml-auto text-red-400 hover:text-red-600">✕</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* 総合コメント */}
+                    <textarea value={reviewNote} onChange={e => setReviewNote(e.target.value)}
+                      placeholder="総合コメント（任意）" rows={2}
+                      className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2" />
+
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => { setReviewingId(null); setReviewNote(''); setRejectionItems([]); }}
+                        className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">キャンセル</button>
+                      <button onClick={() => {
+                        // 未チェックの検証項目IDを取得
+                        const results = getVerificationResults(a.id) || [];
+                        const failedVerificationItemIds = results
+                          .filter(r => !r.checked)
+                          .map(r => r.verificationItemId);
+                        updateAssignment(a.id, {
+                          status: 'rejected',
+                          verificationStatus: null,
+                          reviewNote: reviewNote,
+                          reviewedAt: new Date().toISOString(),
+                          rejectionCount: (a.rejectionCount || 0) + 1,
+                          rejectionDetails: rejectionItems.map(item => ({
+                            ...item,
+                            rejectedBy: user?.id,
+                          })),
+                          failedVerificationItemIds,
+                        });
+                        setReviewingId(null);
+                        setOpenChecklistId(null);
+                        setReviewNote('');
+                        setRejectionItems([]);
+                        setMessage('差し戻しました');
+                      }}
+                        className="text-xs bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg transition">
+                        差し戻しを確定
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
+// ---- Corrector Evaluation Tab (作業者評価) ----
+const _fmtSecEval = (sec) => {
+  if (!sec || sec <= 0) return '0秒';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}時間${m}分`;
+  if (m > 0) return `${m}分${s}秒`;
+  return `${s}秒`;
+};
+
+const _calcDuration = (log) =>
+  log.endTime ? log.duration : Math.floor((Date.now() - new Date(log.startTime).getTime()) / 1000);
+
+const CorrectorEvaluationTab = ({ activeSubjects }) => {
+  const {
+    getCorrectors, getEvaluations, setEvaluation,
+    getEvaluationCriteria, addEvaluationCriteria, updateEvaluationCriteria, deleteEvaluationCriteria,
+    getUsers, getRejections, getRejectionCategories, getRejectionSeverities,
+    getTimeLogs, getTaskTotalTime, getDaimonTotalTime,
+    getTasks, getAssignments, getAllData,
+  } = useData();
+
+  const correctors = getCorrectors();
+  const criteria = getEvaluationCriteria();
+  const allEvals = getEvaluations();
+  const tasks = getTasks();
+  const assignments = getAssignments();
+  const allTimeLogs = getTimeLogs();
+
+  // --- Shared state ---
+  const [evalSection, setEvalSection] = useState(0);
+  const [selectedUser, setSelectedUser] = useState(correctors[0]?.id ?? '');
+  const [critForm, setCritForm] = useState({ name: '', description: '', maxScore: 5, subject: null, autoMetric: null });
+  const [editCritId, setEditCritId] = useState(null);
+  const [localScores, setLocalScores] = useState({});
+  const [evalSubject, setEvalSubject] = useState(null);
+
+  // --- Sub-tab 2 filters ---
+  const [logFilterUser, setLogFilterUser] = useState('');
+  const [logFilterSubject, setLogFilterSubject] = useState('');
+  const [logFilterStart, setLogFilterStart] = useState('');
+  const [logFilterEnd, setLogFilterEnd] = useState('');
+
+  // --- Sub-tab 3 state ---
+  const [personalUser, setPersonalUser] = useState(correctors[0]?.id ?? '');
+
+  // --- Sub-tab 4 state ---
+  const [subjectDetailSubject, setSubjectDetailSubject] = useState('');
+  const [daimonFilterUser, setDaimonFilterUser] = useState('');
+
+  // ---- Evaluation helpers ----
+  const userEvals = allEvals.filter(e => e.userId === selectedUser);
+
+  const getEvalScore = (criteriaId) => {
+    const local = localScores[`${selectedUser}_${criteriaId}`];
+    if (local !== undefined) return local;
+    return userEvals.find(e => e.criteriaId === criteriaId)?.score ?? 0;
+  };
+
+  const handleScoreChange = (criteriaId, score) => {
+    setLocalScores(prev => ({ ...prev, [`${selectedUser}_${criteriaId}`]: Number(score) }));
+  };
+
+  const handleSaveEvals = () => {
+    criteria.forEach(c => {
+      const key = `${selectedUser}_${c.id}`;
+      if (localScores[key] !== undefined) {
+        const note = userEvals.find(e => e.criteriaId === c.id)?.note ?? '';
+        setEvaluation(selectedUser, c.id, localScores[key], note);
+      }
+    });
+    setLocalScores({});
+  };
+
+  const handleCritSubmit = (e) => {
+    e.preventDefault();
+    if (editCritId) {
+      updateEvaluationCriteria(editCritId, { ...critForm, maxScore: Number(critForm.maxScore) });
+      setEditCritId(null);
+    } else {
+      addEvaluationCriteria({ ...critForm, maxScore: Number(critForm.maxScore) });
+    }
+    setCritForm({ name: '', description: '', maxScore: 5, subject: null, autoMetric: null });
+  };
+
+  const evalChartData = criteria.map(c => ({
+    name: c.name,
+    スコア: getEvalScore(c.id),
+    最大: c.maxScore,
+  }));
+
+  const handleExportEvaluationsCSV = () => {
+    const users = getUsers ? getUsers() : [];
+    const data = [];
+    correctors.forEach(c => {
+      const uEvals = allEvals.filter(e => e.userId === c.id);
+      criteria.forEach(crit => {
+        const ev = uEvals.find(e => e.criteriaId === crit.id);
+        data.push({
+          userName: c.name,
+          userLoginId: c.loginId || '',
+          criteriaName: crit.name,
+          score: ev?.score ?? '',
+          maxScore: crit.maxScore,
+          note: ev?.note || '',
+        });
+      });
+    });
+    const csv = toCSV(data, EVALUATION_CSV_COLUMNS);
+    downloadCSV(csv, `評価一覧_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  // ---- Sub-tab 2: 作業時間一覧 data ----
+  const filteredTimeLogs = useMemo(() => {
+    let logs = [...allTimeLogs];
+
+    if (logFilterUser) {
+      logs = logs.filter(l => l.userId === logFilterUser);
+    }
+    if (logFilterSubject) {
+      logs = logs.filter(l => {
+        const task = tasks.find(t => t.id === l.taskId);
+        return task?.subject === logFilterSubject;
+      });
+    }
+    if (logFilterStart) {
+      const startMs = new Date(logFilterStart).getTime();
+      logs = logs.filter(l => new Date(l.startTime).getTime() >= startMs);
+    }
+    if (logFilterEnd) {
+      const endMs = new Date(logFilterEnd).getTime() + 86400000;
+      logs = logs.filter(l => new Date(l.startTime).getTime() < endMs);
+    }
+
+    return logs.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+  }, [allTimeLogs, logFilterUser, logFilterSubject, logFilterStart, logFilterEnd, tasks]);
+
+  const totalFilteredTime = useMemo(() =>
+    filteredTimeLogs.reduce((sum, l) => sum + _calcDuration(l), 0),
+    [filteredTimeLogs]
+  );
+
+  // ---- Sub-tab 3: 個人別時間 data ----
+  const personalData = useMemo(() => {
+    if (!personalUser) return { totalTime: 0, taskCount: 0, avgTime: 0, taskBreakdown: [] };
+
+    const userLogs = allTimeLogs.filter(l => l.userId === personalUser);
+    const totalTime = userLogs.reduce((sum, l) => sum + _calcDuration(l), 0);
+    const taskIds = [...new Set(userLogs.map(l => l.taskId).filter(Boolean))];
+    const userAssignments = assignments.filter(a => a.userId === personalUser);
+
+    const taskBreakdown = taskIds.map(tid => {
+      const task = tasks.find(t => t.id === tid);
+      const taskLogs = userLogs.filter(l => l.taskId === tid);
+      const taskTime = taskLogs.reduce((sum, l) => sum + _calcDuration(l), 0);
+      const asgn = userAssignments.find(a => a.taskId === tid);
+      const assignedHours = asgn?.assignedHours || 0;
+      const assignedSec = assignedHours * 3600;
+      const efficiency = assignedSec > 0 ? Math.round((taskTime / assignedSec) * 100) : 0;
+
+      return {
+        taskId: tid,
+        taskName: task?.name || '不明',
+        subject: task?.subject || '-',
+        workTime: taskTime,
+        assignedHours,
+        efficiency,
+      };
+    });
+
+    return {
+      totalTime,
+      taskCount: taskIds.length,
+      avgTime: taskIds.length > 0 ? Math.round(totalTime / taskIds.length) : 0,
+      taskBreakdown,
+    };
+  }, [personalUser, allTimeLogs, tasks, assignments]);
+
+  // ---- Sub-tab 4: 科目・大問別 data ----
+  const subjectSummary = useMemo(() => {
+    const bySubject = {};
+    const totalAll = allTimeLogs.reduce((sum, l) => sum + _calcDuration(l), 0);
+
+    allTimeLogs.forEach(l => {
+      const task = tasks.find(t => t.id === l.taskId);
+      const subj = task?.subject || '不明';
+      if (!bySubject[subj]) bySubject[subj] = { subject: subj, totalTime: 0, taskIds: new Set() };
+      bySubject[subj].totalTime += _calcDuration(l);
+      if (l.taskId) bySubject[subj].taskIds.add(l.taskId);
+    });
+
+    return Object.values(bySubject).map(s => ({
+      subject: s.subject,
+      totalTime: s.totalTime,
+      taskCount: s.taskIds.size,
+      avgTime: s.taskIds.size > 0 ? Math.round(s.totalTime / s.taskIds.size) : 0,
+      ratio: totalAll > 0 ? (s.totalTime / totalAll) * 100 : 0,
+    })).sort((a, b) => b.totalTime - a.totalTime);
+  }, [allTimeLogs, tasks]);
+
+  const taskDaimonBreakdown = useMemo(() => {
+    // Group time logs by taskId + userId
+    const byTaskUser = {};
+    allTimeLogs.forEach(l => {
+      const key = `${l.taskId}_${l.userId}`;
+      if (!byTaskUser[key]) byTaskUser[key] = { taskId: l.taskId, userId: l.userId, logs: [] };
+      byTaskUser[key].logs.push(l);
+    });
+
+    return Object.values(byTaskUser).map(group => {
+      const task = tasks.find(t => t.id === group.taskId);
+      const totalTime = group.logs.reduce((s, l) => s + _calcDuration(l), 0);
+      const daimonMap = {};
+      group.logs.forEach(l => {
+        const did = l.daimonId ?? 'other';
+        if (!daimonMap[did]) daimonMap[did] = { daimonId: did, totalTime: 0, count: 0 };
+        daimonMap[did].totalTime += _calcDuration(l);
+        daimonMap[did].count += 1;
+      });
+      const daimons = Object.values(daimonMap).sort((a, b) => {
+        if (a.daimonId === 'other') return 1;
+        if (b.daimonId === 'other') return -1;
+        return a.daimonId - b.daimonId;
+      });
+      const maxDaimon = daimons.length > 0 ? Math.max(...daimons.map(d => d.totalTime)) : 1;
+      return {
+        taskId: group.taskId,
+        taskName: task?.name || '不明',
+        subject: task?.subject || '不明',
+        userId: group.userId,
+        totalTime,
+        daimons: daimons.map(d => ({ ...d, maxTime: maxDaimon, ratio: totalTime > 0 ? (d.totalTime / totalTime) * 100 : 0 })),
+      };
+    }).filter(g => g.totalTime > 0).sort((a, b) => b.totalTime - a.totalTime);
+  }, [allTimeLogs, tasks]);
+
+  const filteredTaskDaimon = useMemo(() => {
+    return taskDaimonBreakdown.filter(g => {
+      if (subjectDetailSubject && g.subject !== subjectDetailSubject) return false;
+      if (daimonFilterUser && g.userId !== daimonFilterUser) return false;
+      return true;
+    });
+  }, [taskDaimonBreakdown, subjectDetailSubject, daimonFilterUser]);
+
+  // ---- Helpers ----
+  const getUserName = (userId) => {
+    const users = getUsers ? getUsers() : [];
+    return users.find(u => u.id === userId)?.name || '不明';
+  };
+
+  const getTaskName = (taskId) => {
+    return tasks.find(t => t.id === taskId)?.name || '不明';
+  };
+
+  const getTaskSubject = (taskId) => {
+    return tasks.find(t => t.id === taskId)?.subject || '-';
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Sub-tab navigation */}
+      <div className="flex gap-1 mb-4 flex-wrap">
+        {['評価基準', '添削者評価', '作業時間一覧', '個人別時間', '科目・大問別'].map((label, i) => (
+          <button key={i} onClick={() => setEvalSection(i)}
+            className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${evalSection === i ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ======== Sub-tab 0: 評価基準 ======== */}
+      {evalSection === 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-700">評価基準の管理</h3>
+            <button onClick={handleExportEvaluationsCSV} className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg transition">CSV出力</button>
+          </div>
+          <form onSubmit={handleCritSubmit} className="flex flex-wrap gap-2 mb-3">
+            <input
+              type="text" placeholder="基準名" value={critForm.name}
+              onChange={e => setCritForm({ ...critForm, name: e.target.value })}
+              className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              required
+            />
+            <input
+              type="text" placeholder="説明" value={critForm.description}
+              onChange={e => setCritForm({ ...critForm, description: e.target.value })}
+              className="flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500">最大</span>
+              <input
+                type="number" min="1" max="100" value={critForm.maxScore}
+                onChange={e => setCritForm({ ...critForm, maxScore: e.target.value })}
+                className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <span className="text-xs text-gray-500">点</span>
+            </div>
+            <select value={critForm.subject || ''} onChange={e => setCritForm({ ...critForm, subject: e.target.value || null })}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <option value="">全科目共通</option>
+              {SUBJECTS_LIST.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <select value={critForm.autoMetric || ''} onChange={e => setCritForm({ ...critForm, autoMetric: e.target.value || null })}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <option value="">手動評価</option>
+              <option value="rejection_rate">差し戻し率</option>
+              <option value="severity_score">重大度スコア</option>
+              <option value="work_time">作業時間</option>
+              <option value="task_count">タスク完了数</option>
+            </select>
+            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
+              {editCritId ? '更新' : '追加'}
+            </button>
+            {editCritId && (
+              <button type="button" onClick={() => { setEditCritId(null); setCritForm({ name: '', description: '', maxScore: 5, subject: null, autoMetric: null }); }}
+                className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg transition">
+                キャンセル
+              </button>
+            )}
+          </form>
+          <div className="flex flex-wrap gap-2">
+            {criteria.map(c => (
+              <div key={c.id} className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm">
+                <span className="font-medium text-gray-700">{c.name}</span>
+                <span className="text-gray-400 text-xs">({c.description}) / {c.maxScore}点</span>
+                {c.subject && <span className="text-xs ml-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">{c.subject}</span>}
+                {c.autoMetric && <span className="text-xs ml-1 px-1.5 py-0.5 rounded bg-green-100 text-green-600">
+                  {c.autoMetric === 'rejection_rate' ? '自動:差し戻し率' :
+                   c.autoMetric === 'severity_score' ? '自動:重大度' :
+                   c.autoMetric === 'work_time' ? '自動:作業時間' :
+                   c.autoMetric === 'task_count' ? '自動:タスク数' : ''}
+                </span>}
+                <button onClick={() => { setEditCritId(c.id); setCritForm({ name: c.name, description: c.description, maxScore: c.maxScore, subject: c.subject || null, autoMetric: c.autoMetric || null }); }}
+                  className="text-blue-500 hover:text-blue-700 text-xs">編集</button>
+                <button onClick={() => { if (confirm(`「${c.name}」を削除しますか？`)) deleteEvaluationCriteria(c.id); }}
+                  className="text-red-400 hover:text-red-600 text-xs">×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ======== Sub-tab 1: 添削者評価 ======== */}
+      {evalSection === 1 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">添削者評価の入力</h3>
+          {/* 科目フィルタ */}
+          <div className="flex gap-1 mb-3 flex-wrap">
+            <button onClick={() => setEvalSubject(null)}
+              className={`text-xs px-3 py-1 rounded-full transition ${evalSubject === null ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              全科目
+            </button>
+            {SUBJECTS_LIST.map(s => (
+              <button key={s} onClick={() => setEvalSubject(s)}
+                className={`text-xs px-3 py-1 rounded-full transition ${evalSubject === s ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                {s}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 flex-wrap mb-4">
+            {correctors.map(c => (
+              <button
+                key={c.id}
+                onClick={() => { setSelectedUser(c.id); setLocalScores({}); }}
+                className={`text-sm px-3 py-1.5 rounded-lg border transition ${selectedUser === c.id ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+
+          {selectedUser && (
+            <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+              <h5 className="text-xs font-semibold text-gray-600 mb-2">自動計算メトリクス{evalSubject ? ` (${evalSubject})` : ' (全科目)'}</h5>
+              {(() => {
+                const metrics = calcAllMetrics(selectedUser, evalSubject, getAllData());
+                return (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                      <div className="bg-white rounded-lg p-2 text-center">
+                        <p className="text-xs text-gray-500">差し戻し率</p>
+                        <p className="text-lg font-bold text-gray-800">{(metrics.rejectionRate * 100).toFixed(1)}%</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-2 text-center">
+                        <p className="text-xs text-gray-500">差し戻し数</p>
+                        <p className="text-lg font-bold text-gray-800">{metrics.rejectionCount}件</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-2 text-center">
+                        <p className="text-xs text-gray-500">重大度スコア</p>
+                        <p className="text-lg font-bold text-gray-800">{metrics.severityScore.toFixed(2)}</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-2 text-center">
+                        <p className="text-xs text-gray-500">完了タスク</p>
+                        <p className="text-lg font-bold text-gray-800">{metrics.taskCount}件</p>
+                      </div>
+                    </div>
+                    {metrics.averageWorkTimeByWorkType.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 mb-1">平均作業時間（業務種別）</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          {metrics.averageWorkTimeByWorkType.map(wt => (
+                            <div key={wt.workType} className="bg-white rounded-lg p-2 text-center">
+                              <p className="text-xs text-gray-500">{wt.workType}</p>
+                              <p className="text-base font-bold text-gray-800">{formatDuration(wt.avgTime)}</p>
+                              <p className="text-[10px] text-gray-400">{wt.taskCount}タスク</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {selectedUser && criteria.length > 0 && (
+            <>
+              {evalChartData.length > 0 && (
+                <div className="mb-4">
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={evalChartData} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                      <YAxis tick={{ fontSize: 10 }} />
+                      <Tooltip />
+                      <Bar dataKey="スコア" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="最大" fill="#e5e7eb" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+              <div className="space-y-3">
+                {criteria.map(c => {
+                  const score = getEvalScore(c.id);
+                  return (
+                    <div key={c.id} className="flex items-center gap-3">
+                      <div className="w-32 shrink-0">
+                        <p className="text-sm font-medium text-gray-700">{c.name}</p>
+                        <p className="text-xs text-gray-400">{c.description}</p>
+                      </div>
+                      <input
+                        type="range" min="0" max={c.maxScore} step="1"
+                        value={score}
+                        onChange={e => handleScoreChange(c.id, e.target.value)}
+                        className="flex-1 accent-blue-600"
+                      />
+                      <span className="w-12 text-right text-sm font-semibold text-blue-600">{score} / {c.maxScore}</span>
+                      {c.autoMetric && (() => {
+                        const metrics = calcAllMetrics(selectedUser, evalSubject, getAllData());
+                        const allCorrectors = correctors;
+                        const allVals = allCorrectors.map(cr => {
+                          const m = calcAllMetrics(cr.id, evalSubject, getAllData());
+                          return c.autoMetric === 'rejection_rate' ? m.rejectionRate :
+                                 c.autoMetric === 'severity_score' ? m.severityScore :
+                                 c.autoMetric === 'work_time' ? m.averageWorkTime :
+                                 m.taskCount;
+                        });
+                        const val = c.autoMetric === 'rejection_rate' ? metrics.rejectionRate :
+                                    c.autoMetric === 'severity_score' ? metrics.severityScore :
+                                    c.autoMetric === 'work_time' ? metrics.averageWorkTime :
+                                    metrics.taskCount;
+                        const autoScore = normalizeMetricToScore(c.autoMetric, val, c.maxScore, allVals);
+                        return (
+                          <p className="text-xs text-green-600 mt-1">
+                            自動算出: {autoScore} / {c.maxScore}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  );
+                })}
+              </div>
+              {Object.keys(localScores).some(k => k.startsWith(selectedUser)) && (
+                <button onClick={handleSaveEvals} className="mt-4 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+                  保存する
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ======== Sub-tab 2: 作業時間一覧 ======== */}
+      {evalSection === 2 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">作業時間一覧</h3>
+
+          {/* Filter row */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            <select
+              value={logFilterUser}
+              onChange={e => setLogFilterUser(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">全作業者</option>
+              {correctors.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <select
+              value={logFilterSubject}
+              onChange={e => setLogFilterSubject(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">全科目</option>
+              {SUBJECTS_LIST.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500">開始日</span>
+              <input
+                type="date" value={logFilterStart}
+                onChange={e => setLogFilterStart(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500">終了日</span>
+              <input
+                type="date" value={logFilterEnd}
+                onChange={e => setLogFilterEnd(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">作業者</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">タスク名</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">科目</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">大問</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">開始時刻</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">終了時刻</th>
+                  <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">作業時間</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTimeLogs.map(log => (
+                  <tr key={log.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-2 px-2 text-gray-700">{getUserName(log.userId)}</td>
+                    <td className="py-2 px-2 text-gray-700">{getTaskName(log.taskId)}</td>
+                    <td className="py-2 px-2 text-gray-600">{getTaskSubject(log.taskId)}</td>
+                    <td className="py-2 px-2 text-gray-600">{log.daimonId || '-'}</td>
+                    <td className="py-2 px-2 text-gray-500 text-xs">{log.startTime ? new Date(log.startTime).toLocaleString('ja-JP') : '-'}</td>
+                    <td className="py-2 px-2 text-gray-500 text-xs">
+                      {log.endTime ? new Date(log.endTime).toLocaleString('ja-JP') : (
+                        <span className="text-green-600 font-medium">計測中</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-2 text-right font-medium text-gray-800">{_fmtSecEval(_calcDuration(log))}</td>
+                  </tr>
+                ))}
+                {filteredTimeLogs.length === 0 && (
+                  <tr><td colSpan={7} className="text-center py-8 text-gray-400">データがありません</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Summary footer */}
+          {filteredTimeLogs.length > 0 && (
+            <div className="mt-3 flex gap-4 items-center text-sm">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                <span className="text-gray-600">合計作業時間: </span>
+                <span className="font-bold text-blue-700">{_fmtSecEval(totalFilteredTime)}</span>
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <span className="text-gray-600">件数: </span>
+                <span className="font-bold text-gray-700">{filteredTimeLogs.length}件</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======== Sub-tab 3: 個人別時間 ======== */}
+      {evalSection === 3 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">個人別作業時間</h3>
+
+          {/* Corrector selector */}
+          <div className="flex gap-2 flex-wrap mb-4">
+            {correctors.map(c => (
+              <button
+                key={c.id}
+                onClick={() => setPersonalUser(c.id)}
+                className={`text-sm px-3 py-1.5 rounded-lg border transition ${personalUser === c.id ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+
+          {personalUser && (
+            <>
+              {/* Summary cards */}
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                  <p className="text-xs text-gray-500 mb-1">合計作業時間</p>
+                  <p className="text-xl font-bold text-blue-700">{_fmtSecEval(personalData.totalTime)}</p>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                  <p className="text-xs text-gray-500 mb-1">タスク数</p>
+                  <p className="text-xl font-bold text-green-700">{personalData.taskCount}件</p>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center">
+                  <p className="text-xs text-gray-500 mb-1">平均時間/件</p>
+                  <p className="text-xl font-bold text-purple-700">{_fmtSecEval(personalData.avgTime)}</p>
+                </div>
+              </div>
+
+              {/* Per-task table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">タスク名</th>
+                      <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">科目</th>
+                      <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">作業時間</th>
+                      <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">割当工数</th>
+                      <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">効率%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {personalData.taskBreakdown.map(row => (
+                      <tr key={row.taskId} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-2 text-gray-700 font-medium">{row.taskName}</td>
+                        <td className="py-2 px-2 text-gray-600">{row.subject}</td>
+                        <td className="py-2 px-2 text-right text-gray-800">{_fmtSecEval(row.workTime)}</td>
+                        <td className="py-2 px-2 text-right text-gray-600">{row.assignedHours > 0 ? `${row.assignedHours}h` : '-'}</td>
+                        <td className="py-2 px-2 text-right">
+                          {row.assignedHours > 0 ? (
+                            <span className={`font-semibold ${row.efficiency <= 100 ? 'text-green-600' : 'text-orange-600'}`}>
+                              {row.efficiency}%
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {personalData.taskBreakdown.length === 0 && (
+                      <tr><td colSpan={5} className="text-center py-8 text-gray-400">データがありません</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ======== Sub-tab 4: 科目・大問別 ======== */}
+      {evalSection === 4 && (
+        <div className="space-y-4">
+          {/* 科目別集計 */}
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">科目別集計</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">科目</th>
+                    <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">合計時間</th>
+                    <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">タスク数</th>
+                    <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">平均時間/件</th>
+                    <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500">割合</th>
+                    <th className="py-2 px-2 text-xs font-semibold text-gray-500 w-40"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subjectSummary.map(row => (
+                    <tr key={row.subject} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-2 px-2 font-medium text-gray-700">{row.subject}</td>
+                      <td className="py-2 px-2 text-right text-gray-800">{_fmtSecEval(row.totalTime)}</td>
+                      <td className="py-2 px-2 text-right text-gray-600">{row.taskCount}件</td>
+                      <td className="py-2 px-2 text-right text-gray-600">{_fmtSecEval(row.avgTime)}</td>
+                      <td className="py-2 px-2 text-right text-gray-600">{row.ratio.toFixed(1)}%</td>
+                      <td className="py-2 px-2">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-500 h-2 rounded-full transition-all"
+                            style={{ width: `${Math.min(row.ratio, 100)}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {subjectSummary.length === 0 && (
+                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">データがありません</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 試験種別・大問別内訳 */}
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">試験種別・大問別内訳</h3>
+            <div className="flex flex-wrap gap-2 mb-4">
+              <select
+                value={subjectDetailSubject}
+                onChange={e => setSubjectDetailSubject(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">全科目</option>
+                {SUBJECTS_LIST.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <select
+                value={daimonFilterUser}
+                onChange={e => setDaimonFilterUser(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">全作業者</option>
+                {correctors.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-400 self-center ml-1">{filteredTaskDaimon.length}件</span>
+            </div>
+
+            {filteredTaskDaimon.length > 0 ? (
+              <div className="space-y-3">
+                {filteredTaskDaimon.map(group => {
+                  const COLORS = ['#3b82f6', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444', '#10b981', '#ec4899', '#6366f1'];
+                  return (
+                    <div key={`${group.taskId}_${group.userId}`} className="p-4 border border-gray-200 rounded-xl bg-gray-50 hover:bg-gray-100 transition">
+                      <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-gray-800">{group.taskName}</span>
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{group.subject}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">担当: <strong>{getUserName(group.userId)}</strong></span>
+                          <span className="text-xs font-semibold text-gray-700 bg-white px-2 py-0.5 rounded-lg border">合計 {_fmtSecEval(group.totalTime)}</span>
+                        </div>
+                      </div>
+                      {/* 大問別バー */}
+                      <div className="space-y-1.5">
+                        {group.daimons.map((d, idx) => (
+                          <div key={d.daimonId} className="flex items-center gap-2">
+                            <span className="w-16 text-xs font-medium text-gray-600 shrink-0 text-right">
+                              {d.daimonId === 'other' ? 'その他' : `大問${d.daimonId}`}
+                            </span>
+                            <div className="flex-1 bg-gray-200 rounded-full h-5 relative overflow-hidden">
+                              <div
+                                className="h-5 rounded-full transition-all flex items-center justify-end pr-2"
+                                style={{
+                                  width: `${Math.max((d.totalTime / d.maxTime) * 100, 8)}%`,
+                                  backgroundColor: COLORS[idx % COLORS.length],
+                                }}
+                              >
+                                <span className="text-xs text-white font-medium whitespace-nowrap">{_fmtSecEval(d.totalTime)}</span>
+                              </div>
+                            </div>
+                            <span className="w-12 text-right text-xs text-gray-500 shrink-0">{d.ratio.toFixed(0)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-center py-8 text-gray-400 text-sm">大問別のデータがありません</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+// ---- User Management Tab ----
+const UserManagementTab = ({ activeSubjects }) => {
+  const { getUsers, getCorrectors, addUser, updateUser, deleteUser, resetUserPassword } = useData();
+  const correctors = getCorrectors();
+
+  const [form, setForm] = useState({ name: '', email: '', loginId: '' });
+  const [editId, setEditId] = useState(null);
+  const [editSubjectsId, setEditSubjectsId] = useState(null);
+  const [selectedSubjects, setSelectedSubjects] = useState([]);
+  const [error, setError] = useState('');
+  const [generatedPw, setGeneratedPw] = useState(null);
+  const [generatedPwUser, setGeneratedPwUser] = useState('');
+  const [generatedPwLoginId, setGeneratedPwLoginId] = useState('');
+
+  const handleExportCSV = () => {
+    const data = correctors.map(c => ({
+      loginId: c.loginId || '',
+      name: c.name,
+      email: c.email || '',
+      role: c.role === 'leader' ? 'リーダー' : '添削者',
+      subjects: (c.subjects || []).join('；'),
+    }));
+    const csv = toCSV(data, USER_CSV_COLUMNS);
+    downloadCSV(csv, `作業者一覧_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  // CSV import
+  const [csvPreview, setCsvPreview] = useState(null);
+  const [csvErrors, setCsvErrors] = useState([]);
+
+  const handleImportCSV = async () => {
+    try {
+      const { rows } = await importCSVFile();
+      const { valid, errors } = validateUserCSV(rows);
+      setCsvErrors(errors);
+      setCsvPreview(valid);
+    } catch (e) {
+      setCsvErrors([e.message]);
+    }
+  };
+
+  const handleConfirmImport = () => {
+    let count = 0;
+    const passwords = [];
+    csvPreview.forEach(u => {
+      const result = addUser({
+        name: u.name,
+        loginId: u.loginId || undefined,
+        email: u.email,
+        role: u.role,
+        subjects: u.subjects,
+      });
+      if (result) {
+        count++;
+        passwords.push({ name: u.name, loginId: result.loginId, pw: result._tempPassword });
+      }
+    });
+    setCsvPreview(null);
+    setCsvErrors([]);
+    if (count > 0) {
+      setGeneratedPw(passwords.map(p => `${p.name}(${p.loginId}): ${p.pw}`).join('\n'));
+      setGeneratedPwUser(`${count}名のインポート`);
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setError('');
+    if (editId) {
+      updateUser(editId, { name: form.name, email: form.email });
+      setEditId(null);
+    } else {
+      const existing = getCorrectors().find(u => u.email === form.email);
+      if (existing) { setError('このメールアドレスは既に使用されています'); return; }
+      if (form.loginId) {
+        const allUsers = getCorrectors().concat(getUsers().filter(u => u.role === 'leader'));
+        const dupLoginId = allUsers.find(u => u.loginId === form.loginId);
+        if (dupLoginId) { setError('このログインIDは既に使用されています'); return; }
+      }
+      const result = addUser({ ...form, loginId: form.loginId || undefined, role: 'corrector', subjects: [] });
+      setGeneratedPw(result._tempPassword);
+      setGeneratedPwUser(form.name);
+      setGeneratedPwLoginId(result.loginId);
+    }
+    setForm({ name: '', email: '', loginId: '' });
+  };
+
+  const handleResetPassword = (userId, userName) => {
+    if (!confirm(`「${userName}」のパスワードをリセットしますか?`)) return;
+    const tempPw = resetUserPassword(userId);
+    if (tempPw) {
+      setGeneratedPw(tempPw);
+      setGeneratedPwUser(userName);
+    }
+  };
+
+  const handleSaveSubjects = (userId) => {
+    updateUser(userId, { subjects: selectedSubjects });
+    setEditSubjectsId(null);
+  };
+
+  const toggleSubject = (s) => {
+    setSelectedSubjects(prev =>
+      prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+    );
+  };
+
+  // Subject badge colors
+  const subjectColor = { '国語': 'bg-rose-50 text-rose-700', '算数': 'bg-blue-50 text-blue-700', '理科': 'bg-green-50 text-green-700', '社会': 'bg-amber-50 text-amber-700' };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">{editId ? '添削者を編集' : '添削者を追加'}</h3>
+        <form onSubmit={handleSubmit} className="flex flex-wrap gap-2">
+          <input
+            type="text" placeholder="氏名" value={form.name}
+            onChange={e => setForm({ ...form, name: e.target.value })}
+            className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            required
+          />
+          <input
+            type="email" placeholder="メールアドレス" value={form.email}
+            onChange={e => setForm({ ...form, email: e.target.value })}
+            className="flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            required
+          />
+          <input
+            type="text" placeholder="ログインID（空欄で自動生成）" value={form.loginId}
+            onChange={e => setForm({ ...form, loginId: e.target.value })}
+            className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
+            {editId ? '更新' : '追加'}
+          </button>
+          {editId && (
+            <button type="button" onClick={() => { setEditId(null); setForm({ name: '', email: '', loginId: '' }); }}
+              className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg transition">
+              キャンセル
+            </button>
+          )}
+        </form>
+        <div className="flex gap-2 mt-3">
+          <button onClick={handleExportCSV}
+            className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg transition">
+            📤 CSV エクスポート
+          </button>
+          <button onClick={handleImportCSV}
+            className="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-3 py-1.5 rounded-lg transition">
+            📥 CSV インポート
+          </button>
+        </div>
+        {!editId && <p className="text-xs text-gray-400 mt-2">* パスワードは自動生成されます。追加後に表示されるパスワードを作業者に共有してください。</p>}
+        {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+
+        {/* 生成されたパスワード表示 */}
+        {generatedPw && (
+          <div className="mt-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold text-amber-800">
+                  {generatedPwUser}{generatedPwLoginId ? ` (${generatedPwLoginId})` : ''} の初期パスワード
+                </p>
+                <p className="text-lg font-mono font-bold text-amber-900 mt-1 select-all">{generatedPw}</p>
+                <p className="text-xs text-amber-600 mt-1">
+                  このパスワードを作業者に共有してください。初回ログイン時にパスワード変更が求められます。
+                </p>
+              </div>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(generatedPw); }}
+                className="text-xs bg-amber-200 hover:bg-amber-300 text-amber-800 px-3 py-1.5 rounded-lg transition shrink-0 ml-3"
+              >
+                コピー
+              </button>
+            </div>
+            <button onClick={() => setGeneratedPw(null)} className="text-xs text-amber-500 hover:text-amber-700 mt-2">
+              閉じる
+            </button>
+          </div>
+        )}
+        {csvPreview && (
+          <div className="mt-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
+            <h4 className="text-sm font-bold text-purple-800 mb-2">📥 CSVインポート プレビュー（{csvPreview.length}件）</h4>
+            {csvErrors.length > 0 && (
+              <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                {csvErrors.map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+              </div>
+            )}
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {csvPreview.map((u, i) => (
+                <div key={i} className="text-xs flex items-center gap-2 bg-white rounded p-2">
+                  <span className="font-mono text-purple-600">{u.loginId || '自動'}</span>
+                  <span className="font-medium">{u.name}</span>
+                  <span className="text-gray-400">{u.email}</span>
+                  <span className="text-gray-400">{(u.subjects || []).join('・')}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-3 justify-end">
+              <button onClick={() => { setCsvPreview(null); setCsvErrors([]); }}
+                className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">キャンセル</button>
+              <button onClick={handleConfirmImport} disabled={csvPreview.length === 0}
+                className="text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white px-3 py-1.5 rounded-lg transition">
+                {csvPreview.length}名を登録する
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">添削者一覧（{correctors.length}人）</h3>
+        {correctors.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-6">添削者がいません</p>
+        ) : (
+          <div className="space-y-3">
+            {correctors.map(c => {
+              const mySubjects = c.subjects ?? [];
+              return (
+                <div key={c.id} className="p-3 border border-gray-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{c.name} <span className="text-xs font-mono text-blue-500">{c.loginId}</span></p>
+                      <p className="text-xs text-gray-400">{c.email}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => { setEditId(c.id); setForm({ name: c.name, email: c.email, loginId: c.loginId || '' }); }}
+                        className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded transition">編集</button>
+                      <button onClick={() => handleResetPassword(c.id, c.name)}
+                        className="text-xs text-amber-500 hover:bg-amber-50 px-2 py-1 rounded transition">PW リセット</button>
+                      <button onClick={() => { if (confirm(`「${c.name}」を削除しますか？`)) deleteUser(c.id); }}
+                        className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded transition">削除</button>
+                    </div>
+                  </div>
+
+                  {/* 担当科目表示 */}
+                  <div>
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {mySubjects.length === 0
+                        ? <span className="text-xs text-gray-400">担当科目未設定</span>
+                        : mySubjects.map(s => (
+                          <span key={s} className={`text-xs px-2 py-0.5 rounded-full font-medium ${subjectColor[s] ?? 'bg-gray-100 text-gray-600'}`}>{s}</span>
+                        ))
+                      }
+                    </div>
+                    {editSubjectsId === c.id ? (
+                      <div className="mt-2 p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs font-medium text-gray-600 mb-2">担当科目を選択</p>
+                        <div className="flex flex-wrap gap-2">
+                          {SUBJECTS_LIST.map(s => (
+                            <button
+                              key={s}
+                              onClick={() => toggleSubject(s)}
+                              className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition ${selectedSubjects.includes(s) ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-100'}`}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <button onClick={() => handleSaveSubjects(c.id)} className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition">保存</button>
+                          <button onClick={() => setEditSubjectsId(null)} className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg transition">キャンセル</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEditSubjectsId(c.id); setSelectedSubjects([...mySubjects]); }}
+                        className="text-xs text-blue-500 hover:text-blue-700 mt-1"
+                      >
+                        担当科目を編集
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ---- Recruitment Tab (業務募集) ----
+const RecruitmentTab = ({ activeSubjects }) => {
+  const { getRecruitments, addRecruitment, closeRecruitment, getApplications, reviewApplication, getCorrectors, getTasks } = useData();
+  const correctors = getCorrectors();
+  const tasks = getTasks();
+  const allRecruitments = getRecruitments().filter(r => activeSubjects.includes(r.subject));
+  const openRecruitments = allRecruitments.filter(r => r.status === 'open');
+  const closedRecruitments = allRecruitments.filter(r => r.status === 'closed');
+
+  const [form, setForm] = useState({ title: '', description: '', subject: '', requiredHours: '', deadline: '', taskId: '' });
+  const [expandedId, setExpandedId] = useState(null);
+  const [rejectNote, setRejectNote] = useState({});
+  const [rejectingAppId, setRejectingAppId] = useState(null);
+  const [showClosed, setShowClosed] = useState(false);
+
+  const pendingTasks = tasks.filter(t => t.status === 'pending');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.title || !form.subject) return;
+    addRecruitment({
+      title: form.title,
+      description: form.description,
+      subject: form.subject,
+      requiredHours: Number(form.requiredHours) || 0,
+      deadline: form.deadline,
+      taskId: form.taskId || null,
+    });
+    setForm({ title: '', description: '', subject: '', requiredHours: '', deadline: '', taskId: '' });
+  };
+
+  const appStatusConfig = {
+    pending: { text: '審査中', cls: 'bg-amber-100 text-amber-700' },
+    approved: { text: '承認', cls: 'bg-green-100 text-green-700' },
+    rejected: { text: '見送り', cls: 'bg-red-100 text-red-700' },
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* ===== 募集作成フォーム ===== */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">新しい業務募集を作成</h3>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">タイトル <span className="text-red-400">*</span></label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={e => setForm({ ...form, title: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+              placeholder="例：〇〇中学校 国語 添削業務"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">説明</label>
+            <textarea
+              value={form.description}
+              onChange={e => setForm({ ...form, description: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+              placeholder="業務内容の詳細..."
+              rows={3}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">科目 <span className="text-red-400">*</span></label>
+              <select
+                value={form.subject}
+                onChange={e => setForm({ ...form, subject: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+                required
+              >
+                <option value="">選択してください</option>
+                {SUBJECTS_LIST.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">必要工数（時間）</label>
+              <input
+                type="number"
+                value={form.requiredHours}
+                onChange={e => setForm({ ...form, requiredHours: e.target.value })}
+                min="1"
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+                placeholder="例: 10"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">締切日</label>
+              <input
+                type="date"
+                value={form.deadline}
+                onChange={e => setForm({ ...form, deadline: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">紐付けタスク（任意）</label>
+              <select
+                value={form.taskId}
+                onChange={e => setForm({ ...form, taskId: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+              >
+                <option value="">紐付けなし</option>
+                {pendingTasks.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}（{t.subject} · {t.requiredHours}h）</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition text-sm font-medium">
+            掲載する
+          </button>
+        </form>
+      </div>
+
+      {/* ===== 募集中の一覧 ===== */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">募集中（{openRecruitments.length}件）</h3>
+        {openRecruitments.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-4">現在募集中の業務はありません</p>
+        ) : (
+          <div className="space-y-3">
+            {openRecruitments.map(rec => {
+              const apps = getApplications(rec.id);
+              const isExpanded = expandedId === rec.id;
+              return (
+                <div key={rec.id} className="border border-gray-100 rounded-xl overflow-hidden">
+                  <div className="p-4 bg-gray-50">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-gray-800">{rec.title}</span>
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{rec.subject}</span>
+                          {rec.requiredHours > 0 && (
+                            <span className="text-xs text-gray-500">{rec.requiredHours}h</span>
+                          )}
+                          {rec.deadline && (
+                            <span className="text-xs text-gray-400">締切: {rec.deadline}</span>
+                          )}
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">応募 {apps.length}件</span>
+                        </div>
+                        {rec.description && (
+                          <p className="text-xs text-gray-500 mt-1">{rec.description}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : rec.id)}
+                          className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-100 transition font-medium"
+                        >
+                          {isExpanded ? '閉じる' : `応募一覧 (${apps.length})`}
+                        </button>
+                        <button
+                          onClick={() => { if (confirm('この募集を終了しますか？未処理の応募は自動的に見送りになります。')) closeRecruitment(rec.id); }}
+                          className="px-4 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition text-sm font-medium"
+                        >
+                          募集終了
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div className="p-4 border-t border-gray-100">
+                      {apps.length === 0 ? (
+                        <p className="text-gray-400 text-sm text-center py-2">まだ応募がありません</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {apps.map(app => {
+                            const applicant = correctors.find(c => c.id === app.userId);
+                            const sc = appStatusConfig[app.status] ?? { text: app.status, cls: 'bg-gray-100 text-gray-600' };
+                            const isRejecting = rejectingAppId === app.id;
+                            return (
+                              <div key={app.id} className="p-3 bg-white border border-gray-100 rounded-lg">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-sm font-medium text-gray-800">{applicant?.name ?? '不明'}</span>
+                                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sc.cls}`}>{sc.text}</span>
+                                    </div>
+                                    {app.message && (
+                                      <p className="text-xs text-gray-500 mt-0.5">{app.message}</p>
+                                    )}
+                                    <p className="text-xs text-gray-400 mt-0.5">
+                                      応募日: {new Date(app.appliedAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                                    </p>
+                                  </div>
+                                  {app.status === 'pending' && (
+                                    <div className="flex gap-2 shrink-0">
+                                      <button
+                                        onClick={() => reviewApplication(app.id, true)}
+                                        className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition text-sm font-medium"
+                                      >
+                                        承認
+                                      </button>
+                                      <button
+                                        onClick={() => setRejectingAppId(isRejecting ? null : app.id)}
+                                        className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition text-sm font-medium"
+                                      >
+                                        見送り
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                                {isRejecting && (
+                                  <div className="mt-2 flex gap-2">
+                                    <input
+                                      type="text"
+                                      value={rejectNote[app.id] ?? ''}
+                                      onChange={e => setRejectNote(prev => ({ ...prev, [app.id]: e.target.value }))}
+                                      placeholder="見送り理由（任意）"
+                                      className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        reviewApplication(app.id, false, rejectNote[app.id] ?? '');
+                                        setRejectingAppId(null);
+                                        setRejectNote(prev => { const n = { ...prev }; delete n[app.id]; return n; });
+                                      }}
+                                      className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition text-sm font-medium"
+                                    >
+                                      確定
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ===== 終了した募集 ===== */}
+      {closedRecruitments.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <button
+            onClick={() => setShowClosed(!showClosed)}
+            className="flex items-center gap-2 text-sm font-semibold text-gray-700"
+          >
+            <span>{showClosed ? '▼' : '▶'}</span>
+            終了した募集（{closedRecruitments.length}件）
+          </button>
+          {showClosed && (
+            <div className="mt-3 space-y-2">
+              {closedRecruitments.map(rec => {
+                const apps = getApplications(rec.id);
+                const approvedCount = apps.filter(a => a.status === 'approved').length;
+                return (
+                  <div key={rec.id} className="p-3 bg-gray-50 border border-gray-100 rounded-lg">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-gray-600">{rec.title}</span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-600">{rec.subject}</span>
+                      <span className="text-xs text-gray-400">応募: {apps.length}件 / 承認: {approvedCount}件</span>
+                      {rec.closedAt && (
+                        <span className="text-xs text-gray-400">終了日: {new Date(rec.closedAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---- Master Data Tab ----
+const MasterDataTab = ({ activeSubjects }) => {
+  const { getSchools, addSchool, deleteSchool, getExamTypes, addExamType, deleteExamType, getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem } = useData();
+  const sheets = useSheetsSync();
+  const schools = getSchools();
+  const examTypes = getExamTypes();
+  const [schoolName, setSchoolName] = useState('');
+  const [etSchool, setEtSchool] = useState('');
+  const [etSubject, setEtSubject] = useState('');
+  const [catForm, setCatForm] = useState({ name: '', description: '', subject: null });
+  const [sevForm, setSevForm] = useState({ name: '', level: 1, description: '', color: '#f59e0b' });
+  const [editCatId, setEditCatId] = useState(null);
+  const [editSevId, setEditSevId] = useState(null);
+  const [viForm, setViForm] = useState({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false });
+  const [editViId, setEditViId] = useState(null);
+
+  // Google Sheets 設定フォームの一時状態
+  const [draftClientId, setDraftClientId] = useState(sheets.settings.clientId);
+  const [draftSheetId, setDraftSheetId] = useState(sheets.settings.spreadsheetId);
+
+  const handleSaveSheetSettings = () => {
+    sheets.saveSettings({ clientId: draftClientId.trim(), spreadsheetId: draftSheetId.trim() });
+  };
+
+  const examTypeName = (et) => {
+    const s = schools.find(s => s.id === et.schoolId);
+    return `${s?.name} / ${et.subject}`;
+  };
+
+  const statusLabel = { idle: '', syncing: '同期中…', success: '同期完了', error: 'エラー' };
+  const statusCls = { idle: '', syncing: 'text-blue-500', success: 'text-green-600', error: 'text-red-500' };
+
+  return (
+    <div className="space-y-4">
+
+      {/* ===== Google Sheets 連携 ===== */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-lg">📊</span>
+          <h3 className="text-sm font-semibold text-gray-700">Google Sheets 連携</h3>
+          {sheets.signedIn && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">接続中</span>
+          )}
+        </div>
+
+        {/* 設定入力 */}
+        <div className="space-y-2 mb-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              OAuth 2.0 クライアント ID
+              <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener"
+                className="ml-1 text-blue-400 hover:underline">（Google Cloud Console）</a>
+            </label>
+            <input
+              type="text"
+              value={draftClientId}
+              onChange={e => setDraftClientId(e.target.value)}
+              placeholder="xxxxxxxxxxxx.apps.googleusercontent.com"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              スプレッドシート ID
+              <span className="ml-1 text-gray-400 font-normal">（URLの /d/ と /edit の間の文字列）</span>
+            </label>
+            <input
+              type="text"
+              value={draftSheetId}
+              onChange={e => setDraftSheetId(e.target.value)}
+              placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+            />
+          </div>
+          <button
+            onClick={handleSaveSheetSettings}
+            className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition"
+          >
+            設定を保存
+          </button>
+        </div>
+
+        {/* 認証・同期ボタン */}
+        <div className="flex flex-wrap items-center gap-2">
+          {!sheets.signedIn ? (
+            <button
+              onClick={sheets.handleSignIn}
+              disabled={!sheets.gisReady}
+              className="flex items-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition shadow-sm disabled:opacity-40"
+            >
+              <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-3.59-13.46-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+              Google でサインイン
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={sheets.upload}
+                disabled={sheets.status === 'syncing' || !sheets.settings.spreadsheetId}
+                className="text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg transition"
+              >
+                ↑ Sheets に保存
+              </button>
+              <button
+                onClick={sheets.download}
+                disabled={sheets.status === 'syncing' || !sheets.settings.spreadsheetId}
+                className="text-sm bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg transition"
+              >
+                ↓ Sheets から読み込む
+              </button>
+              <button
+                onClick={sheets.handleSignOut}
+                className="text-sm text-gray-400 hover:text-gray-600 px-3 py-2 rounded-lg transition"
+              >
+                サインアウト
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* ステータス */}
+        {(sheets.status !== 'idle' || sheets.lastSync || sheets.errorMsg) && (
+          <div className="mt-3 text-xs space-y-0.5">
+            {sheets.status !== 'idle' && (
+              <p className={statusCls[sheets.status]}>{statusLabel[sheets.status]}</p>
+            )}
+            {sheets.lastSync && (
+              <p className="text-gray-400">最終同期: {sheets.lastSync}（60秒ごと自動アップロード）</p>
+            )}
+            {sheets.errorMsg && (
+              <p className="text-red-500">{sheets.errorMsg}</p>
+            )}
+          </div>
+        )}
+
+        {/* セットアップ手順 */}
+        {!sheets.signedIn && (
+          <details className="mt-4">
+            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">セットアップ手順を見る</summary>
+            <ol className="mt-2 text-xs text-gray-500 space-y-1 list-decimal list-inside leading-relaxed">
+              <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener" className="text-blue-400 hover:underline">Google Cloud Console</a> でプロジェクトを作成</li>
+              <li>「APIとサービス」→「ライブラリ」で <strong>Google Sheets API</strong> を有効化</li>
+              <li>「認証情報」→「認証情報を作成」→「OAuth 2.0 クライアント ID」を選択</li>
+              <li>アプリケーションの種類: <strong>ウェブアプリケーション</strong></li>
+              <li>承認済みの JavaScript 生成元に <code className="bg-gray-100 px-1 rounded">http://localhost:5173</code> を追加</li>
+              <li>クライアント ID をコピーして上のフォームに貼り付け</li>
+              <li>Google スプレッドシートを新規作成し、URLからスプレッドシート ID をコピー</li>
+            </ol>
+          </details>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">学校の管理</h3>
+        <form onSubmit={(e) => { e.preventDefault(); if (schoolName) { addSchool(schoolName); setSchoolName(''); } }} className="flex gap-2 mb-3">
+          <input
+            type="text" placeholder="学校名" value={schoolName}
+            onChange={e => setSchoolName(e.target.value)}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            required
+          />
+          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">追加</button>
+        </form>
+        <div className="flex flex-wrap gap-2">
+          {schools.map(s => (
+            <div key={s.id} className="flex items-center gap-1.5 bg-gray-100 px-3 py-1.5 rounded-lg">
+              <span className="text-sm text-gray-700">{s.name}</span>
+              <button onClick={() => { if (confirm(`「${s.name}」を削除しますか？関連する試験種も削除されます。`)) deleteSchool(s.id); }}
+                className="text-red-400 hover:text-red-600 text-xs ml-1">×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">試験種の管理（学校 × 科目）</h3>
+        <form onSubmit={(e) => { e.preventDefault(); if (etSchool && etSubject) { addExamType(etSchool, etSubject); setEtSchool(''); setEtSubject(''); } }} className="flex flex-wrap gap-2 mb-3">
+          <select
+            value={etSchool} onChange={e => setEtSchool(e.target.value)}
+            className="flex-1 min-w-36 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            required
+          >
+            <option value="">学校を選択</option>
+            {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select
+            value={etSubject} onChange={e => setEtSubject(e.target.value)}
+            className="flex-1 min-w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            required
+          >
+            <option value="">科目を選択</option>
+            {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">追加</button>
+        </form>
+        <div className="flex flex-wrap gap-2">
+          {examTypes.map(et => (
+            <div key={et.id} className="flex items-center gap-1.5 bg-indigo-50 px-3 py-1.5 rounded-lg">
+              <span className="text-sm text-indigo-700">{examTypeName(et)}</span>
+              <button onClick={() => deleteExamType(et.id)}
+                className="text-red-400 hover:text-red-600 text-xs ml-1">×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 差し戻し項目の管理 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">🔄 差し戻し項目の管理</h4>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <input type="text" placeholder="項目名" value={catForm.name}
+            onChange={e => setCatForm({ ...catForm, name: e.target.value })}
+            className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <input type="text" placeholder="説明" value={catForm.description}
+            onChange={e => setCatForm({ ...catForm, description: e.target.value })}
+            className="flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <select value={catForm.subject || ''}
+            onChange={e => setCatForm({ ...catForm, subject: e.target.value || null })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">全科目共通</option>
+            {['国語', '算数', '理科', '社会', 'マクロ'].map(s => (
+              <option key={s} value={s}>{s}のみ</option>
+            ))}
+          </select>
+          <button onClick={() => {
+            if (!catForm.name.trim()) return;
+            if (editCatId) {
+              updateRejectionCategory(editCatId, catForm);
+              setEditCatId(null);
+            } else {
+              addRejectionCategory(catForm);
+            }
+            setCatForm({ name: '', description: '', subject: null });
+          }}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
+            {editCatId ? '更新' : '追加'}
+          </button>
+          {editCatId && (
+            <button onClick={() => { setEditCatId(null); setCatForm({ name: '', description: '', subject: null }); }}
+              className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
+          )}
+        </div>
+        <div className="space-y-1">
+          {(getRejectionCategories() || []).map(cat => (
+            <div key={cat.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+              <div>
+                <span className="text-sm font-medium">{cat.name}</span>
+                <span className="text-xs text-gray-500 ml-2">{cat.description}</span>
+                <span className="text-xs ml-2 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">
+                  {cat.subject ? `${cat.subject}のみ` : '全科目共通'}
+                </span>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => { setEditCatId(cat.id); setCatForm({ name: cat.name, description: cat.description, subject: cat.subject }); }}
+                  className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
+                <button onClick={() => deleteRejectionCategory(cat.id)}
+                  className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 差し戻し重大度の管理 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">⚠️ 差し戻し重大度の管理</h4>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <input type="text" placeholder="レベル名" value={sevForm.name}
+            onChange={e => setSevForm({ ...sevForm, name: e.target.value })}
+            className="flex-1 min-w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <input type="number" placeholder="レベル値" value={sevForm.level} min="1" max="10"
+            onChange={e => setSevForm({ ...sevForm, level: Number(e.target.value) })}
+            className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <input type="text" placeholder="説明" value={sevForm.description}
+            onChange={e => setSevForm({ ...sevForm, description: e.target.value })}
+            className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <input type="color" value={sevForm.color}
+            onChange={e => setSevForm({ ...sevForm, color: e.target.value })}
+            className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer" />
+          <button onClick={() => {
+            if (!sevForm.name.trim()) return;
+            if (editSevId) {
+              updateRejectionSeverity(editSevId, sevForm);
+              setEditSevId(null);
+            } else {
+              addRejectionSeverity(sevForm);
+            }
+            setSevForm({ name: '', level: 1, description: '', color: '#f59e0b' });
+          }}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
+            {editSevId ? '更新' : '追加'}
+          </button>
+          {editSevId && (
+            <button onClick={() => { setEditSevId(null); setSevForm({ name: '', level: 1, description: '', color: '#f59e0b' }); }}
+              className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
+          )}
+        </div>
+        <div className="space-y-1">
+          {(getRejectionSeverities() || []).sort((a, b) => a.level - b.level).map(sev => (
+            <div key={sev.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 rounded-full inline-block" style={{ backgroundColor: sev.color }}></span>
+                <span className="text-sm font-medium">{sev.name}</span>
+                <span className="text-xs text-gray-500">レベル {sev.level}</span>
+                <span className="text-xs text-gray-400">{sev.description}</span>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => { setEditSevId(sev.id); setSevForm({ name: sev.name, level: sev.level, description: sev.description, color: sev.color }); }}
+                  className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
+                <button onClick={() => deleteRejectionSeverity(sev.id)}
+                  className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 検証項目の管理 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">✅ 検証項目の管理</h4>
+        <p className="text-xs text-gray-500 mb-3">添削結果の検証時にチェックする項目を管理します。科目固有の項目も追加できます。</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <input type="text" placeholder="項目名" value={viForm.name}
+            onChange={e => setViForm({ ...viForm, name: e.target.value })}
+            className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <input type="text" placeholder="説明" value={viForm.description}
+            onChange={e => setViForm({ ...viForm, description: e.target.value })}
+            className="flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <select value={viForm.subject || ''}
+            onChange={e => setViForm({ ...viForm, subject: e.target.value || null })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">全科目共通</option>
+            {(activeSubjects || ['国語', '算数', '理科', '社会', 'マクロ']).map(s => (
+              <option key={s} value={s}>{s}のみ</option>
+            ))}
+          </select>
+          <input type="number" placeholder="表示順" value={viForm.sortOrder} min="1" max="99"
+            onChange={e => setViForm({ ...viForm, sortOrder: Number(e.target.value) })}
+            className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm" title="表示順" />
+          <label className="flex items-center gap-1 text-sm text-gray-600 cursor-pointer select-none">
+            <input type="checkbox" checked={viForm.isRequired}
+              onChange={e => setViForm({ ...viForm, isRequired: e.target.checked })}
+              className="rounded border-gray-300" />
+            必須
+          </label>
+          <button onClick={() => {
+            if (!viForm.name.trim()) return;
+            if (editViId) {
+              updateVerificationItem(editViId, viForm);
+              setEditViId(null);
+            } else {
+              addVerificationItem(viForm);
+            }
+            setViForm({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false });
+          }}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
+            {editViId ? '更新' : '追加'}
+          </button>
+          {editViId && (
+            <button onClick={() => { setEditViId(null); setViForm({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false }); }}
+              className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
+          )}
+        </div>
+
+        {/* グループ別表示 */}
+        {(() => {
+          const allItems = getVerificationItems() || [];
+          const grouped = {};
+          allItems.forEach(item => {
+            const key = item.subject || '全科目共通';
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(item);
+          });
+          // 全科目共通を先頭に、科目名でソート
+          const sortedKeys = Object.keys(grouped).sort((a, b) => {
+            if (a === '全科目共通') return -1;
+            if (b === '全科目共通') return 1;
+            return a.localeCompare(b);
+          });
+
+          if (allItems.length === 0) {
+            return <p className="text-xs text-gray-400">検証項目が登録されていません</p>;
+          }
+
+          return sortedKeys.map(groupKey => (
+            <div key={groupKey} className="mb-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${groupKey === '全科目共通' ? 'bg-gray-100 text-gray-600' : 'bg-blue-50 text-blue-700'}`}>
+                  {groupKey}
+                </span>
+                <span className="text-xs text-gray-400">{grouped[groupKey].length}件</span>
+              </div>
+              <div className="space-y-1">
+                {grouped[groupKey].sort((a, b) => a.sortOrder - b.sortOrder).map(item => (
+                  <div key={item.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-sm flex-shrink-0 w-6 text-center text-gray-400">{item.sortOrder}</span>
+                      <span className="text-sm font-medium truncate">{item.name}</span>
+                      {item.isRequired && (
+                        <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full flex-shrink-0">必須</span>
+                      )}
+                      {item.description && (
+                        <span className="text-xs text-gray-400 truncate hidden sm:inline">{item.description}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button onClick={() => { setEditViId(item.id); setViForm({ name: item.name, description: item.description || '', subject: item.subject, sortOrder: item.sortOrder, isRequired: item.isRequired }); }}
+                        className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
+                      <button onClick={() => deleteVerificationItem(item.id)}
+                        className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ));
+        })()}
+      </div>
+    </div>
+  );
+};
+
+// ===== ファイル統合タブ =====
+const FileMergeTab = () => {
+  const [files, setFiles] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [processing, setProcessing] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFiles = async (newFiles) => {
+    const xlsxFiles = Array.from(newFiles).filter(f =>
+      f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
+    );
+    if (xlsxFiles.length === 0) {
+      setError('Excelファイル（.xlsx）を選択してください');
+      return;
+    }
+    setError('');
+    const allFiles = [...files, ...xlsxFiles];
+    setFiles(allFiles);
+    setProcessing(true);
+    try {
+      const result = await parseAndGroupFiles(allFiles);
+      setGroups(result);
+    } catch (e) {
+      setError(`ファイルの解析に失敗しました: ${e.message}`);
+    }
+    setProcessing(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    handleFiles(e.dataTransfer.files);
+  };
+
+  const handleDragOver = (e) => { e.preventDefault(); setDragOver(true); };
+  const handleDragLeave = () => setDragOver(false);
+
+  const removeFile = (fileName) => {
+    const updated = files.filter(f => f.name !== fileName);
+    setFiles(updated);
+    if (updated.length === 0) {
+      setGroups([]);
+    } else {
+      parseAndGroupFiles(updated).then(setGroups);
+    }
+  };
+
+  const clearAll = () => {
+    setFiles([]);
+    setGroups([]);
+    setError('');
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-gray-800">📎 ファイル統合</h2>
+      <p className="text-sm text-gray-500">
+        大問ごとに出力されたExcelファイルをアップロードすると、試験種ごとに自動分類し、大問番号順に結合して1つのファイルとしてダウンロードできます。
+      </p>
+
+      {/* ドラッグ&ドロップエリア */}
+      <div
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors cursor-pointer ${
+          dragOver ? 'border-purple-500 bg-purple-50' : 'border-gray-300 bg-white hover:border-purple-400 hover:bg-purple-50/30'
+        }`}
+        onClick={() => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.multiple = true;
+          input.accept = '.xlsx,.xls';
+          input.onchange = (e) => handleFiles(e.target.files);
+          input.click();
+        }}
+      >
+        <div className="text-4xl mb-3">📁</div>
+        <p className="text-gray-600 font-medium">ここにファイルをドラッグ&ドロップ</p>
+        <p className="text-gray-400 text-sm mt-1">またはクリックしてファイルを選択</p>
+        <p className="text-gray-300 text-xs mt-2">.xlsx形式のファイルのみ対応</p>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">{error}</div>
+      )}
+
+      {/* アップロード済みファイル一覧 */}
+      {files.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-700">アップロード済みファイル（{files.length}件）</h3>
+            <button onClick={clearAll} className="text-xs text-red-500 hover:text-red-700">すべてクリア</button>
+          </div>
+          <div className="space-y-1.5">
+            {files.map((f, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg">
+                <span className="text-sm text-gray-700 truncate">📄 {f.name}</span>
+                <button onClick={() => removeFile(f.name)} className="text-gray-400 hover:text-red-500 text-xs ml-2">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {processing && (
+        <div className="text-center py-4 text-purple-600 animate-pulse">解析中...</div>
+      )}
+
+      {/* グループ別表示 */}
+      {groups.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-gray-700">試験種ごとの分類結果</h3>
+          {groups.map((g) => (
+            <div key={g.key} className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h4 className="font-bold text-gray-800">{g.label}</h4>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {g.files.length}ファイル → 構成{g.koseiRows.length}行・内容{g.naiyouRows.length}行
+                  </p>
+                </div>
+                <button
+                  onClick={() => downloadMergedExcel(g)}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                >
+                  📥 統合してダウンロード
+                </button>
+              </div>
+              <div className="text-xs text-gray-500 space-y-0.5">
+                {g.files.map((fname, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <span className="text-purple-400">•</span>
+                    <span>{fname}</span>
+                    <span className="text-gray-300 ml-1">
+                      (大問 {g.koseiRows.filter(r => g.files.indexOf(fname) === i).length > 0 ? '含む' : ''})
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const LeaderManualTab = () => {
+  const [openSections, setOpenSections] = useState({});
+  const toggle = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const sections = [
+    { key: 'account', icon: '👤', title: 'アカウント登録・ログイン', desc: 'ユーザーの追加とログイン方法' },
+    { key: 'overview', icon: '📊', title: '概要タブ', desc: 'KPI・グラフ・完了予測の確認' },
+    { key: 'filter', icon: '🔍', title: '科目フィルター', desc: '表示科目の切り替え' },
+    { key: 'analysis', icon: '📈', title: '工数分析タブ', desc: '添削者ごとの工数状況' },
+    { key: 'tasks', icon: '📋', title: '試験種管理タブ', desc: 'タスクの登録・検索・振り分け' },
+    { key: 'processing', icon: '✅', title: '試験種処理タブ', desc: '提出物の検証・承認・差し戻し' },
+    { key: 'recruit', icon: '📢', title: '業務募集タブ', desc: '添削者の募集' },
+    { key: 'eval', icon: '⭐', title: '作業者評価タブ', desc: '評価・作業時間分析' },
+    { key: 'users', icon: '👥', title: '作業者管理タブ', desc: 'ユーザーの管理' },
+    { key: 'master', icon: '⚙️', title: 'マスタタブ', desc: '基本設定の管理' },
+  ];
+
+  const sectionContent = {
+    account: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>1. 「作業者管理」タブから新しいユーザーを追加できます。</p>
+        <p>2. 名前、メールアドレスを入力して登録します。パスワードは自動生成されます。</p>
+        <p>3. 登録後に表示される初期パスワードを作業者に共有してください。初回ログイン時にパスワード変更が求められます。</p>
+        <p className="text-xs text-gray-400 mt-2">※ データはブラウザのlocalStorageに保存されます。ブラウザやデバイスが変わるとデータは引き継がれません。</p>
+      </div>
+    ),
+    overview: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>ダッシュボードのトップ画面です。以下の情報が一覧で確認できます。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>KPIサマリー</strong>：添削者数、タスク総数、未割当タスク、遅延リスク、検証待ち、完了タスク、工数合計</li>
+          <li><strong>タスクステータス分布</strong>：円グラフで割当状況を可視化</li>
+          <li><strong>科目別 完了予測</strong>：各科目ごとの残り工数、利用可能工数、完了見込み日を表示</li>
+          <li><strong>タスク進捗予測テーブル</strong>：各タスクの担当者、残り工数、予測完了日、期限、状態を一覧表示</li>
+        </ul>
+      </div>
+    ),
+    filter: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>画面上部の科目フィルターで、表示する科目を切り替えられます。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>★マーク付きの科目</strong>：あなたの担当科目です。ログイン時に自動でONになります。</li>
+          <li><strong>「全体」ボタン</strong>：すべての科目を一括でON/OFFします。</li>
+          <li>各科目ボタンをクリックすると、個別にON/OFFを切り替えられます。</li>
+        </ul>
+      </div>
+    ),
+    analysis: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>添削者ごとの工数状況をグラフで確認できます。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>棒グラフ：各添削者の登録工数 vs 割当工数</li>
+          <li>キャパシティ（空き工数）の確認</li>
+        </ul>
+      </div>
+    ),
+    tasks: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>試験種（タスク）の登録・検索・振り分け・実績管理をまとめて行えるタブです。5つのサブタブがあります。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>タスク登録</strong>：科目、作業内容、必要工数（時間）、期限、スプシURLを入力して作成</li>
+          <li><strong>タスク一覧</strong>：全タスクの検索（名前）とステータスフィルター。ソート機能付き</li>
+          <li><strong>振り分け</strong>：自動振り分け（プレビュー＋確定）と手動振り分け</li>
+          <li><strong>割当済み</strong>：割当済みタスクの確認。大問別作業時間も表示。解除も可能</li>
+          <li><strong>実績</strong>：完了タスクの計画vs実績レポート。CSV出力可能</li>
+        </ul>
+        <div className="mt-3 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+          <strong>💡 作業時間について</strong>：添削者が作業を開始した時点から自動で計測されます。割当済みタスクに⏱マークで累計時間・大問別時間が表示されます。
+        </div>
+      </div>
+    ),
+    processing: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>添削者がタスクを提出すると、このタブに「検証待ち」として表示されます。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>承認</strong>：内容に問題なければ「承認」をクリック → タスクが完了になります</li>
+          <li><strong>差し戻し</strong>：カテゴリ・重大度を選択し、詳細メモを入力して差し戻し → 添削者に通知が届き再作業</li>
+          <li><strong>添付ファイル</strong>：添削者が提出したExcelファイルなどをダウンロード可能</li>
+          <li><strong>大問別作業時間</strong>：各大問にかかった時間と割合が表示されます</li>
+        </ul>
+      </div>
+    ),
+    recruit: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>添削者を募集する機能です。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>募集作成</strong>：科目、タイトル、説明、必要工数、期限を入力して募集を開始</li>
+          <li><strong>応募管理</strong>：添削者からの応募を確認し、承認または却下</li>
+          <li>募集は手動で「締切」にすることもできます</li>
+        </ul>
+      </div>
+    ),
+    eval: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>添削者の評価と作業時間の分析を行います。5つのサブタブがあります。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>評価基準</strong>：評価基準の追加・編集・削除。自動メトリクス（差し戻し率、重大度、作業時間等）も設定可能</li>
+          <li><strong>添削者評価</strong>：各添削者をスライダーで評価。科目別フィルター・自動計算メトリクス付き</li>
+          <li><strong>作業時間一覧</strong>：全タイムログを一覧表示。作業者・科目・日付範囲でフィルター可能</li>
+          <li><strong>個人別時間</strong>：作業者を選択して合計時間・タスク数・効率%を確認</li>
+          <li><strong>科目・大問別</strong>：科目別の合計時間・割合のプログレスバー。大問別の時間内訳</li>
+        </ul>
+        <div className="mt-3 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+          <strong>💡 評価と振り分けの連携</strong>：評価は自動振り分けのアルゴリズムに反映されます（高評価の人に優先的にアサイン）。
+        </div>
+      </div>
+    ),
+    users: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>ユーザー（リーダー・添削者）の追加・編集・削除を行います。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>追加</strong>：名前、メールを入力（パスワードは自動生成。初回ログイン時に変更必須）</li>
+          <li><strong>PWリセット</strong>：パスワードを再発行し、初回ログイン時に変更を求める</li>
+          <li><strong>編集</strong>：既存ユーザーの情報を変更</li>
+          <li><strong>削除</strong>：不要なユーザーを削除（割り当て済みタスクがある場合は先に解除が必要）</li>
+        </ul>
+      </div>
+    ),
+    master: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>マスタデータ（基本設定）を管理します。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>学校マスタ</strong>：学校名の追加・削除</li>
+          <li><strong>試験種マスタ</strong>：学校と科目の組み合わせを登録</li>
+          <li><strong>評価基準マスタ</strong>：評価項目の追加・編集・削除</li>
+        </ul>
+      </div>
+    ),
+  };
+
+  return (
+    <div className="space-y-4 max-w-4xl">
+      <div>
+        <h2 className="text-lg font-bold text-gray-800 mb-1">📖 リーダー用マニュアル</h2>
+        <p className="text-sm text-gray-500">四谷大塚制作アプリの使い方ガイドです。各項目をクリックして詳細を確認できます。</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {sections.map(({ key, icon, title, desc }) => (
+          <section
+            key={key}
+            className="bg-white rounded-xl border border-gray-200 cursor-pointer hover:border-purple-300 hover:shadow-sm transition-all"
+            onClick={() => toggle(key)}
+          >
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{icon}</span>
+                  <h3 className="text-sm font-bold text-gray-800">{title}</h3>
+                </div>
+                <span className="text-gray-400 text-xs ml-2 shrink-0">{openSections[key] ? '▼' : '▶'}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1 ml-7">{desc}</p>
+            </div>
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                openSections[key] ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
+              }`}
+            >
+              <div className="px-4 pb-4 pt-2 border-t border-gray-100">
+                {sectionContent[key]}
+              </div>
+            </div>
+          </section>
+        ))}
+      </div>
+
+      {/* 基本的な運用フロー - full width */}
+      <section className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl border border-purple-200 p-5">
+        <h3 className="text-sm font-bold text-purple-800 mb-3">🔄 基本的な運用フロー</h3>
+        <div className="text-sm text-gray-700 space-y-2">
+          <div className="flex items-start gap-3">
+            <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">1</span>
+            <p><strong>マスタ設定</strong>：学校・試験種・評価基準を登録</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">2</span>
+            <p><strong>作業者登録</strong>：添削者のアカウントを作成</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">3</span>
+            <p><strong>タスク作成</strong>：試験種管理タブ →「タスク登録」で新しいタスクを追加</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">4</span>
+            <p><strong>振り分け</strong>：試験種管理タブ →「振り分け」で自動/手動アサイン</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">5</span>
+            <p><strong>進捗管理</strong>：概要タブで進捗を確認、完了予測をチェック</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">6</span>
+            <p><strong>検証</strong>：試験種処理タブで提出されたタスクを承認or差し戻し</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">7</span>
+            <p><strong>評価・分析</strong>：作業者評価タブで評価入力＋作業時間を分析</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+};
+
+// ---- Main Leader Dashboard ----
+export default function LeaderDashboard() {
+  const { user, logout, changePassword } = useAuth();
+  const { getNotifications, getUsers } = useData();
+  const [activeTab, setActiveTab] = useState(0);
+  const [subjectFilter, setSubjectFilter] = useState(user.subjects?.length > 0 ? [...user.subjects] : [...SUBJECTS_LIST]);
+  const [showAll, setShowAll] = useState(!(user.subjects?.length > 0));
+
+  // パスワード変更モーダル
+  const [showPwModal, setShowPwModal] = useState(false);
+  const [pwForm, setPwForm] = useState({ currentPw: '', newPw: '', confirmPw: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState(false);
+
+  const handlePwChange = (e) => {
+    e.preventDefault();
+    setPwError('');
+    setPwSuccess(false);
+    const users = getUsers();
+    const currentUser = users.find(u => u.id === user.id);
+    if (!currentUser || currentUser.password !== btoa(pwForm.currentPw)) {
+      setPwError('現在のパスワードが正しくありません');
+      return;
+    }
+    if (pwForm.newPw.length < 6) { setPwError('新しいパスワードは6文字以上にしてください'); return; }
+    if (pwForm.newPw !== pwForm.confirmPw) { setPwError('新しいパスワードが一致しません'); return; }
+    const success = changePassword(user.id, pwForm.newPw);
+    if (success) {
+      setPwSuccess(true);
+      setPwForm({ currentPw: '', newPw: '', confirmPw: '' });
+      setTimeout(() => { setShowPwModal(false); setPwSuccess(false); }, 1500);
+    } else {
+      setPwError('パスワードの変更に失敗しました');
+    }
+  };
+
+  const allNotifications = getNotifications();
+  const unreadCount = allNotifications.filter(n => !n.read).length;
+
+  const TAB_COMPONENTS = [
+    OverviewTab,
+    TaskAndAssignmentTab,
+    AssignmentTab,
+    UserManagementTab,
+    CapacityAnalysisTab,
+    NewProgressTab,
+    RecruitmentTab,
+    CorrectorEvaluationTab,
+    FileMergeTab,
+    LeaderManualTab,
+  ];
+  const ActiveComponent = TAB_COMPONENTS[activeTab];
+
+  return (
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 shadow-sm shrink-0 z-10">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+              L
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 text-sm">{user.name}</p>
+              <p className="text-xs text-gray-400">リーダー</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {unreadCount > 0 && (
+              <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full font-medium">
+                通知 {unreadCount}件
+              </span>
+            )}
+            <button
+              onClick={() => { setShowPwModal(true); setPwError(''); setPwSuccess(false); setPwForm({ currentPw: '', newPw: '', confirmPw: '' }); }}
+              className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg transition"
+            >
+              PW変更
+            </button>
+            <button onClick={logout} className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg transition">
+              ログアウト
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* パスワード変更モーダル */}
+      {showPwModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">パスワード変更</h3>
+            {pwSuccess ? (
+              <div className="text-center py-6">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <p className="text-sm text-green-700 font-medium">パスワードを変更しました</p>
+              </div>
+            ) : (
+              <form onSubmit={handlePwChange} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">現在のパスワード</label>
+                  <input type="password" value={pwForm.currentPw} onChange={e => setPwForm({ ...pwForm, currentPw: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">新しいパスワード</label>
+                  <input type="password" value={pwForm.newPw} onChange={e => setPwForm({ ...pwForm, newPw: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="6文字以上" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">新しいパスワード（確認）</label>
+                  <input type="password" value={pwForm.confirmPw} onChange={e => setPwForm({ ...pwForm, confirmPw: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="もう一度入力" required />
+                </div>
+                {pwError && <p className="text-xs text-red-500">{pwError}</p>}
+                <div className="flex gap-2 pt-2">
+                  <button type="submit" className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium transition">
+                    変更する
+                  </button>
+                  <button type="button" onClick={() => setShowPwModal(false)}
+                    className="flex-1 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg font-medium hover:bg-gray-50 transition">
+                    キャンセル
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <aside className="w-48 bg-white border-r border-gray-200 shrink-0 overflow-y-auto">
+          <nav className="py-2">
+            {TABS.map((tab, i) => (
+              <button
+                key={i}
+                onClick={() => setActiveTab(i)}
+                className={`w-full text-left px-4 py-2.5 text-sm font-medium transition flex items-center gap-2 ${
+                  activeTab === i
+                    ? 'bg-purple-50 text-purple-700 border-r-2 border-purple-600'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                }`}
+              >
+                <span>{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        {/* Main content */}
+        <main className="flex-1 min-w-0 overflow-y-auto">
+          {/* 科目フィルター */}
+          <div className="px-6 py-2 bg-white border-b border-gray-100">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-gray-500 font-medium">科目:</span>
+              <button
+                onClick={() => {
+                  if (showAll) {
+                    setShowAll(false);
+                    setSubjectFilter(user.subjects?.length > 0 ? [...user.subjects] : [...SUBJECTS_LIST]);
+                  } else {
+                    setShowAll(true);
+                    setSubjectFilter([...SUBJECTS_LIST]);
+                  }
+                }}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition ${showAll ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                全体
+              </button>
+              {SUBJECTS_LIST.map(s => {
+                const isActive = subjectFilter.includes(s);
+                const isMySubject = (user.subjects ?? []).includes(s);
+                return (
+                  <button
+                    key={s}
+                    onClick={() => {
+                      setShowAll(false);
+                      setSubjectFilter(prev =>
+                        prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+                      );
+                    }}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                      isActive
+                        ? 'bg-blue-600 text-white'
+                        : isMySubject
+                          ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 ring-1 ring-blue-200'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {s}{isMySubject ? ' ★' : ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="px-6 py-6">
+            <ActiveComponent activeSubjects={subjectFilter} />
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}

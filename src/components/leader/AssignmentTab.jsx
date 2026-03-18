@@ -1,0 +1,350 @@
+import React, { useState } from 'react';
+import { useData, isFinished } from '../../contexts/DataContext.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx';
+import { previewAutoAssign, confirmAutoAssign, manualAssign } from '../../utils/autoAssign.js';
+import { SUBJECTS_LIST, WORK_TYPES_LIST } from '../../utils/storage.js';
+
+const AssignmentTab = ({ activeSubjects }) => {
+  const {
+    getTasks, getAssignments, getCorrectors, getCapacities,
+    getAllData, applyAutoAssignResult,
+  } = useData();
+  const { user } = useAuth();
+
+  const allTasks = getTasks();
+  const tasks = allTasks.filter(t => activeSubjects.includes(t.subject));
+  const assignments = getAssignments();
+  const correctors = getCorrectors();
+  const capacities = getCapacities();
+
+  // Assignment filter state
+  const [assignSubjectFilter, setAssignSubjectFilter] = useState('all');
+  const [assignWorkTypeFilter, setAssignWorkTypeFilter] = useState('all');
+  const [assignDeadlineFrom, setAssignDeadlineFrom] = useState('');
+  const [assignDeadlineTo, setAssignDeadlineTo] = useState('');
+  const [showAssignSearch, setShowAssignSearch] = useState(false);
+
+  // Assignment state
+  const [message, setMessage] = useState('');
+  const [manualSelect, setManualSelect] = useState({});
+  const [previewData, setPreviewData] = useState(null);
+  const [editedProposals, setEditedProposals] = useState([]);
+
+  // VIKING state
+  const [showClaimedViking, setShowClaimedViking] = useState(false);
+
+  // --- Assignment helpers ---
+  const allPendingTasks = tasks.filter(t => t.status === 'pending' && !t.viking);
+  const pendingTasks = allPendingTasks.filter(t => {
+    if (assignSubjectFilter !== 'all' && t.subject !== assignSubjectFilter) return false;
+    if (assignWorkTypeFilter !== 'all' && t.workType !== assignWorkTypeFilter) return false;
+    if (assignDeadlineFrom && t.deadline < assignDeadlineFrom) return false;
+    if (assignDeadlineTo && t.deadline > assignDeadlineTo) return false;
+    return true;
+  });
+
+  const handleAutoAssign = () => {
+    const proposals = previewAutoAssign(getAllData());
+    if (proposals.length === 0) {
+      setMessage('振り分けできるタスクがありませんでした');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
+    setPreviewData(proposals);
+    setEditedProposals(proposals.map(p => ({ taskId: p.taskId, userId: p.userId, assignedHours: p.assignedHours })));
+  };
+
+  const handleManualAssign = (taskId) => {
+    const userId = manualSelect[taskId];
+    if (!userId) return;
+    const result = manualAssign(taskId, userId, getAllData());
+    applyAutoAssignResult(result);
+    setManualSelect(prev => ({ ...prev, [taskId]: '' }));
+    setMessage('手動振り分けしました');
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  const getAssignedUser = (taskId) => {
+    const a = assignments.find(x => x.taskId === taskId);
+    if (!a) return null;
+    return correctors.find(c => c.id === a.userId);
+  };
+
+  const getEligibleCorrectors = (subject) => {
+    return correctors.filter(c => (c.subjects ?? []).includes(subject));
+  };
+
+  const clearAssignFilters = () => {
+    setAssignSubjectFilter('all');
+    setAssignWorkTypeFilter('all');
+    setAssignDeadlineFrom('');
+    setAssignDeadlineTo('');
+  };
+
+  // VIKING helpers
+  const pendingVikingTasks = tasks.filter(t => t.viking && t.status === 'pending');
+  const claimedVikingTasks = tasks.filter(t => t.viking && t.status !== 'pending');
+
+  return (
+    <div className="space-y-4">
+      {message && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-2 rounded-lg">
+          {message}
+        </div>
+      )}
+
+      {/* ===== 自動振り分け ===== */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700">自動振り分け</h3>
+            <p className="text-xs text-gray-400 mt-0.5">未割当の全タスクを評価・工数をもとに自動で振り分けます</p>
+          </div>
+          <button
+            onClick={handleAutoAssign}
+            disabled={allPendingTasks.length === 0}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+          >
+            自動振り分け実行
+          </button>
+        </div>
+        {allPendingTasks.length === 0 ? (
+          <p className="text-green-600 text-xs">未割当のタスクはありません</p>
+        ) : (
+          <p className="text-amber-600 text-xs">未割当タスク: {allPendingTasks.length}件</p>
+        )}
+
+        {previewData && (
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <h4 className="text-sm font-bold text-blue-800 mb-3">振り分けプレビュー（{editedProposals.length}件）</h4>
+            <p className="text-xs text-blue-600 mb-3">担当者の変更や個別除外が可能です。確認後「確定する」を押してください。</p>
+            <div className="space-y-2">
+              {previewData.map((p, idx) => {
+                const edited = editedProposals.find(e => e.taskId === p.taskId);
+                if (!edited) return null;
+                return (
+                  <div key={p.taskId} className="flex items-center gap-2 bg-white rounded-lg p-3 border border-blue-100">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{p.taskName}</p>
+                      <p className="text-xs text-gray-500">{p.subject} {p.workType && `· ${p.workType}`}</p>
+                    </div>
+                    <select
+                      value={edited.userId}
+                      onChange={e => setEditedProposals(prev => prev.map(ep =>
+                        ep.taskId === p.taskId ? { ...ep, userId: e.target.value } : ep
+                      ))}
+                      className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white min-w-[140px]"
+                    >
+                      {p.eligibleCorrectors.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} (スコア: {c.score})</option>
+                      ))}
+                    </select>
+                    <span className="text-sm text-gray-600 whitespace-nowrap">{p.assignedHours}h</span>
+                    <button
+                      onClick={() => setEditedProposals(prev => prev.filter(ep => ep.taskId !== p.taskId))}
+                      className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded transition whitespace-nowrap"
+                    >
+                      除外
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {editedProposals.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-3">全てのタスクが除外されました</p>
+            )}
+            <div className="flex gap-2 mt-4 justify-end">
+              <button
+                onClick={() => { setPreviewData(null); setEditedProposals([]); }}
+                className="text-sm text-gray-600 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 transition"
+              >
+                キャンセル
+              </button>
+              <button
+                disabled={editedProposals.length === 0}
+                onClick={() => {
+                  const result = confirmAutoAssign(editedProposals, getAllData());
+                  applyAutoAssignResult(result);
+                  setMessage(`${result.newAssignments.length}件のタスクを振り分けました`);
+                  setPreviewData(null);
+                  setEditedProposals([]);
+                  setTimeout(() => setMessage(''), 4000);
+                }}
+                className="text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg transition"
+              >
+                確定する（{editedProposals.length}件）
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ===== 手動振り分け ===== */}
+      {allPendingTasks.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 className="text-sm font-semibold text-gray-700">手動振り分け（未割当タスク {pendingTasks.length}/{allPendingTasks.length}件）</h3>
+            <button
+              onClick={() => setShowAssignSearch(v => !v)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition font-medium ${showAssignSearch ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+            >
+              {showAssignSearch ? '▲ 絞り込み' : '▼ 絞り込み'}
+            </button>
+          </div>
+          {showAssignSearch && (
+            <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">科目</label>
+                  <select value={assignSubjectFilter} onChange={e => setAssignSubjectFilter(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="all">すべて</option>
+                    {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">作業内容</label>
+                  <select value={assignWorkTypeFilter} onChange={e => setAssignWorkTypeFilter(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="all">すべて</option>
+                    {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">期限（開始）</label>
+                  <input type="date" value={assignDeadlineFrom} onChange={e => setAssignDeadlineFrom(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">期限（終了）</label>
+                  <input type="date" value={assignDeadlineTo} onChange={e => setAssignDeadlineTo(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div className="flex items-end">
+                  <button onClick={clearAssignFilters}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 transition">
+                    条件クリア
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="space-y-3">
+            {pendingTasks.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-4">条件に一致するタスクがありません</p>
+            ) : pendingTasks.map(task => {
+              const eligible = getEligibleCorrectors(task.subject);
+              return (
+                <div key={task.id} className="p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                  <p className="text-sm font-medium text-gray-800 mb-1">{task.name}</p>
+                  <p className="text-xs text-gray-500 mb-2">{task.subject}{task.workType ? ` · ${task.workType}` : ''} · {task.requiredHours}h · 期限: {task.deadline}</p>
+                  {eligible.length === 0 ? (
+                    <p className="text-xs text-red-500">担当可能な添削者がいません</p>
+                  ) : (
+                    <div className="flex gap-2">
+                      <select
+                        value={manualSelect[task.id] ?? ''}
+                        onChange={e => setManualSelect(prev => ({ ...prev, [task.id]: e.target.value }))}
+                        className="flex-1 text-sm px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      >
+                        <option value="">添削者を選択...</option>
+                        {eligible.map(c => {
+                          const totalCap = capacities.filter(cap => cap.userId === c.id).reduce((s, cap) => s + cap.totalHours, 0);
+                          const usedHours = assignments.filter(a => a.userId === c.id && !isFinished(a.status)).reduce((s, a) => s + a.assignedHours, 0);
+                          const free = Math.max(0, totalCap - usedHours);
+                          return (
+                            <option key={c.id} value={c.id}>
+                              {c.name}（空き工数: {free}h）
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <button
+                        onClick={() => handleManualAssign(task.id)}
+                        disabled={!manualSelect[task.id]}
+                        className="text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg transition"
+                      >
+                        割り当て
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ===== VIKINGタスク管理 ===== */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">VIKINGタスク管理</h3>
+
+        {/* 未取得VIKINGタスク */}
+        <div className="mb-4">
+          <h4 className="text-xs font-medium text-gray-500 mb-2">未取得VIKINGタスク（{pendingVikingTasks.length}件）</h4>
+          {pendingVikingTasks.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-3">未取得のVIKINGタスクはありません</p>
+          ) : (
+            <div className="space-y-2">
+              {pendingVikingTasks.map(task => (
+                <div key={task.id} className="p-3 bg-purple-50 border border-purple-100 rounded-lg">
+                  <p className="text-sm font-medium text-gray-800 mb-1">{task.name}</p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                    <span>{task.subject}</span>
+                    {task.workType && <span>· {task.workType}</span>}
+                    <span>· {task.requiredHours}h</span>
+                    {task.deadline && <span>· 期限: {task.deadline}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 取得済みVIKINGタスク */}
+        <div>
+          <button
+            onClick={() => setShowClaimedViking(v => !v)}
+            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition mb-2"
+          >
+            <span>{showClaimedViking ? '▼' : '▶'}</span>
+            <span>取得済みVIKINGタスク（{claimedVikingTasks.length}件）</span>
+          </button>
+          {showClaimedViking && (
+            <div className="space-y-2">
+              {claimedVikingTasks.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-3">取得済みのVIKINGタスクはありません</p>
+              ) : (
+                claimedVikingTasks.map(task => {
+                  const assignedUser = getAssignedUser(task.id);
+                  return (
+                    <div key={task.id} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-800 truncate">{task.name}</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                            <span>{task.subject}</span>
+                            {task.workType && <span>· {task.workType}</span>}
+                            <span>· {task.requiredHours}h</span>
+                            {task.deadline && <span>· 期限: {task.deadline}</span>}
+                          </div>
+                        </div>
+                        {assignedUser && (
+                          <span className="text-xs text-blue-600 font-medium ml-2 whitespace-nowrap">
+                            {assignedUser.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AssignmentTab;
