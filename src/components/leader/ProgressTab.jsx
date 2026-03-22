@@ -979,8 +979,8 @@ const ProgressTab = ({ activeSubjects }) => {
                                   onChange={e => setRejItemForm(f => ({ ...f, categoryId: e.target.value }))}
                                   className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 min-w-[120px]">
                                   <option value="">カテゴリ選択</option>
-                                  {(getRejectionCategories(task.subject) || []).map(cat => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}{cat.subject ? ` (${cat.subject})` : ''}</option>
+                                  {(getRejectionCategories(task.subject, task.workType) || []).map(cat => (
+                                    <option key={cat.id} value={cat.id}>{cat.name}{cat.subject ? ` (${cat.subject})` : ''}{cat.workType ? ` [${cat.workType}]` : ''}</option>
                                   ))}
                                 </select>
                                 <select value={rejItemForm.severityId}

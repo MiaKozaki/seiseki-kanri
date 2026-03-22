@@ -3764,7 +3764,7 @@ const MasterDataTab = ({ activeSubjects }) => {
   const [schoolName, setSchoolName] = useState('');
   const [etSchool, setEtSchool] = useState('');
   const [etSubject, setEtSubject] = useState('');
-  const [catForm, setCatForm] = useState({ name: '', description: '', subject: null });
+  const [catForm, setCatForm] = useState({ name: '', description: '', subject: null, workType: null });
   const [sevForm, setSevForm] = useState({ name: '', level: 1, description: '', color: '#f59e0b' });
   const [editCatId, setEditCatId] = useState(null);
   const [editSevId, setEditSevId] = useState(null);
@@ -3963,21 +3963,30 @@ const MasterDataTab = ({ activeSubjects }) => {
       {/* 差し戻し項目の管理 */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h4 className="text-sm font-semibold text-gray-700 mb-3">🔄 差し戻し項目の管理</h4>
+        <p className="text-xs text-gray-500 mb-3">科目・作業内容ごとに差し戻し項目を設定できます。</p>
         <div className="flex flex-wrap gap-2 mb-3">
+          <select value={catForm.subject || ''}
+            onChange={e => setCatForm({ ...catForm, subject: e.target.value || null })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">全科目共通</option>
+            {(activeSubjects || SUBJECTS_LIST).map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select value={catForm.workType || ''}
+            onChange={e => setCatForm({ ...catForm, workType: e.target.value || null })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">全作業種（共通）</option>
+            {WORK_TYPES_LIST.map(w => (
+              <option key={w} value={w}>{w}</option>
+            ))}
+          </select>
           <input type="text" placeholder="項目名" value={catForm.name}
             onChange={e => setCatForm({ ...catForm, name: e.target.value })}
             className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           <input type="text" placeholder="説明" value={catForm.description}
             onChange={e => setCatForm({ ...catForm, description: e.target.value })}
             className="flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          <select value={catForm.subject || ''}
-            onChange={e => setCatForm({ ...catForm, subject: e.target.value || null })}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            <option value="">全科目共通</option>
-            {['国語', '算数', '理科', '社会', 'マクロ'].map(s => (
-              <option key={s} value={s}>{s}のみ</option>
-            ))}
-          </select>
           <button onClick={() => {
             if (!catForm.name.trim()) return;
             if (editCatId) {
@@ -3986,35 +3995,82 @@ const MasterDataTab = ({ activeSubjects }) => {
             } else {
               addRejectionCategory(catForm);
             }
-            setCatForm({ name: '', description: '', subject: null });
+            setCatForm({ name: '', description: '', subject: null, workType: null });
           }}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
             {editCatId ? '更新' : '追加'}
           </button>
           {editCatId && (
-            <button onClick={() => { setEditCatId(null); setCatForm({ name: '', description: '', subject: null }); }}
+            <button onClick={() => { setEditCatId(null); setCatForm({ name: '', description: '', subject: null, workType: null }); }}
               className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
           )}
         </div>
-        <div className="space-y-1">
-          {(getRejectionCategories() || []).map(cat => (
-            <div key={cat.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
-              <div>
-                <span className="text-sm font-medium">{cat.name}</span>
-                <span className="text-xs text-gray-500 ml-2">{cat.description}</span>
-                <span className="text-xs ml-2 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">
-                  {cat.subject ? `${cat.subject}のみ` : '全科目共通'}
-                </span>
+        {/* グループ別表示: 科目 → 作業内容 */}
+        {(() => {
+          const allCats = getRejectionCategories() || [];
+          if (allCats.length === 0) return <p className="text-xs text-gray-400">差し戻し項目が登録されていません</p>;
+
+          const subjectGroups = {};
+          allCats.forEach(cat => {
+            const sKey = cat.subject || '全科目共通';
+            if (!subjectGroups[sKey]) subjectGroups[sKey] = [];
+            subjectGroups[sKey].push(cat);
+          });
+          const sortedSubjects = Object.keys(subjectGroups).sort((a, b) => {
+            if (a === '全科目共通') return -1;
+            if (b === '全科目共通') return 1;
+            return a.localeCompare(b);
+          });
+
+          return sortedSubjects.map(subjectKey => {
+            const cats = subjectGroups[subjectKey];
+            const workTypeGroups = {};
+            cats.forEach(cat => {
+              const wKey = cat.workType || '全作業種';
+              if (!workTypeGroups[wKey]) workTypeGroups[wKey] = [];
+              workTypeGroups[wKey].push(cat);
+            });
+            const sortedWorkTypes = Object.keys(workTypeGroups).sort((a, b) => {
+              if (a === '全作業種') return -1;
+              if (b === '全作業種') return 1;
+              return a.localeCompare(b);
+            });
+
+            return (
+              <div key={subjectKey} className="mb-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${subjectKey === '全科目共通' ? 'bg-gray-100 text-gray-600' : 'bg-blue-50 text-blue-700'}`}>
+                    {subjectKey}
+                  </span>
+                  <span className="text-xs text-gray-400">{cats.length}件</span>
+                </div>
+                {sortedWorkTypes.map(wtKey => (
+                  <div key={wtKey} className="mb-1 ml-2">
+                    {wtKey !== '全作業種' && (
+                      <span className="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded mb-0.5 inline-block">{wtKey}</span>
+                    )}
+                    <div className="space-y-1">
+                      {workTypeGroups[wtKey].map(cat => (
+                        <div key={cat.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-sm font-medium truncate">{cat.name}</span>
+                            {cat.description && <span className="text-xs text-gray-400 truncate hidden sm:inline">{cat.description}</span>}
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <button onClick={() => { setEditCatId(cat.id); setCatForm({ name: cat.name, description: cat.description || '', subject: cat.subject, workType: cat.workType || null }); }}
+                              className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
+                            <button onClick={() => deleteRejectionCategory(cat.id)}
+                              className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="flex gap-1">
-                <button onClick={() => { setEditCatId(cat.id); setCatForm({ name: cat.name, description: cat.description, subject: cat.subject }); }}
-                  className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
-                <button onClick={() => deleteRejectionCategory(cat.id)}
-                  className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
-              </div>
-            </div>
-          ))}
-        </div>
+            );
+          });
+        })()}
       </div>
 
       {/* 差し戻し重大度の管理 */}

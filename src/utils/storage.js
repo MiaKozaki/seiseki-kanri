@@ -389,9 +389,9 @@ export const INITIAL_DATA = {
     { id: 'tl20', assignmentId: 'a7', taskId: 't11', userId: 'u5', daimonId: 2, startTime: '2026-02-23T09:00:00.000Z', endTime: '2026-02-23T13:00:00.000Z', duration: 14400 },
   ],
   rejectionCategories: [
-    { id: 'rc1', name: '誤採点', description: '配点の計算ミスや採点基準の誤適用', subject: null, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'rc2', name: '添削漏れ', description: '採点すべき箇所の見落とし', subject: null, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'rc3', name: 'コメント不備', description: '添削コメントの誤りや不足', subject: null, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'rc1', name: '誤採点', description: '配点の計算ミスや採点基準の誤適用', subject: null, workType: null, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'rc2', name: '添削漏れ', description: '採点すべき箇所の見落とし', subject: null, workType: null, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'rc3', name: 'コメント不備', description: '添削コメントの誤りや不足', subject: null, workType: null, createdAt: '2026-01-01T00:00:00.000Z' },
   ],
   rejectionSeverities: [
     { id: 'rs1', name: '軽微', level: 1, description: '軽微な修正で済むミス', color: '#f59e0b', createdAt: '2026-01-01T00:00:00.000Z' },
@@ -478,6 +478,11 @@ export const initStorage = () => {
       updated = true;
     }
     if (!data.rejectionCategories) { data.rejectionCategories = []; updated = true; }
+    // rejectionCategories workType マイグレーション
+    if (data.rejectionCategories && data.rejectionCategories.some(c => c.workType === undefined)) {
+      data.rejectionCategories = data.rejectionCategories.map(c => ({ ...c, workType: c.workType ?? null }));
+      updated = true;
+    }
     if (!data.rejectionSeverities) { data.rejectionSeverities = []; updated = true; }
     if (!data.rejections) { data.rejections = []; updated = true; }
     // evaluationCriteria migration

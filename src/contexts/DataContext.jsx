@@ -738,10 +738,15 @@ export const DataProvider = ({ children }) => {
   };
 
   // ---- Rejection Categories ----
-  const getRejectionCategories = (subject = null) => {
-    const all = d('rejectionCategories');
-    if (subject === null) return all;
-    return all.filter(c => c.subject === null || c.subject === subject);
+  const getRejectionCategories = (subject = null, workType = undefined) => {
+    let items = d('rejectionCategories');
+    if (subject !== null) {
+      items = items.filter(c => c.subject === null || c.subject === subject);
+    }
+    if (workType !== undefined) {
+      items = items.filter(c => c.workType === null || c.workType === undefined || c.workType === workType);
+    }
+    return items;
   };
 
   const addRejectionCategory = (catData) => {
