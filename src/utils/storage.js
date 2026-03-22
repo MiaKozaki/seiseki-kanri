@@ -411,12 +411,13 @@ export const INITIAL_DATA = {
     { id: 'rej6', userId: 'u5', taskId: 't11', assignmentId: 'a7', categoryId: 'rc3', severityId: 'rs1', note: 'フィードバックコメントが不十分', rejectedBy: 'u1', createdAt: '2026-02-27T13:00:00.000Z' },
   ],
   verificationItems: [
-    { id: 'vi1', name: '配点の正確性', description: '各問の配点が採点基準と一致しているか', subject: null, sortOrder: 1, isRequired: true, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'vi2', name: '合計点の計算', description: '合計点が各問の配点の合算と一致しているか', subject: null, sortOrder: 2, isRequired: true, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'vi3', name: '添削コメントの確認', description: '添削コメントが適切かつ十分か', subject: null, sortOrder: 3, isRequired: false, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'vi4', name: '漢字の正誤確認', description: '漢字の正誤判定が正しいか', subject: '国語', sortOrder: 1, isRequired: true, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'vi5', name: '計算過程の確認', description: '途中式の採点が正しいか', subject: '算数', sortOrder: 1, isRequired: true, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'vi1', name: '配点の正確性', description: '各問の配点が採点基準と一致しているか', subject: null, sortOrder: 1, isRequired: true, purpose: 'verification', workType: null, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'vi2', name: '合計点の計算', description: '合計点が各問の配点の合算と一致しているか', subject: null, sortOrder: 2, isRequired: true, purpose: 'verification', workType: null, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'vi3', name: '添削コメントの確認', description: '添削コメントが適切かつ十分か', subject: null, sortOrder: 3, isRequired: false, purpose: 'verification', workType: null, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'vi4', name: '漢字の正誤確認', description: '漢字の正誤判定が正しいか', subject: '国語', sortOrder: 1, isRequired: true, purpose: 'verification', workType: null, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'vi5', name: '計算過程の確認', description: '途中式の採点が正しいか', subject: '算数', sortOrder: 1, isRequired: true, purpose: 'verification', workType: null, createdAt: '2026-01-01T00:00:00.000Z' },
   ],
+  feedbacks: [],
   verificationResults: [],
   workflowStatuses: [
     { id: 'ws1', subject: null, workType: null, name: 'pending', label: '未振り分け', color: '#f59e0b', sortOrder: 0, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
@@ -531,9 +532,20 @@ export const initStorage = () => {
       data._demoEvalDataV1 = true;
       updated = true;
     }
+    // feedbacks マイグレーション
+    if (!data.feedbacks) { data.feedbacks = []; updated = true; }
     // 検証項目マイグレーション
     if (!data.verificationItems) { data.verificationItems = []; updated = true; }
     if (!data.verificationResults) { data.verificationResults = []; updated = true; }
+    // purpose/workType マイグレーション
+    if (data.verificationItems && data.verificationItems.some(vi => vi.purpose === undefined)) {
+      data.verificationItems = data.verificationItems.map(vi => ({
+        ...vi,
+        purpose: vi.purpose ?? 'verification',
+        workType: vi.workType ?? null,
+      }));
+      updated = true;
+    }
     if (!data.workflowStatuses) { data.workflowStatuses = INITIAL_DATA.workflowStatuses || []; updated = true; }
     if (!data._demoVerificationV1) {
       const demoItems = INITIAL_DATA.verificationItems || [];

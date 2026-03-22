@@ -4,7 +4,8 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { SUBJECTS_LIST, WORK_TYPES_LIST } from '../../utils/storage.js';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { predictAllTasks } from '../../utils/prediction.js';
-import { downloadAttachment } from '../../utils/fileStorage.js';
+import { downloadAttachment, getAttachment } from '../../utils/fileStorage.js';
+import { getPreviewHtml } from '../../utils/filePreview.js';
 import { toCSV, downloadCSV } from '../../utils/csvUtils';
 
 // ---- Helpers ----
@@ -34,6 +35,87 @@ const STATUS_COLOR_PRESETS = [
   '#ec4899', '#f43f5e', '#78716c', '#64748b', '#334155',
 ];
 
+// ---- ファイルプレビューパネル ----
+const FilePreviewPanel = ({ attachments }) => {
+  const [activeFileIdx, setActiveFileIdx] = React.useState(0);
+  const [previewData, setPreviewData] = React.useState(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [activeSheetIdx, setActiveSheetIdx] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!attachments || attachments.length === 0) return;
+    const att = attachments[activeFileIdx];
+    if (!att) return;
+    setPreviewLoading(true);
+    setPreviewData(null);
+    setActiveSheetIdx(0);
+    getAttachment(att.id).then(record => {
+      if (record?.blob) {
+        return getPreviewHtml(record.blob, record.fileName);
+      }
+      return { html: null, sheets: null, error: 'ファイルが見つかりません' };
+    }).then(result => {
+      setPreviewData(result);
+    }).catch(err => {
+      setPreviewData({ html: null, sheets: null, error: err.message });
+    }).finally(() => {
+      setPreviewLoading(false);
+    });
+  }, [attachments, activeFileIdx]);
+
+  if (!attachments || attachments.length === 0) return null;
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-blue-700 mb-2">ファイルプレビュー</p>
+      {/* ファイルタブ */}
+      {attachments.length > 1 && (
+        <div className="flex gap-1 mb-2 flex-wrap">
+          {attachments.map((att, idx) => (
+            <button key={att.id}
+              onClick={() => setActiveFileIdx(idx)}
+              className={`text-[11px] px-2 py-1 rounded-lg transition ${idx === activeFileIdx ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 border border-blue-200 hover:bg-blue-50'}`}>
+              {att.fileName}
+            </button>
+          ))}
+        </div>
+      )}
+      {attachments.length === 1 && (
+        <p className="text-[11px] text-gray-500 mb-1">{attachments[0].fileName}</p>
+      )}
+      {/* シートタブ（Excel複数シート） */}
+      {previewData?.sheets?.length > 1 && (
+        <div className="flex gap-1 mb-2 flex-wrap">
+          {previewData.sheets.map((s, idx) => (
+            <button key={idx}
+              onClick={() => setActiveSheetIdx(idx)}
+              className={`text-[10px] px-2 py-0.5 rounded transition ${idx === activeSheetIdx ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              {s.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* プレビュー本体 */}
+      <div className="bg-white border border-gray-200 rounded-lg overflow-auto max-h-[60vh]">
+        {previewLoading && (
+          <div className="p-8 text-center text-gray-400 text-sm">読み込み中...</div>
+        )}
+        {previewData?.error && (
+          <div className="p-4 text-center text-red-500 text-xs">{previewData.error}</div>
+        )}
+        {!previewLoading && previewData?.sheets && (
+          <div className="p-2 text-xs [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-gray-200 [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-gray-200 [&_th]:px-1.5 [&_th]:py-1 [&_th]:bg-gray-50 [&_th]:font-medium"
+            dangerouslySetInnerHTML={{ __html: previewData.sheets[activeSheetIdx]?.html || '' }} />
+        )}
+        {!previewLoading && previewData?.html && !previewData?.sheets && (
+          <div className="p-3 text-sm prose prose-sm max-w-none"
+            dangerouslySetInnerHTML={{ __html: previewData.html }} />
+        )}
+      </div>
+    </div>
+  );
+};
+
 const ProgressTab = ({ activeSubjects }) => {
   const {
     getTasks, getCorrectors, getAssignments, getCapacities,
@@ -42,6 +124,7 @@ const ProgressTab = ({ activeSubjects }) => {
     getVerificationItems, getVerificationResults, initVerificationResults, toggleVerificationResult,
     updateAssignment,
     getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
+    getFeedbacks, addFeedback,
   } = useData();
   const { user } = useAuth();
 
@@ -71,6 +154,8 @@ const ProgressTab = ({ activeSubjects }) => {
   const [rejItemForm, setRejItemForm] = useState({ categoryId: '', severityId: '', note: '' });
   const [message, setMessage] = useState('');
   const [openChecklistId, setOpenChecklistId] = useState(null);
+  const [feedbackAssignmentId, setFeedbackAssignmentId] = useState(null);
+  const [feedbackText, setFeedbackText] = useState('');
   const [showTaskDetail, setShowTaskDetail] = useState(false);
   const [showStatusConfig, setShowStatusConfig] = useState(false);
 
@@ -677,7 +762,7 @@ const ProgressTab = ({ activeSubjects }) => {
                               <button
                                 onClick={() => {
                                   updateAssignment(assignment.id, { verificationStatus: 'reviewing' });
-                                  initVerificationResults(assignment.id, task.subject, user?.id);
+                                  initVerificationResults(assignment.id, task.subject, user?.id, task.workType);
                                   setOpenChecklistId(assignment.id);
                                   setMessage('検証を開始しました');
                                   setTimeout(() => setMessage(''), 3000);
@@ -741,10 +826,10 @@ const ProgressTab = ({ activeSubjects }) => {
                             )}
                           </div>
 
-                          {/* Verification checklist panel */}
+                          {/* Verification checklist panel + file preview */}
                           {openChecklistId === assignment.id && assignment.verificationStatus === 'reviewing' && (() => {
                             const results = getVerificationResults(assignment.id) || [];
-                            const allItems = getVerificationItems(task.subject) || [];
+                            const allItems = getVerificationItems(task.subject, 'verification', task.workType) || [];
                             const checkedCount = results.filter(r => r.checked).length;
                             const totalCount = results.length;
                             const progress = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0;
@@ -758,8 +843,10 @@ const ProgressTab = ({ activeSubjects }) => {
                               return item && item.subject;
                             });
 
-                            return (
-                              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+                            const hasAttachments = assignment?.attachments?.length > 0;
+
+                            const ChecklistContent = () => (
+                              <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                   <p className="text-xs font-semibold text-blue-700">検証チェックリスト</p>
                                   <span className="text-xs text-blue-600">{checkedCount} / {totalCount} 完了</span>
@@ -768,6 +855,22 @@ const ProgressTab = ({ activeSubjects }) => {
                                 <div className="w-full bg-blue-100 rounded-full h-2">
                                   <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
                                 </div>
+
+                                {/* 提出前チェック結果（読み取り専用） */}
+                                {assignment.submissionChecklistResults?.length > 0 && (
+                                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
+                                    <p className="text-[10px] font-semibold text-purple-600 mb-1">提出前チェック結果</p>
+                                    {assignment.submissionChecklistResults.map((cr, i) => {
+                                      const vi = (getVerificationItems() || []).find(v => v.id === cr.itemId);
+                                      return (
+                                        <div key={i} className="flex items-center gap-1.5 text-xs text-purple-700">
+                                          <span>{cr.checked ? '✅' : '⬜'}</span>
+                                          <span>{vi?.name || cr.itemId}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
 
                                 {totalCount === 0 ? (
                                   <p className="text-xs text-gray-500">検証項目が登録されていません。マスタタブで追加してください。</p>
@@ -842,6 +945,25 @@ const ProgressTab = ({ activeSubjects }) => {
                                     )}
                                   </>
                                 )}
+                              </div>
+                            );
+
+                            return hasAttachments ? (
+                              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                                <div className="flex flex-col lg:flex-row gap-4">
+                                  {/* 左: ファイルプレビュー */}
+                                  <div className="lg:w-3/5 w-full">
+                                    <FilePreviewPanel attachments={assignment.attachments} />
+                                  </div>
+                                  {/* 右: チェックリスト */}
+                                  <div className="lg:w-2/5 w-full">
+                                    <ChecklistContent />
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                                <ChecklistContent />
                               </div>
                             );
                           })()}
@@ -938,6 +1060,68 @@ const ProgressTab = ({ activeSubjects }) => {
                                   差し戻しを確定
                                 </button>
                               </div>
+                            </div>
+                          )}
+
+                          {/* FB（フィードバック）パネル - 社会のみ */}
+                          {task.subject === '社会' && (assignment.status === 'submitted' || assignment.status === 'approved') && (
+                            <div className="mt-2">
+                              {feedbackAssignmentId === assignment.id ? (
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                                  <p className="text-xs font-semibold text-amber-700">フィードバックを送信</p>
+                                  <textarea
+                                    value={feedbackText}
+                                    onChange={e => setFeedbackText(e.target.value)}
+                                    placeholder="フィードバック内容を入力..."
+                                    rows={3}
+                                    className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2"
+                                  />
+                                  <div className="flex gap-2 justify-end">
+                                    <button onClick={() => { setFeedbackAssignmentId(null); setFeedbackText(''); }}
+                                      className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">キャンセル</button>
+                                    <button onClick={() => {
+                                      if (!feedbackText.trim()) return;
+                                      addFeedback({
+                                        assignmentId: assignment.id,
+                                        taskId: task.id,
+                                        fromUserId: user?.id,
+                                        toUserId: assignment.userId,
+                                        subject: task.subject,
+                                        message: feedbackText.trim(),
+                                      });
+                                      setFeedbackAssignmentId(null);
+                                      setFeedbackText('');
+                                      setMessage('FBを送信しました');
+                                      setTimeout(() => setMessage(''), 3000);
+                                    }}
+                                      disabled={!feedbackText.trim()}
+                                      className="text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg transition">
+                                      送信
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button onClick={() => setFeedbackAssignmentId(assignment.id)}
+                                  className="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 px-3 py-1.5 rounded-lg transition">
+                                  💬 FB送信
+                                </button>
+                              )}
+                              {/* 送信済みFB一覧 */}
+                              {(() => {
+                                const fbs = (getFeedbacks({ assignmentId: assignment.id }) || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                                if (fbs.length === 0) return null;
+                                return (
+                                  <div className="mt-2 space-y-1">
+                                    <p className="text-[10px] text-gray-500">送信済みFB（{fbs.length}件）</p>
+                                    {fbs.map(fb => (
+                                      <div key={fb.id} className="p-2 bg-amber-50 border border-amber-100 rounded-lg text-xs">
+                                        <p className="text-gray-700">{fb.message}</p>
+                                        <p className="text-[10px] text-gray-400 mt-0.5">{new Date(fb.createdAt).toLocaleString('ja-JP')}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>

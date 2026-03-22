@@ -10,7 +10,7 @@ import { generateId } from './storage.js';
 // ---- 定数 ----
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 export const MAX_FILES_PER_SUBMISSION = 10;
-export const ALLOWED_EXTENSIONS = ['.xlsx', '.xls'];
+export const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.docx', '.doc'];
 
 const DB_NAME = 'seiseki_kanri_files';
 const DB_VERSION = 1;
@@ -51,7 +51,7 @@ export const validateFile = (file) => {
   }
   const ext = '.' + file.name.split('.').pop().toLowerCase();
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
-    errors.push(`${file.name}: Excelファイル（.xlsx, .xls）のみ添付可能です`);
+    errors.push(`${file.name}: Excel（.xlsx, .xls）またはWord（.docx, .doc）ファイルのみ添付可能です`);
   }
   return errors;
 };

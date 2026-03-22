@@ -798,10 +798,18 @@ export const DataProvider = ({ children }) => {
   };
 
   // ---- Verification Items (検証項目マスタ) ----
-  const getVerificationItems = (subject = null) => {
-    const all = d('verificationItems');
-    if (subject === null) return all;
-    return all.filter(vi => vi.subject === null || vi.subject === subject);
+  const getVerificationItems = (subject = null, purpose = null, workType = undefined) => {
+    let items = d('verificationItems');
+    if (subject !== null) {
+      items = items.filter(vi => vi.subject === null || vi.subject === subject);
+    }
+    if (purpose !== null) {
+      items = items.filter(vi => vi.purpose === purpose);
+    }
+    if (workType !== undefined) {
+      items = items.filter(vi => vi.workType === null || vi.workType === workType);
+    }
+    return items;
   };
 
   const addVerificationItem = (itemData) => {
@@ -843,8 +851,12 @@ export const DataProvider = ({ children }) => {
     return assignmentId ? all.filter(vr => vr.assignmentId === assignmentId) : all;
   };
 
-  const initVerificationResults = (assignmentId, subject, checkedBy) => {
-    const items = d('verificationItems').filter(vi => vi.subject === null || vi.subject === subject);
+  const initVerificationResults = (assignmentId, subject, checkedBy, workType = null) => {
+    const items = d('verificationItems').filter(vi =>
+      (vi.subject === null || vi.subject === subject) &&
+      (vi.purpose === 'verification' || vi.purpose === undefined) &&
+      (vi.workType === null || vi.workType === workType)
+    );
     const existing = d('verificationResults').filter(vr => vr.assignmentId === assignmentId);
     if (existing.length > 0) return existing;
 
@@ -984,6 +996,37 @@ export const DataProvider = ({ children }) => {
     forceRefresh();
   };
 
+  // ---- Feedbacks (フィードバック) ----
+  const getFeedbacks = (filters = {}) => {
+    let items = d('feedbacks') || [];
+    if (filters.assignmentId) items = items.filter(f => f.assignmentId === filters.assignmentId);
+    if (filters.toUserId) items = items.filter(f => f.toUserId === filters.toUserId);
+    if (filters.subject) items = items.filter(f => f.subject === filters.subject);
+    return items;
+  };
+
+  const addFeedback = (feedbackData) => {
+    const fb = { ...feedbackData, id: generateId(), createdAt: new Date().toISOString() };
+    updateCollection('feedbacks', [...(d('feedbacks') || []), fb]);
+    fsWrite(() => saveDocument('feedbacks', fb));
+    // 作業者への通知を自動生成
+    const fromUser = d('users').find(u => u.id === fb.fromUserId);
+    const task = d('tasks').find(t => t.id === fb.taskId);
+    const notif = {
+      id: generateId(),
+      userId: fb.toUserId,
+      message: `${fromUser?.name || 'リーダー'}から「${task?.name || ''}」にFBがあります`,
+      type: 'feedback',
+      relatedId: fb.assignmentId,
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    updateCollection('notifications', [...d('notifications'), notif]);
+    fsWrite(() => saveDocument('notifications', notif));
+    forceRefresh();
+    return fb;
+  };
+
   // ---- autoAssign用: 一括データ取得 + 結果反映 ----
   const getAllData = () => data || getAll();
 
@@ -1025,6 +1068,7 @@ export const DataProvider = ({ children }) => {
       getVerificationResults, initVerificationResults, updateVerificationResult, toggleVerificationResult,
       getRejections, addRejection,
       getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
+      getFeedbacks, addFeedback,
       getNotifications, markNotificationRead, markAllNotificationsRead,
       startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
     }}>

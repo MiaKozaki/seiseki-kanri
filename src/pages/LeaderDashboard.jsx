@@ -27,6 +27,7 @@ const TABS = [
   { label: '業務募集', icon: '📢' },
   { label: '作業者評価', icon: '⭐' },
   { label: 'ファイル統合', icon: '📎' },
+  { label: 'マスタ', icon: '⚙️' },
   { label: '使い方', icon: '📖' },
 ];
 
@@ -3767,7 +3768,7 @@ const MasterDataTab = ({ activeSubjects }) => {
   const [sevForm, setSevForm] = useState({ name: '', level: 1, description: '', color: '#f59e0b' });
   const [editCatId, setEditCatId] = useState(null);
   const [editSevId, setEditSevId] = useState(null);
-  const [viForm, setViForm] = useState({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false });
+  const [viForm, setViForm] = useState({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false, purpose: 'verification', workType: null });
   const [editViId, setEditViId] = useState(null);
 
   // Google Sheets 設定フォームの一時状態
@@ -4070,25 +4071,39 @@ const MasterDataTab = ({ activeSubjects }) => {
         </div>
       </div>
 
-      {/* 検証項目の管理 */}
+      {/* チェックリストの管理 */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-        <h4 className="text-sm font-semibold text-gray-700 mb-3">✅ 検証項目の管理</h4>
-        <p className="text-xs text-gray-500 mb-3">添削結果の検証時にチェックする項目を管理します。科目固有の項目も追加できます。</p>
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">✅ チェックリストの管理</h4>
+        <p className="text-xs text-gray-500 mb-3">提出前チェック（作業者用）と検証チェック（リーダー用）の項目を管理します。科目・作業内容ごとに設定できます。</p>
         <div className="flex flex-wrap gap-2 mb-3">
+          <select value={viForm.purpose}
+            onChange={e => setViForm({ ...viForm, purpose: e.target.value })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="verification">検証チェック（リーダー用）</option>
+            <option value="submission">提出前チェック（作業者用）</option>
+          </select>
+          <select value={viForm.subject || ''}
+            onChange={e => setViForm({ ...viForm, subject: e.target.value || null })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">全科目共通</option>
+            {(activeSubjects || SUBJECTS_LIST).map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select value={viForm.workType || ''}
+            onChange={e => setViForm({ ...viForm, workType: e.target.value || null })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">全作業種（共通）</option>
+            {WORK_TYPES_LIST.map(w => (
+              <option key={w} value={w}>{w}</option>
+            ))}
+          </select>
           <input type="text" placeholder="項目名" value={viForm.name}
             onChange={e => setViForm({ ...viForm, name: e.target.value })}
             className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           <input type="text" placeholder="説明" value={viForm.description}
             onChange={e => setViForm({ ...viForm, description: e.target.value })}
             className="flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          <select value={viForm.subject || ''}
-            onChange={e => setViForm({ ...viForm, subject: e.target.value || null })}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            <option value="">全科目共通</option>
-            {(activeSubjects || ['国語', '算数', '理科', '社会', 'マクロ']).map(s => (
-              <option key={s} value={s}>{s}のみ</option>
-            ))}
-          </select>
           <input type="number" placeholder="表示順" value={viForm.sortOrder} min="1" max="99"
             onChange={e => setViForm({ ...viForm, sortOrder: Number(e.target.value) })}
             className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm" title="表示順" />
@@ -4106,69 +4121,117 @@ const MasterDataTab = ({ activeSubjects }) => {
             } else {
               addVerificationItem(viForm);
             }
-            setViForm({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false });
+            setViForm({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false, purpose: 'verification', workType: null });
           }}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
             {editViId ? '更新' : '追加'}
           </button>
           {editViId && (
-            <button onClick={() => { setEditViId(null); setViForm({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false }); }}
+            <button onClick={() => { setEditViId(null); setViForm({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false, purpose: 'verification', workType: null }); }}
               className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
           )}
         </div>
 
-        {/* グループ別表示 */}
+        {/* グループ別表示: 用途 → 科目 → 作業内容 */}
         {(() => {
           const allItems = getVerificationItems() || [];
-          const grouped = {};
-          allItems.forEach(item => {
-            const key = item.subject || '全科目共通';
-            if (!grouped[key]) grouped[key] = [];
-            grouped[key].push(item);
-          });
-          // 全科目共通を先頭に、科目名でソート
-          const sortedKeys = Object.keys(grouped).sort((a, b) => {
-            if (a === '全科目共通') return -1;
-            if (b === '全科目共通') return 1;
-            return a.localeCompare(b);
-          });
 
           if (allItems.length === 0) {
-            return <p className="text-xs text-gray-400">検証項目が登録されていません</p>;
+            return <p className="text-xs text-gray-400">チェック項目が登録されていません</p>;
           }
 
-          return sortedKeys.map(groupKey => (
-            <div key={groupKey} className="mb-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${groupKey === '全科目共通' ? 'bg-gray-100 text-gray-600' : 'bg-blue-50 text-blue-700'}`}>
-                  {groupKey}
-                </span>
-                <span className="text-xs text-gray-400">{grouped[groupKey].length}件</span>
-              </div>
-              <div className="space-y-1">
-                {grouped[groupKey].sort((a, b) => a.sortOrder - b.sortOrder).map(item => (
-                  <div key={item.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-sm flex-shrink-0 w-6 text-center text-gray-400">{item.sortOrder}</span>
-                      <span className="text-sm font-medium truncate">{item.name}</span>
-                      {item.isRequired && (
-                        <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full flex-shrink-0">必須</span>
-                      )}
-                      {item.description && (
-                        <span className="text-xs text-gray-400 truncate hidden sm:inline">{item.description}</span>
-                      )}
+          const purposeGroups = { verification: [], submission: [] };
+          allItems.forEach(item => {
+            const p = item.purpose || 'verification';
+            if (!purposeGroups[p]) purposeGroups[p] = [];
+            purposeGroups[p].push(item);
+          });
+
+          const purposeLabels = { verification: '検証チェック（リーダー用）', submission: '提出前チェック（作業者用）' };
+          const purposeColors = { verification: 'bg-green-50 text-green-700 border-green-200', submission: 'bg-purple-50 text-purple-700 border-purple-200' };
+
+          return ['submission', 'verification'].map(purpose => {
+            const items = purposeGroups[purpose] || [];
+            if (items.length === 0) return null;
+
+            // 科目でグループ化
+            const subjectGroups = {};
+            items.forEach(item => {
+              const sKey = item.subject || '全科目共通';
+              if (!subjectGroups[sKey]) subjectGroups[sKey] = [];
+              subjectGroups[sKey].push(item);
+            });
+            const sortedSubjects = Object.keys(subjectGroups).sort((a, b) => {
+              if (a === '全科目共通') return -1;
+              if (b === '全科目共通') return 1;
+              return a.localeCompare(b);
+            });
+
+            return (
+              <div key={purpose} className="mb-4">
+                <div className={`inline-block text-xs font-semibold px-3 py-1 rounded-full border mb-2 ${purposeColors[purpose]}`}>
+                  {purposeLabels[purpose]}（{items.length}件）
+                </div>
+                {sortedSubjects.map(subjectKey => {
+                  const subjectItems = subjectGroups[subjectKey];
+                  // さらに作業内容でグループ化
+                  const workTypeGroups = {};
+                  subjectItems.forEach(item => {
+                    const wKey = item.workType || '全作業種';
+                    if (!workTypeGroups[wKey]) workTypeGroups[wKey] = [];
+                    workTypeGroups[wKey].push(item);
+                  });
+                  const sortedWorkTypes = Object.keys(workTypeGroups).sort((a, b) => {
+                    if (a === '全作業種') return -1;
+                    if (b === '全作業種') return 1;
+                    return a.localeCompare(b);
+                  });
+
+                  return (
+                    <div key={subjectKey} className="mb-2 ml-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${subjectKey === '全科目共通' ? 'bg-gray-100 text-gray-600' : 'bg-blue-50 text-blue-700'}`}>
+                          {subjectKey}
+                        </span>
+                      </div>
+                      {sortedWorkTypes.map(wtKey => (
+                        <div key={wtKey} className="mb-1 ml-2">
+                          {wtKey !== '全作業種' && (
+                            <span className="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded mb-0.5 inline-block">{wtKey}</span>
+                          )}
+                          <div className="space-y-1">
+                            {workTypeGroups[wtKey].sort((a, b) => a.sortOrder - b.sortOrder).map(item => (
+                              <div key={item.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <span className="text-sm flex-shrink-0 w-6 text-center text-gray-400">{item.sortOrder}</span>
+                                  <span className="text-sm font-medium truncate">{item.name}</span>
+                                  {item.isRequired && (
+                                    <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full flex-shrink-0">必須</span>
+                                  )}
+                                  {item.workType && (
+                                    <span className="text-[10px] bg-yellow-50 text-yellow-600 px-1.5 py-0.5 rounded-full flex-shrink-0 hidden sm:inline">{item.workType}</span>
+                                  )}
+                                  {item.description && (
+                                    <span className="text-xs text-gray-400 truncate hidden sm:inline">{item.description}</span>
+                                  )}
+                                </div>
+                                <div className="flex gap-1 flex-shrink-0">
+                                  <button onClick={() => { setEditViId(item.id); setViForm({ name: item.name, description: item.description || '', subject: item.subject, sortOrder: item.sortOrder, isRequired: item.isRequired, purpose: item.purpose || 'verification', workType: item.workType || null }); }}
+                                    className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
+                                  <button onClick={() => deleteVerificationItem(item.id)}
+                                    className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button onClick={() => { setEditViId(item.id); setViForm({ name: item.name, description: item.description || '', subject: item.subject, sortOrder: item.sortOrder, isRequired: item.isRequired }); }}
-                        className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
-                      <button onClick={() => deleteVerificationItem(item.id)}
-                        className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            </div>
-          ));
+            );
+          });
         })()}
       </div>
     </div>
@@ -4578,6 +4641,7 @@ export default function LeaderDashboard() {
     RecruitmentTab,
     CorrectorEvaluationTab,
     FileMergeTab,
+    MasterDataTab,
     LeaderManualTab,
   ];
   const ActiveComponent = TAB_COMPONENTS[activeTab];

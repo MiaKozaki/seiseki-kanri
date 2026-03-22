@@ -965,6 +965,7 @@ export default function CorrectorDashboard() {
     startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
     getRejections, getRejectionCategories, getRejectionSeverities,
     getVerificationItems,
+    getFeedbacks,
   } = useData();
   const sheets = useSheetsSync();
 
@@ -1008,6 +1009,10 @@ export default function CorrectorDashboard() {
   const [submitForm, setSubmitForm] = useState({ actualHours: '', note: '', files: [] });
   const [isSubmitBusy, setIsSubmitBusy] = useState(false);
 
+  // 提出前チェックリストモーダル
+  const [checklistModalData, setChecklistModalData] = useState(null); // { assignmentId, defaultHours, items }
+  const [checklistResults, setChecklistResults] = useState({}); // { itemId: boolean }
+
   // 入力フォームビュー管理
   const [inputViewTaskId, setInputViewTaskId] = useState(null);
 
@@ -1016,8 +1021,25 @@ export default function CorrectorDashboard() {
   const [applyMessage, setApplyMessage] = useState('');
 
   const handleStartSubmit = (assignmentId, defaultHours) => {
+    // 提出前チェックリストがあるか確認
+    const assignment = getAssignments().find(a => a.id === assignmentId);
+    const task = assignment ? getTasks().find(t => t.id === assignment.taskId) : null;
+    if (task) {
+      const checkItems = getVerificationItems(task.subject, 'submission', task.workType);
+      if (checkItems.length > 0) {
+        setChecklistModalData({ assignmentId, defaultHours, items: checkItems });
+        setChecklistResults({});
+        return;
+      }
+    }
     setSubmittingId(assignmentId);
     setSubmitForm({ actualHours: String(defaultHours), note: '', files: [] });
+  };
+  const handleChecklistComplete = () => {
+    if (!checklistModalData) return;
+    setSubmittingId(checklistModalData.assignmentId);
+    setSubmitForm({ actualHours: String(checklistModalData.defaultHours), note: '', files: [] });
+    setChecklistModalData(null);
   };
   const handleCancelSubmit = () => {
     setSubmittingId(null);
@@ -1141,12 +1163,17 @@ export default function CorrectorDashboard() {
 
       // Update assignment
       stopActiveTimer(user.id);
+      // チェックリスト結果を含める
+      const clResults = Object.keys(checklistResults).length > 0
+        ? Object.entries(checklistResults).map(([itemId, checked]) => ({ itemId, checked, checkedAt: new Date().toISOString() }))
+        : undefined;
       updateAssignment(assignmentId, {
         status: 'submitted',
         actualHours: Number(submitForm.actualHours),
         submittedAt: new Date().toISOString(),
         ...(submitForm.note ? { note: submitForm.note } : {}),
         ...(attachmentMeta.length > 0 ? { attachments: attachmentMeta } : {}),
+        ...(clResults ? { submissionChecklistResults: clResults } : {}),
       });
       setSubmittingId(null);
       setSubmitForm({ actualHours: '', note: '', files: [] });
@@ -1601,6 +1628,25 @@ export default function CorrectorDashboard() {
                                   </div>
                                 );
                               })()}
+
+                              {/* フィードバック表示 */}
+                              {(() => {
+                                const fbs = getFeedbacks ? (getFeedbacks({ assignmentId: assignment.id }) || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : [];
+                                if (fbs.length === 0) return null;
+                                return (
+                                  <div className="mt-2">
+                                    <p className="text-[10px] text-amber-600 font-semibold mb-1">💬 リーダーからのFB（{fbs.length}件）</p>
+                                    <div className="space-y-1">
+                                      {fbs.map(fb => (
+                                        <div key={fb.id} className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs">
+                                          <p className="text-gray-700">{fb.message}</p>
+                                          <p className="text-[10px] text-gray-400 mt-0.5">{new Date(fb.createdAt).toLocaleString('ja-JP')}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
 
                             {/* アクションボタン（右側） -- 提出済みの場合はボタンなし */}
@@ -1719,11 +1765,11 @@ export default function CorrectorDashboard() {
                               </div>
                               {/* ファイル添付セクション */}
                               <div className="mt-2">
-                                <label className="block text-xs text-gray-500 mb-1">Excel添付（任意・最大5MB/件）</label>
+                                <label className="block text-xs text-gray-500 mb-1">ファイル添付（任意・Excel/Word・最大5MB/件）</label>
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition border border-gray-300">
                                     📎 ファイルを選択
-                                    <input type="file" accept=".xlsx,.xls" multiple onChange={handleFileAdd} className="hidden" />
+                                    <input type="file" accept=".xlsx,.xls,.docx,.doc" multiple onChange={handleFileAdd} className="hidden" />
                                   </label>
                                   {submitForm.files.length > 0 && (
                                     <span className="text-xs text-gray-500">{submitForm.files.length}件選択中</span>
@@ -2113,6 +2159,66 @@ export default function CorrectorDashboard() {
         })()}
       </div>
 
+      {/* 提出前チェックリストモーダル */}
+      {checklistModalData && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto p-6">
+            <h3 className="text-lg font-bold text-gray-800 mb-1">提出前チェックリスト</h3>
+            <p className="text-xs text-gray-500 mb-4">以下の項目を確認してからご提出ください。</p>
+            <div className="space-y-2 mb-4">
+              {checklistModalData.items.sort((a, b) => a.sortOrder - b.sortOrder).map(item => (
+                <label key={item.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                  <input
+                    type="checkbox"
+                    checked={!!checklistResults[item.id]}
+                    onChange={e => setChecklistResults(prev => ({ ...prev, [item.id]: e.target.checked }))}
+                    className="mt-0.5 rounded border-gray-300"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800">{item.name}</span>
+                      {item.isRequired && (
+                        <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">必須</span>
+                      )}
+                    </div>
+                    {item.description && (
+                      <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+            {(() => {
+              const requiredItems = checklistModalData.items.filter(i => i.isRequired);
+              const checkedRequired = requiredItems.filter(i => checklistResults[i.id]);
+              const allChecked = requiredItems.length === checkedRequired.length;
+              return (
+                <>
+                  <div className="text-xs text-gray-500 mb-3">
+                    必須項目: {checkedRequired.length} / {requiredItems.length} 完了
+                    {!allChecked && <span className="text-red-500 ml-2">※ 全ての必須項目にチェックしてください</span>}
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => { setChecklistModalData(null); setChecklistResults({}); }}
+                      className="text-sm text-gray-500 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      onClick={handleChecklistComplete}
+                      disabled={!allChecked}
+                      className="text-sm bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition font-medium"
+                    >
+                      確認完了 → 提出へ
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
