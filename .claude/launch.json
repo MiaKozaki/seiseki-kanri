@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "seiseki-kanri",
+      "runtimeExecutable": "/Users/mia/.bun/bin/bun",
+      "runtimeArgs": ["run", "dev", "--", "--host"],
+      "port": 5173
+    }
+  ]
+}
