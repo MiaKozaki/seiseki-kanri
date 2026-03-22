@@ -167,6 +167,100 @@ export const validateUserCSV = (rows) => {
   return { valid, errors };
 };
 
+/**
+ * 分野研修クリアCSVのバリデーション
+ * CSVフォーマット: ヘッダ行の1列目が「ログインID」or「氏名」、残りの列が分野名
+ * データ行: 1列目がユーザー識別子、残りの列に「○」「1」「✓」等があればクリア済み
+ *
+ * @param {Object[]} rows - parseCSVで得られたオブジェクト配列
+ * @param {Object[]} fields - DataContextのgetFields()で取得した分野一覧
+ * @param {Object[]} users - DataContextのgetUsers()で取得したユーザー一覧
+ * @returns {{ valid: Object[], errors: string[], summary: { userCount: number, fieldCount: number } }}
+ */
+export const validateFieldClearanceCSV = (rows, fields, users) => {
+  const valid = [];
+  const errors = [];
+  const matchedUserIds = new Set();
+  const matchedFieldIds = new Set();
+
+  // ヘッダから分野名カラムを特定（1列目はユーザー識別用なので除外）
+  // rows はオブジェクト配列なので、キーから分野名を取得
+  if (rows.length === 0) {
+    errors.push('データ行がありません');
+    return { valid, errors, summary: { userCount: 0, fieldCount: 0 } };
+  }
+
+  const allKeys = Object.keys(rows[0]);
+  // 1列目のキーはユーザー識別子
+  const userKey = allKeys[0];
+  const fieldColumns = allKeys.slice(1);
+
+  // 分野名→分野オブジェクトのマップ
+  const fieldMap = new Map();
+  fields.forEach(f => {
+    fieldMap.set(f.name, f);
+    // 念のためトリムしたものも
+    fieldMap.set(f.name.trim(), f);
+  });
+
+  // ユーザー検索ヘルパー: loginId → name の順で照合
+  const findUser = (identifier) => {
+    if (!identifier) return null;
+    const trimmed = identifier.trim();
+    return users.find(u => u.loginId === trimmed) ||
+           users.find(u => u.name === trimmed) ||
+           null;
+  };
+
+  // 「クリア済み」と判定する値
+  const isClearedValue = (val) => {
+    const v = (val ?? '').trim();
+    return v === '○' || v === '◯' || v === '1' || v === '✓' || v === '✔' || v === 'o' || v === 'O' || v === 'yes' || v === 'Yes' || v === 'YES' || v === 'true' || v === 'x' || v === 'X';
+  };
+
+  // 未解決の分野名を先にチェック
+  const unknownFields = [];
+  fieldColumns.forEach(col => {
+    if (!fieldMap.has(col.trim())) {
+      unknownFields.push(col.trim());
+    }
+  });
+  if (unknownFields.length > 0) {
+    errors.push(`不明な分野名: ${unknownFields.join('、')}`);
+  }
+
+  rows.forEach((row, i) => {
+    const lineNum = i + 2;
+    const identifier = (row[userKey] ?? '').trim();
+    if (!identifier) {
+      errors.push(`${lineNum}行目: ユーザー識別子が空です`);
+      return;
+    }
+
+    const user = findUser(identifier);
+    if (!user) {
+      errors.push(`${lineNum}行目: ユーザー「${identifier}」が見つかりません`);
+      return;
+    }
+
+    fieldColumns.forEach(col => {
+      const field = fieldMap.get(col.trim());
+      if (!field) return; // 既にエラー報告済み
+      if (isClearedValue(row[col])) {
+        valid.push({ userId: user.id, fieldId: field.id, userName: user.name, fieldName: field.name });
+        matchedUserIds.add(user.id);
+        matchedFieldIds.add(field.id);
+      }
+    });
+  });
+
+  return {
+    valid,
+    errors,
+    summary: { userCount: matchedUserIds.size, fieldCount: matchedFieldIds.size },
+  };
+};
+
 // ---------- カラム定義 ----------
 
 export const USER_CSV_COLUMNS = [

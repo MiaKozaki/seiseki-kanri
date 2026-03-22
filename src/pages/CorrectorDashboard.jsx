@@ -962,6 +962,7 @@ export default function CorrectorDashboard() {
     getTasks,
     getExamInputs, saveExamInput,
     getRecruitments, getApplications, addApplication, claimVikingTask,
+    getUserFields, getFields,
     startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
     getRejections, getRejectionCategories, getRejectionSeverities,
     getVerificationItems,
@@ -1469,7 +1470,9 @@ export default function CorrectorDashboard() {
               <>
               {/* VIKINGタスク一覧 */}
               {(() => {
-                const vikingTasks = tasks.filter(t => t.viking && t.status === 'pending' && user.subjects?.includes(t.subject));
+                const myUserFields = getUserFields ? getUserFields(user.id) : [];
+                const myFieldIds = myUserFields.map(uf => uf.fieldId);
+                const vikingTasks = tasks.filter(t => t.viking && t.status === 'pending' && user.subjects?.includes(t.subject) && (!t.fieldId || myFieldIds.includes(t.fieldId)));
                 if (vikingTasks.length === 0) return null;
                 return (
                   <div className="bg-white rounded-xl shadow-sm p-6 mb-4 border-2 border-orange-200">
@@ -1487,7 +1490,7 @@ export default function CorrectorDashboard() {
                               <span className="text-sm font-medium text-gray-800">{task.name}</span>
                             </div>
                             <p className="text-xs text-gray-400 mt-0.5">
-                              {task.subject}{task.workType ? ` · ${task.workType}` : ''} · {task.requiredHours}h · 期限: {task.deadline}
+                              {task.subject}{task.workType ? ` · ${task.workType}` : ''}{task.fieldId && getFields ? (() => { const f = getFields().find(f => f.id === task.fieldId); return f ? ` · ${f.name}` : ''; })() : ''} · {task.requiredHours}h · 期限: {task.deadline}
                             </p>
                           </div>
                           <button

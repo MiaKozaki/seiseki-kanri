@@ -632,6 +632,12 @@ export const DataProvider = ({ children }) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task || !task.viking || task.status !== 'pending') return null;
 
+    // 分野制限チェック
+    if (task.fieldId) {
+      const userFieldIds = (d('userFields') || []).filter(uf => uf.userId === userId).map(uf => uf.fieldId);
+      if (!userFieldIds.includes(task.fieldId)) return null;
+    }
+
     const now = new Date().toISOString();
     const newAssignment = {
       id: generateId(), taskId, userId,
@@ -1032,6 +1038,71 @@ export const DataProvider = ({ children }) => {
     return fb;
   };
 
+  // ---- Fields (分野マスタ) ----
+  const getFields = (subject = null) => {
+    const all = d('fields') || [];
+    return subject ? all.filter(f => f.subject === subject) : all;
+  };
+  const addField = (fieldData) => {
+    const field = { ...fieldData, id: generateId(), createdAt: new Date().toISOString() };
+    updateCollection('fields', [...(d('fields') || []), field]);
+    fsWrite(() => saveDocument('fields', field));
+    forceRefresh();
+    return field;
+  };
+  const updateField = (id, updates) => {
+    const updated = (d('fields') || []).map(f => f.id === id ? { ...f, ...updates } : f);
+    updateCollection('fields', updated);
+    fsWrite(() => { const item = updated.find(f => f.id === id); if (item) return saveDocument('fields', item); return Promise.resolve(); });
+    forceRefresh();
+  };
+  const deleteField = (id) => {
+    updateMultipleCollections({
+      fields: (d('fields') || []).filter(f => f.id !== id),
+      userFields: (d('userFields') || []).filter(uf => uf.fieldId !== id),
+    });
+    fsWrite(async () => { await deleteDocument('fields', id); });
+    forceRefresh();
+  };
+
+  // ---- UserFields (分野研修クリア) ----
+  const getUserFields = (userId = null) => {
+    const all = d('userFields') || [];
+    return userId ? all.filter(uf => uf.userId === userId) : all;
+  };
+  const addUserField = (userId, fieldId) => {
+    const existing = (d('userFields') || []).find(uf => uf.userId === userId && uf.fieldId === fieldId);
+    if (existing) return existing;
+    const uf = { id: generateId(), userId, fieldId, clearedAt: new Date().toISOString() };
+    updateCollection('userFields', [...(d('userFields') || []), uf]);
+    fsWrite(() => saveDocument('userFields', uf));
+    forceRefresh();
+    return uf;
+  };
+  const removeUserField = (userId, fieldId) => {
+    updateCollection('userFields', (d('userFields') || []).filter(uf => !(uf.userId === userId && uf.fieldId === fieldId)));
+    forceRefresh();
+  };
+  const bulkSetUserFields = (userId, fieldIds) => {
+    const others = (d('userFields') || []).filter(uf => uf.userId !== userId);
+    const newEntries = fieldIds.map(fieldId => ({ id: generateId(), userId, fieldId, clearedAt: new Date().toISOString() }));
+    updateCollection('userFields', [...others, ...newEntries]);
+    forceRefresh();
+  };
+  const bulkImportUserFields = (entries) => {
+    // entries = [{ userId, fieldId }]
+    const existing = d('userFields') || [];
+    const existingSet = new Set(existing.map(uf => `${uf.userId}_${uf.fieldId}`));
+    const newEntries = entries
+      .filter(e => !existingSet.has(`${e.userId}_${e.fieldId}`))
+      .map(e => ({ id: generateId(), userId: e.userId, fieldId: e.fieldId, clearedAt: new Date().toISOString() }));
+    if (newEntries.length > 0) {
+      updateCollection('userFields', [...existing, ...newEntries]);
+      forceRefresh();
+    }
+    return newEntries.length;
+  };
+
   // ---- autoAssign用: 一括データ取得 + 結果反映 ----
   const getAllData = () => data || getAll();
 
@@ -1073,6 +1144,8 @@ export const DataProvider = ({ children }) => {
       getVerificationResults, initVerificationResults, updateVerificationResult, toggleVerificationResult,
       getRejections, addRejection,
       getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
+      getFields, addField, updateField, deleteField,
+      getUserFields, addUserField, removeUserField, bulkSetUserFields, bulkImportUserFields,
       getFeedbacks, addFeedback,
       getNotifications, markNotificationRead, markAllNotificationsRead,
       startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,

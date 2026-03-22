@@ -418,6 +418,56 @@ export const INITIAL_DATA = {
     { id: 'vi5', name: '計算過程の確認', description: '途中式の採点が正しいか', subject: '算数', sortOrder: 1, isRequired: true, purpose: 'verification', workType: null, createdAt: '2026-01-01T00:00:00.000Z' },
   ],
   feedbacks: [],
+  fields: [
+    // 理科 - 化学
+    { id: 'fld_r1', name: '中和', subject: '理科', category: '化学', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_r2', name: '燃焼', subject: '理科', category: '化学', sortOrder: 2, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_r3', name: '熱', subject: '理科', category: '化学', sortOrder: 3, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_r4', name: '溶解度', subject: '理科', category: '化学', sortOrder: 4, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_r5', name: '状態', subject: '理科', category: '化学', sortOrder: 5, createdAt: '2026-01-01T00:00:00.000Z' },
+    // 理科 - 物理
+    { id: 'fld_r6', name: 'てこ', subject: '理科', category: '物理', sortOrder: 6, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_r7', name: '滑車', subject: '理科', category: '物理', sortOrder: 7, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_r8', name: '電気', subject: '理科', category: '物理', sortOrder: 8, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_r9', name: 'ばね', subject: '理科', category: '物理', sortOrder: 9, createdAt: '2026-01-01T00:00:00.000Z' },
+    // 理科 - 生物
+    { id: 'fld_r10', name: '光合成', subject: '理科', category: '生物', sortOrder: 10, createdAt: '2026-01-01T00:00:00.000Z' },
+    // 理科 - 地学
+    { id: 'fld_r11', name: '星座', subject: '理科', category: '地学', sortOrder: 11, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_r12', name: '月', subject: '理科', category: '地学', sortOrder: 12, createdAt: '2026-01-01T00:00:00.000Z' },
+    // 算数
+    { id: 'fld_m1', name: '割合の線分図', subject: '算数', category: null, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m2', name: '仕事算＋ニュートン算', subject: '算数', category: null, sortOrder: 2, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m3', name: '食塩水', subject: '算数', category: null, sortOrder: 3, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m4', name: 'つるかめ算', subject: '算数', category: null, sortOrder: 4, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m5', name: '旅人算', subject: '算数', category: null, sortOrder: 5, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m6', name: '約数・倍数', subject: '算数', category: null, sortOrder: 6, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m7', name: '角度や面積', subject: '算数', category: null, sortOrder: 7, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m8', name: '移動範囲', subject: '算数', category: null, sortOrder: 8, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m9', name: '回転・転がり移動', subject: '算数', category: null, sortOrder: 9, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m10', name: '図形の移動', subject: '算数', category: null, sortOrder: 10, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m11', name: '植木算', subject: '算数', category: null, sortOrder: 11, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m12', name: '数列・数表', subject: '算数', category: null, sortOrder: 12, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m13', name: '消去算', subject: '算数', category: null, sortOrder: 13, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m14', name: '差集め算', subject: '算数', category: null, sortOrder: 14, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m15', name: '比体積・表面積', subject: '算数', category: null, sortOrder: 15, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m16', name: '投影図・回転体と比', subject: '算数', category: null, sortOrder: 16, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m17', name: '水量グラフ', subject: '算数', category: null, sortOrder: 17, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m18', name: '周期', subject: '算数', category: null, sortOrder: 18, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m19', name: 'N進法', subject: '算数', category: null, sortOrder: 19, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m20', name: '速さの特殊算', subject: '算数', category: null, sortOrder: 20, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m21', name: '法陣算', subject: '算数', category: null, sortOrder: 21, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m22', name: '立体の切断', subject: '算数', category: null, sortOrder: 22, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m23', name: '点の移動', subject: '算数', category: null, sortOrder: 23, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m24', name: '和差(消去算以外)', subject: '算数', category: null, sortOrder: 24, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m25', name: '売買損益', subject: '算数', category: null, sortOrder: 25, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m26', name: '速さと比', subject: '算数', category: null, sortOrder: 26, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m27', name: '数に関する問題', subject: '算数', category: null, sortOrder: 27, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m28', name: '条件整理', subject: '算数', category: null, sortOrder: 28, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m29', name: '場合の数', subject: '算数', category: null, sortOrder: 29, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fld_m30', name: '操作', subject: '算数', category: null, sortOrder: 30, createdAt: '2026-01-01T00:00:00.000Z' },
+  ],
+  userFields: [],
   verificationResults: [],
   workflowStatuses: [
     { id: 'ws1', subject: null, workType: null, name: 'pending', label: '未振り分け', color: '#f59e0b', sortOrder: 0, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
@@ -485,6 +535,19 @@ export const initStorage = () => {
     }
     if (!data.rejectionSeverities) { data.rejectionSeverities = []; updated = true; }
     if (!data.rejections) { data.rejections = []; updated = true; }
+    // fields/userFields マイグレーション
+    if (!data.fields) { data.fields = INITIAL_DATA.fields || []; updated = true; }
+    if (!data.userFields) { data.userFields = []; updated = true; }
+    // fields 初期データ追記マイグレーション
+    if (!data._demoFieldsV1) {
+      const demoFields = INITIAL_DATA.fields || [];
+      const existingIds = new Set((data.fields || []).map(f => f.id));
+      for (const f of demoFields) {
+        if (!existingIds.has(f.id)) data.fields.push(f);
+      }
+      data._demoFieldsV1 = true;
+      updated = true;
+    }
     // evaluationCriteria migration
     if (data.evaluationCriteria && data.evaluationCriteria.length > 0 && data.evaluationCriteria[0].subject === undefined) {
       data.evaluationCriteria = data.evaluationCriteria.map(c => ({

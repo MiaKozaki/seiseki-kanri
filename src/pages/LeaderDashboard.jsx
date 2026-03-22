@@ -6,8 +6,8 @@ import {
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
-import { toCSV, downloadCSV, importCSVFile, validateUserCSV, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
-import { SUBJECTS_LIST, WORK_TYPES_LIST } from '../utils/storage.js';
+import { toCSV, downloadCSV, importCSVFile, validateUserCSV, validateFieldClearanceCSV, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
+import { SUBJECTS_LIST, WORK_TYPES_LIST, generateId } from '../utils/storage.js';
 import { useSheetsSync } from '../contexts/SheetsContext.jsx';
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
 import { downloadAttachment } from '../utils/fileStorage.js';
@@ -1000,7 +1000,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     getAssignments, deleteAssignment, updateAssignment,
     getCorrectors, getCapacities, forceRefresh,
     getExamInputs, getTimeLogs, getTaskTotalTime, getDaimonTotalTime, getUsers,
-    getAllData, applyAutoAssignResult,
+    getAllData, applyAutoAssignResult, getFields,
   } = useData();
   const { user } = useAuth();
 
@@ -1014,7 +1014,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const [section, setSection] = useState(0);
 
   // Task form state
-  const [form, setForm] = useState({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false });
+  const [form, setForm] = useState({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState('');
 
@@ -1079,10 +1079,25 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     if (editId) {
       updateTask(editId, { ...form, requiredHours: Number(form.requiredHours) });
       setEditId(null);
+    } else if (form.splitByDaimon && form.daimons.length > 0) {
+      const parentTaskGroup = generateId();
+      form.daimons.forEach(daimon => {
+        addTask({
+          name: `${form.name} ${daimon.name}`,
+          subject: form.subject,
+          workType: form.workType,
+          requiredHours: Number(daimon.requiredHours) || 0,
+          deadline: form.deadline,
+          sheetsUrl: form.sheetsUrl,
+          viking: true,
+          fieldId: daimon.fieldId || null,
+          parentTaskGroup,
+        });
+      });
     } else {
       addTask({ ...form, requiredHours: Number(form.requiredHours), viking: !!form.viking });
     }
-    setForm({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false });
+    setForm({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
   };
 
   const handleEdit = (task) => {
@@ -1275,6 +1290,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 </select>
               </div>
             </div>
+            {!form.splitByDaimon && (
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">必要工数（時間）</label>
               <input
@@ -1285,6 +1301,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">期限</label>
               <input
@@ -1308,6 +1325,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 placeholder="https://docs.google.com/spreadsheets/d/..."
               />
             </div>
+            {!form.splitByDaimon && (
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -1321,13 +1339,93 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 <span className="ml-1 text-gray-400 font-normal">（添削者が自分で取れるタスク）</span>
               </label>
             </div>
+            )}
+            {(form.subject === '理科' || form.subject === '算数') && form.workType === '新年度試験種' && (
+              <div className="border border-indigo-200 rounded-lg p-3 bg-indigo-50/50 space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="split-daimon-check"
+                    checked={form.splitByDaimon}
+                    onChange={e => setForm({ ...form, splitByDaimon: e.target.checked, daimons: e.target.checked ? form.daimons : [] })}
+                    className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                  />
+                  <label htmlFor="split-daimon-check" className="text-sm font-medium text-gray-700">
+                    大問分割モード
+                    <span className="ml-1 text-gray-400 font-normal">（大問ごとにタスクを分割登録）</span>
+                  </label>
+                </div>
+                {form.splitByDaimon && (
+                  <div className="space-y-2">
+                    {form.daimons.map((d, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <input
+                          type="text"
+                          placeholder="大問名 (例: 大問1)"
+                          value={d.name}
+                          onChange={e => {
+                            const updated = [...form.daimons];
+                            updated[i] = { ...updated[i], name: e.target.value };
+                            setForm({ ...form, daimons: updated });
+                          }}
+                          className="flex-1 min-w-[100px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                        <select
+                          value={d.fieldId}
+                          onChange={e => {
+                            const updated = [...form.daimons];
+                            updated[i] = { ...updated[i], fieldId: e.target.value };
+                            setForm({ ...form, daimons: updated });
+                          }}
+                          className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                          <option value="">分野を選択</option>
+                          {getFields(form.subject).map(f => (
+                            <option key={f.id} value={f.id}>{f.name}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          placeholder="工数"
+                          value={d.requiredHours}
+                          onChange={e => {
+                            const updated = [...form.daimons];
+                            updated[i] = { ...updated[i], requiredHours: e.target.value };
+                            setForm({ ...form, daimons: updated });
+                          }}
+                          min="0" max="500"
+                          className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = form.daimons.filter((_, idx) => idx !== i);
+                            setForm({ ...form, daimons: updated });
+                          }}
+                          className="text-red-400 hover:text-red-600 text-lg font-bold px-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, daimons: [...form.daimons, { name: '', fieldId: '', requiredHours: '' }] })}
+                      className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                      + 大問を追加
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {error && <p className="text-red-500 text-xs">{error}</p>}
             <div className="flex gap-2">
               <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
                 {editId ? '更新' : '追加'}
               </button>
               {editId && (
-                <button type="button" onClick={() => { setEditId(null); setForm({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false }); }}
+                <button type="button" onClick={() => { setEditId(null); setForm({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] }); }}
                   className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg transition">
                   キャンセル
                 </button>
@@ -3194,7 +3292,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
 
 // ---- User Management Tab ----
 const UserManagementTab = ({ activeSubjects }) => {
-  const { getUsers, getCorrectors, addUser, updateUser, deleteUser, resetUserPassword } = useData();
+  const { getUsers, getCorrectors, addUser, updateUser, deleteUser, resetUserPassword, getFields, getUserFields, bulkImportUserFields, bulkSetUserFields, addUserField, removeUserField } = useData();
   const correctors = getCorrectors();
 
   const [form, setForm] = useState({ name: '', email: '', loginId: '' });
@@ -3205,6 +3303,8 @@ const UserManagementTab = ({ activeSubjects }) => {
   const [generatedPw, setGeneratedPw] = useState(null);
   const [generatedPwUser, setGeneratedPwUser] = useState('');
   const [generatedPwLoginId, setGeneratedPwLoginId] = useState('');
+  const [fieldCsvPreview, setFieldCsvPreview] = useState(null);
+  const [expandedFieldUserId, setExpandedFieldUserId] = useState(null);
 
   const handleExportCSV = () => {
     const data = correctors.map(c => ({
@@ -3402,6 +3502,64 @@ const UserManagementTab = ({ activeSubjects }) => {
         )}
       </div>
 
+      {/* 分野研修クリア CSV インポート */}
+      <div className="bg-white rounded-xl shadow-sm border p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">📚 分野研修クリア管理</h4>
+        <button
+          onClick={async () => {
+            try {
+              const { rows } = await importCSVFile();
+              const allFields = getFields();
+              const allUsers = getUsers();
+              const result = validateFieldClearanceCSV(rows, allFields, allUsers);
+              setFieldCsvPreview(result);
+            } catch (e) {
+              setFieldCsvPreview({ valid: [], errors: [e.message], summary: { userCount: 0, fieldCount: 0 } });
+            }
+          }}
+          className="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-3 py-1.5 rounded-lg transition"
+        >
+          📥 分野クリアCSVインポート
+        </button>
+        <p className="text-xs text-gray-400 mt-2">CSVフォーマット: 1列目にログインIDまたは氏名、2列目以降に分野名をヘッダに記載し、クリア済みセルに「○」「1」等を入力</p>
+
+        {fieldCsvPreview && (
+          <div className="mt-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
+            <h4 className="text-sm font-bold text-purple-800 mb-2">📥 分野クリアCSV プレビュー</h4>
+            <p className="text-xs text-purple-700 mb-2">ユーザー{fieldCsvPreview.summary.userCount}名、分野{fieldCsvPreview.summary.fieldCount}件</p>
+            {fieldCsvPreview.errors.length > 0 && (
+              <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                {fieldCsvPreview.errors.map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+              </div>
+            )}
+            {fieldCsvPreview.valid.length > 0 && (
+              <div className="space-y-1 max-h-40 overflow-y-auto mb-3">
+                {fieldCsvPreview.valid.map((entry, i) => (
+                  <div key={i} className="text-xs flex items-center gap-2 bg-white rounded p-2">
+                    <span className="font-medium text-gray-700">{entry.userName}</span>
+                    <span className="text-purple-600">{entry.fieldName}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setFieldCsvPreview(null)}
+                className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">キャンセル</button>
+              <button
+                onClick={() => {
+                  bulkImportUserFields(fieldCsvPreview.valid.map(e => ({ userId: e.userId, fieldId: e.fieldId })));
+                  setFieldCsvPreview(null);
+                }}
+                disabled={fieldCsvPreview.valid.length === 0}
+                className="text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white px-3 py-1.5 rounded-lg transition"
+              >
+                {fieldCsvPreview.valid.length}件を登録する
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">添削者一覧（{correctors.length}人）</h3>
         {correctors.length === 0 ? (
@@ -3424,8 +3582,48 @@ const UserManagementTab = ({ activeSubjects }) => {
                         className="text-xs text-amber-500 hover:bg-amber-50 px-2 py-1 rounded transition">PW リセット</button>
                       <button onClick={() => { if (confirm(`「${c.name}」を削除しますか？`)) deleteUser(c.id); }}
                         className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded transition">削除</button>
+                      <button onClick={() => setExpandedFieldUserId(expandedFieldUserId === c.id ? null : c.id)}
+                        className={`text-xs px-2 py-1 rounded transition ${expandedFieldUserId === c.id ? 'bg-purple-100 text-purple-700' : 'text-purple-500 hover:bg-purple-50'}`}>分野</button>
                     </div>
                   </div>
+
+                  {/* 分野研修クリア管理（展開式） */}
+                  {expandedFieldUserId === c.id && (() => {
+                    const userFields = getUserFields(c.id);
+                    const subjects = c.subjects ?? [];
+                    const allFields = getFields();
+                    const relevantSubjects = subjects.length > 0 ? subjects : SUBJECTS_LIST;
+                    return (
+                      <div className="mt-2 p-3 bg-purple-50 rounded-lg">
+                        <p className="text-xs font-medium text-purple-700 mb-2">分野研修クリア状況</p>
+                        {relevantSubjects.map(subj => {
+                          const subjectFields = allFields.filter(f => f.subject === subj);
+                          if (subjectFields.length === 0) return null;
+                          return (
+                            <div key={subj} className="mb-2">
+                              <p className="text-xs font-semibold text-gray-600 mb-1">{subj}の分野</p>
+                              <div className="flex flex-wrap gap-1">
+                                {subjectFields.map(field => {
+                                  const isCleared = userFields.some(uf => uf.fieldId === field.id);
+                                  return (
+                                    <button key={field.id}
+                                      onClick={() => isCleared ? removeUserField(c.id, field.id) : addUserField(c.id, field.id)}
+                                      className={`text-xs px-2 py-1 rounded-lg border transition ${isCleared ? 'bg-green-100 text-green-700 border-green-300' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'}`}
+                                    >
+                                      {field.name} {isCleared ? '✓' : ''}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {allFields.length === 0 && (
+                          <p className="text-xs text-gray-400">分野マスタが登録されていません。マスタタブから分野を追加してください。</p>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* 担当科目表示 */}
                   <div>
@@ -3757,7 +3955,7 @@ const RecruitmentTab = ({ activeSubjects }) => {
 
 // ---- Master Data Tab ----
 const MasterDataTab = ({ activeSubjects }) => {
-  const { getSchools, addSchool, deleteSchool, getExamTypes, addExamType, deleteExamType, getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem } = useData();
+  const { getSchools, addSchool, deleteSchool, getExamTypes, addExamType, deleteExamType, getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField } = useData();
   const sheets = useSheetsSync();
   const schools = getSchools();
   const examTypes = getExamTypes();
@@ -3770,6 +3968,8 @@ const MasterDataTab = ({ activeSubjects }) => {
   const [editSevId, setEditSevId] = useState(null);
   const [viForm, setViForm] = useState({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false, purpose: 'verification', workType: null });
   const [editViId, setEditViId] = useState(null);
+  const [fieldForm, setFieldForm] = useState({ name: '', subject: '理科', category: null, sortOrder: 1 });
+  const [editFieldId, setEditFieldId] = useState(null);
 
   // Google Sheets 設定フォームの一時状態
   const [draftClientId, setDraftClientId] = useState(sheets.settings.clientId);
@@ -4125,6 +4325,136 @@ const MasterDataTab = ({ activeSubjects }) => {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* 分野マスタの管理 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">📚 分野マスタの管理</h4>
+        <p className="text-xs text-gray-500 mb-3">理科・算数の分野を管理します。VIKINGタスクの分野制限に使用します。</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <select value={fieldForm.subject}
+            onChange={e => setFieldForm({ ...fieldForm, subject: e.target.value, category: e.target.value === '理科' ? fieldForm.category : null })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="理科">理科</option>
+            <option value="算数">算数</option>
+          </select>
+          {fieldForm.subject === '理科' && (
+            <select value={fieldForm.category || ''}
+              onChange={e => setFieldForm({ ...fieldForm, category: e.target.value || null })}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <option value="">カテゴリを選択</option>
+              <option value="化学">化学</option>
+              <option value="物理">物理</option>
+              <option value="生物">生物</option>
+              <option value="地学">地学</option>
+            </select>
+          )}
+          <input type="text" placeholder="分野名" value={fieldForm.name}
+            onChange={e => setFieldForm({ ...fieldForm, name: e.target.value })}
+            className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <input type="number" placeholder="表示順" value={fieldForm.sortOrder} min="1" max="99"
+            onChange={e => setFieldForm({ ...fieldForm, sortOrder: Number(e.target.value) })}
+            className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm" title="表示順" />
+          <button onClick={() => {
+            if (!fieldForm.name.trim()) return;
+            if (editFieldId) {
+              updateField(editFieldId, fieldForm);
+              setEditFieldId(null);
+            } else {
+              addField(fieldForm);
+            }
+            setFieldForm({ name: '', subject: fieldForm.subject, category: fieldForm.subject === '理科' ? fieldForm.category : null, sortOrder: 1 });
+          }}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
+            {editFieldId ? '更新' : '追加'}
+          </button>
+          {editFieldId && (
+            <button onClick={() => { setEditFieldId(null); setFieldForm({ name: '', subject: '理科', category: null, sortOrder: 1 }); }}
+              className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
+          )}
+        </div>
+
+        {/* グループ別表示: 科目 → カテゴリ */}
+        {(() => {
+          const allFields = getFields() || [];
+
+          if (allFields.length === 0) {
+            return <p className="text-xs text-gray-400">分野が登録されていません</p>;
+          }
+
+          return ['理科', '算数'].map(subject => {
+            const subjectFields = allFields.filter(f => f.subject === subject);
+            if (subjectFields.length === 0) return null;
+
+            return (
+              <div key={subject} className="mb-4">
+                <div className={`inline-block text-xs font-semibold px-3 py-1 rounded-full border mb-2 ${subject === '理科' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                  {subject}（{subjectFields.length}件）
+                </div>
+                {subject === '理科' ? (
+                  (() => {
+                    const categoryGroups = {};
+                    subjectFields.forEach(item => {
+                      const cKey = item.category || '未分類';
+                      if (!categoryGroups[cKey]) categoryGroups[cKey] = [];
+                      categoryGroups[cKey].push(item);
+                    });
+                    const categoryOrder = ['化学', '物理', '生物', '地学', '未分類'];
+                    const sortedCategories = Object.keys(categoryGroups).sort((a, b) => {
+                      const ai = categoryOrder.indexOf(a);
+                      const bi = categoryOrder.indexOf(b);
+                      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+                    });
+
+                    return sortedCategories.map(catKey => (
+                      <div key={catKey} className="mb-2 ml-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                            {catKey}
+                          </span>
+                        </div>
+                        <div className="space-y-1 ml-2">
+                          {categoryGroups[catKey].sort((a, b) => a.sortOrder - b.sortOrder).map(item => (
+                            <div key={item.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <span className="text-sm flex-shrink-0 w-6 text-center text-gray-400">{item.sortOrder}</span>
+                                <span className="text-sm font-medium truncate">{item.name}</span>
+                                <span className="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded-full flex-shrink-0">{item.category}</span>
+                              </div>
+                              <div className="flex gap-1 flex-shrink-0">
+                                <button onClick={() => { setEditFieldId(item.id); setFieldForm({ name: item.name, subject: item.subject, category: item.category || null, sortOrder: item.sortOrder }); }}
+                                  className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
+                                <button onClick={() => deleteField(item.id)}
+                                  className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ));
+                  })()
+                ) : (
+                  <div className="space-y-1 ml-2">
+                    {subjectFields.sort((a, b) => a.sortOrder - b.sortOrder).map(item => (
+                      <div key={item.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="text-sm flex-shrink-0 w-6 text-center text-gray-400">{item.sortOrder}</span>
+                          <span className="text-sm font-medium truncate">{item.name}</span>
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button onClick={() => { setEditFieldId(item.id); setFieldForm({ name: item.name, subject: item.subject, category: item.category || null, sortOrder: item.sortOrder }); }}
+                            className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
+                          <button onClick={() => deleteField(item.id)}
+                            className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          });
+        })()}
       </div>
 
       {/* チェックリストの管理 */}
@@ -4651,7 +4981,7 @@ const LeaderManualTab = () => {
 // ---- Main Leader Dashboard ----
 export default function LeaderDashboard() {
   const { user, logout, changePassword } = useAuth();
-  const { getNotifications, getUsers } = useData();
+  const { getNotifications, getUsers, getFields } = useData();
   const [activeTab, setActiveTab] = useState(0);
   const [subjectFilter, setSubjectFilter] = useState(user.subjects?.length > 0 ? [...user.subjects] : [...SUBJECTS_LIST]);
   const [showAll, setShowAll] = useState(!(user.subjects?.length > 0));

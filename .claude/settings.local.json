@@ -55,7 +55,23 @@
       "Bash(gh auth:*)",
       "Bash(/usr/bin/git init:*)",
       "Bash(/usr/bin/git add:*)",
-      "Bash(/usr/bin/git status:*)"
+      "Bash(/usr/bin/git status:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(git clean:*)",
+      "Bash(git push:*)",
+      "Bash(npx gh-pages:*)",
+      "Bash(/Users/mia/.bun/bin/bunx gh-pages:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(node_modules/.bin/vite build:*)",
+      "Bash(node node_modules/.bin/vite build)",
+      "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$HOME/.bun/bin:$HOME/.nvm/versions/node/*/bin:$PATH\")",
+      "Bash(export PATH=\"$HOME/.bun/bin:$PATH\")",
+      "Bash(bun run:*)",
+      "Bash(npx --yes vite build --logLevel error)",
+      "Bash(node -e \":*)"
     ]
   }
 }
