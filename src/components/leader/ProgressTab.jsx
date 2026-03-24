@@ -1308,7 +1308,8 @@ const ProgressTab = ({ activeSubjects }) => {
                                     <p className="text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-1.5">{task.name || '不明'}</p>
                                   </div>
 
-                                  {/* FB内容チェックリスト */}
+                                  {/* FB内容チェックリスト（社会のみ） */}
+                                  {task.subject === '社会' && (
                                   <div>
                                     <p className="text-[10px] text-gray-500 mb-1">FB内容チェックリスト（複数選択可）</p>
                                     <div className="space-y-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg p-2">
@@ -1325,10 +1326,11 @@ const ProgressTab = ({ activeSubjects }) => {
                                       ))}
                                     </div>
                                   </div>
+                                  )}
 
                                   {/* 具体的な内容・指摘箇所 */}
                                   <div>
-                                    <p className="text-[10px] text-gray-500 mb-0.5">具体的な内容・指摘箇所（自由記述）</p>
+                                    <p className="text-[10px] text-gray-500 mb-0.5">{task.subject === '国語' ? 'FB内容（自由記述）' : '具体的な内容・指摘箇所（自由記述）'}</p>
                                     <textarea
                                       value={feedbackDetail}
                                       onChange={e => setFeedbackDetail(e.target.value)}
@@ -1343,12 +1345,19 @@ const ProgressTab = ({ activeSubjects }) => {
                                       className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">キャンセル</button>
                                     <button onClick={() => {
                                       const checkedItems = FB_CATEGORIES.filter(cat => feedbackChecks[cat.id]);
-                                      if (checkedItems.length === 0) return;
-                                      const messageParts = ['【FB内容】'];
-                                      checkedItems.forEach(cat => messageParts.push('・' + cat.label));
-                                      if (feedbackDetail.trim()) {
-                                        messageParts.push('');
-                                        messageParts.push('【詳細】');
+                                      let messageParts = [];
+                                      if (task.subject === '社会') {
+                                        if (checkedItems.length === 0) return;
+                                        messageParts.push('【FB内容】');
+                                        checkedItems.forEach(cat => messageParts.push('・' + cat.label));
+                                        if (feedbackDetail.trim()) {
+                                          messageParts.push('');
+                                          messageParts.push('【詳細】');
+                                          messageParts.push(feedbackDetail.trim());
+                                        }
+                                      } else {
+                                        // 国語: 自由記述のみ
+                                        if (!feedbackDetail.trim()) return;
                                         messageParts.push(feedbackDetail.trim());
                                       }
                                       addFeedback({
@@ -1365,7 +1374,7 @@ const ProgressTab = ({ activeSubjects }) => {
                                       setMessage('FBを送信しました');
                                       setTimeout(() => setMessage(''), 3000);
                                     }}
-                                      disabled={FB_CATEGORIES.filter(cat => feedbackChecks[cat.id]).length === 0}
+                                      disabled={task.subject === '社会' ? FB_CATEGORIES.filter(cat => feedbackChecks[cat.id]).length === 0 : !feedbackDetail.trim()}
                                       className="text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg transition">
                                       送信
                                     </button>
