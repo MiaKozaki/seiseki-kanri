@@ -1,16 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, ComposedChart, ReferenceLine,
+  PieChart, Pie, Cell, ComposedChart, ReferenceLine,
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
 import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, validateDaimonTaskCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, DAIMON_TASK_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
 import { SUBJECTS_LIST, WORK_TYPES_LIST, generateId } from '../utils/storage.js';
-// import { useSheetsSync } from '../contexts/SheetsContext.jsx'; // Google Sheets連携削除
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
-import { downloadAttachment } from '../utils/fileStorage.js';
+import { downloadAttachment, saveAttachment, deleteAttachment } from '../utils/fileStorage.js';
 import { downloadHistoryExcel } from '../utils/excelExport.js';
 import { parseAndGroupFiles, downloadMergedExcel } from '../utils/excelMerge.js';
 import { calcAllMetrics, normalizeMetricToScore, formatDuration } from '../utils/evaluationMetrics';
@@ -4849,7 +4848,7 @@ const RecruitmentTab = ({ activeSubjects }) => {
 
 // ---- Master Data Tab ----
 const MasterDataTab = ({ activeSubjects }) => {
-  const { getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType } = useData();
+  const { getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType, getManuals, addManual, updateManual, deleteManual } = useData();
   const workTypesList = getWorkTypes().map(wt => wt.name);
   const [catForm, setCatForm] = useState({ name: '', description: '', subject: null, workType: null });
   const [sevForm, setSevForm] = useState({ name: '', level: 1, description: '', color: '#f59e0b' });
@@ -4866,6 +4865,9 @@ const MasterDataTab = ({ activeSubjects }) => {
   const [bulkFieldResult, setBulkFieldResult] = useState(null);
   const [activeMasterSection, setActiveMasterSection] = useState(null);
   const [wtForm, setWtForm] = useState({ name: '', sortOrder: 1 });
+  const [manualForm, setManualForm] = useState({ title: '', type: 'url', url: '', content: '', subject: null, workType: null, sortOrder: 1 });
+  const [editManualId, setEditManualId] = useState(null);
+  const [manualFile, setManualFile] = useState(null);
 
   // CSV一括登録（分野）
   const [showFieldCsvImport, setShowFieldCsvImport] = useState(false);
@@ -4931,6 +4933,7 @@ const MasterDataTab = ({ activeSubjects }) => {
     { key: 'checklist', icon: '\u2705', title: '\u30C1\u30A7\u30C3\u30AF\u30EA\u30B9\u30C8', desc: '\u63D0\u51FA\u524D\u30FB\u691C\u8A3C\u30C1\u30A7\u30C3\u30AF\u9805\u76EE' },
     { key: 'field', icon: '\u{1F4DA}', title: '\u5206\u91CE\u30DE\u30B9\u30BF', desc: '\u7406\u79D1\u30FB\u7B97\u6570\u306E\u5206\u91CE\u7BA1\u7406' },
     { key: 'worktype', icon: '\u{1F527}', title: '\u4F5C\u696D\u7A2E\u30DE\u30B9\u30BF', desc: '\u4F5C\u696D\u7A2E\uFF08\u4F5C\u696D\u5185\u5BB9\uFF09\u306E\u7BA1\u7406' },
+    { key: 'manual', icon: '\u{1F4D6}', title: '\u4F5C\u696D\u8005\u5411\u3051\u30DE\u30CB\u30E5\u30A2\u30EB', desc: 'URL\u30FB\u30D5\u30A1\u30A4\u30EB\u30FB\u30C6\u30AD\u30B9\u30C8\u306E\u30DE\u30CB\u30E5\u30A2\u30EB\u7BA1\u7406' },
   ];
 
   return (
@@ -5456,6 +5459,227 @@ const MasterDataTab = ({ activeSubjects }) => {
             ))
           )}
         </div>
+      </div>
+      )}
+
+      {/* ===== Section: マニュアル管理 ===== */}
+      {activeMasterSection === 'manual' && (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">{'\u{1F4D6}'} 作業者向けマニュアルの管理</h4>
+        <p className="text-xs text-gray-500 mb-3">URL・ファイル・テキスト形式のマニュアルを登録できます。科目・作業内容ごとに設定可能です。</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <input type="text" placeholder="タイトル" value={manualForm.title}
+            onChange={e => setManualForm({ ...manualForm, title: e.target.value })}
+            className="flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <select value={manualForm.type}
+            onChange={e => { setManualForm({ ...manualForm, type: e.target.value, url: '', content: '' }); setManualFile(null); }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="url">URL</option>
+            <option value="file">ファイル</option>
+            <option value="text">テキスト</option>
+          </select>
+          <select value={manualForm.subject || ''}
+            onChange={e => setManualForm({ ...manualForm, subject: e.target.value || null })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">全科目共通</option>
+            {(activeSubjects || SUBJECTS_LIST).map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select value={manualForm.workType || ''}
+            onChange={e => setManualForm({ ...manualForm, workType: e.target.value || null })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">全作業種共通</option>
+            {workTypesList.map(w => (
+              <option key={w} value={w}>{w}</option>
+            ))}
+          </select>
+          <input type="number" placeholder="表示順" value={manualForm.sortOrder} min="1" max="99"
+            onChange={e => setManualForm({ ...manualForm, sortOrder: Number(e.target.value) })}
+            className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm" title="表示順" />
+        </div>
+        {/* 種類別入力 */}
+        {manualForm.type === 'url' && (
+          <div className="mb-3">
+            <input type="url" placeholder="https://..." value={manualForm.url}
+              onChange={e => setManualForm({ ...manualForm, url: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+        )}
+        {manualForm.type === 'file' && (
+          <div className="mb-3">
+            <input type="file" accept=".pdf,.doc,.docx"
+              onChange={e => setManualFile(e.target.files[0] || null)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            {manualFile && (
+              <p className="text-xs text-gray-500 mt-1">{manualFile.name} ({(manualFile.size / 1024).toFixed(1)} KB)</p>
+            )}
+          </div>
+        )}
+        {manualForm.type === 'text' && (
+          <div className="mb-3">
+            <textarea placeholder="マニュアル内容を入力..." value={manualForm.content}
+              onChange={e => setManualForm({ ...manualForm, content: e.target.value })}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-y" />
+          </div>
+        )}
+        <div className="flex gap-2 mb-4">
+          <button onClick={async () => {
+            if (!manualForm.title.trim()) return;
+            if (manualForm.type === 'url' && !manualForm.url.trim()) return;
+            if (manualForm.type === 'text' && !manualForm.content.trim()) return;
+            if (manualForm.type === 'file' && !manualFile && !editManualId) return;
+
+            let fileAttachmentId = null;
+            let fileName = null;
+            let fileSize = null;
+
+            if (manualForm.type === 'file' && manualFile) {
+              const meta = await saveAttachment({
+                assignmentId: 'manual',
+                fileName: manualFile.name,
+                fileSize: manualFile.size,
+                fileType: manualFile.type,
+                blob: manualFile,
+              });
+              fileAttachmentId = meta.id;
+              fileName = manualFile.name;
+              fileSize = manualFile.size;
+            }
+
+            const manualData = {
+              title: manualForm.title.trim(),
+              type: manualForm.type,
+              url: manualForm.type === 'url' ? manualForm.url.trim() : null,
+              content: manualForm.type === 'text' ? manualForm.content.trim() : null,
+              fileAttachmentId: manualForm.type === 'file' ? (fileAttachmentId || (editManualId ? undefined : null)) : null,
+              fileName: manualForm.type === 'file' ? (fileName || (editManualId ? undefined : null)) : null,
+              fileSize: manualForm.type === 'file' ? (fileSize || (editManualId ? undefined : null)) : null,
+              subject: manualForm.subject,
+              workType: manualForm.workType,
+              sortOrder: manualForm.sortOrder,
+            };
+
+            // Remove undefined values (keep existing file data on edit without new file)
+            Object.keys(manualData).forEach(k => manualData[k] === undefined && delete manualData[k]);
+
+            if (editManualId) {
+              updateManual(editManualId, manualData);
+              setEditManualId(null);
+            } else {
+              addManual(manualData);
+            }
+            setManualForm({ title: '', type: 'url', url: '', content: '', subject: null, workType: null, sortOrder: 1 });
+            setManualFile(null);
+          }}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
+            {editManualId ? '更新' : '追加'}
+          </button>
+          {editManualId && (
+            <button onClick={() => { setEditManualId(null); setManualForm({ title: '', type: 'url', url: '', content: '', subject: null, workType: null, sortOrder: 1 }); setManualFile(null); }}
+              className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
+          )}
+        </div>
+
+        {/* グループ別表示: 科目 → 作業内容 */}
+        {(() => {
+          const allManuals = getManuals() || [];
+          if (allManuals.length === 0) return <p className="text-xs text-gray-400">マニュアルが登録されていません</p>;
+
+          const subjectGroups = {};
+          allManuals.forEach(m => {
+            const sKey = m.subject || '全科目共通';
+            if (!subjectGroups[sKey]) subjectGroups[sKey] = [];
+            subjectGroups[sKey].push(m);
+          });
+          const sortedSubjects = Object.keys(subjectGroups).sort((a, b) => {
+            if (a === '全科目共通') return -1;
+            if (b === '全科目共通') return 1;
+            return a.localeCompare(b);
+          });
+
+          return sortedSubjects.map(subjectKey => {
+            const manuals = subjectGroups[subjectKey];
+            const workTypeGroups = {};
+            manuals.forEach(m => {
+              const wKey = m.workType || '全作業種';
+              if (!workTypeGroups[wKey]) workTypeGroups[wKey] = [];
+              workTypeGroups[wKey].push(m);
+            });
+            const sortedWorkTypes = Object.keys(workTypeGroups).sort((a, b) => {
+              if (a === '全作業種') return -1;
+              if (b === '全作業種') return 1;
+              return a.localeCompare(b);
+            });
+
+            return (
+              <div key={subjectKey} className="mb-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${subjectKey === '全科目共通' ? 'bg-gray-100 text-gray-600' : 'bg-blue-50 text-blue-700'}`}>
+                    {subjectKey}
+                  </span>
+                  <span className="text-xs text-gray-400">{manuals.length}件</span>
+                </div>
+                {sortedWorkTypes.map(wtKey => (
+                  <div key={wtKey} className="mb-1 ml-2">
+                    {wtKey !== '全作業種' && (
+                      <span className="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded mb-0.5 inline-block">{wtKey}</span>
+                    )}
+                    <div className="space-y-1">
+                      {workTypeGroups[wtKey].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(m => (
+                        <div key={m.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-sm flex-shrink-0 w-6 text-center text-gray-400">{m.sortOrder}</span>
+                            <span className="text-sm font-medium truncate">{m.title}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                              m.type === 'url' ? 'bg-blue-100 text-blue-600' :
+                              m.type === 'file' ? 'bg-green-100 text-green-600' :
+                              'bg-yellow-100 text-yellow-600'
+                            }`}>
+                              {m.type === 'url' ? 'URL' : m.type === 'file' ? 'ファイル' : 'テキスト'}
+                            </span>
+                            {m.type === 'url' && m.url && (
+                              <a href={m.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline truncate hidden sm:inline" onClick={e => e.stopPropagation()}>
+                                {m.url}
+                              </a>
+                            )}
+                            {m.type === 'file' && m.fileName && (
+                              <span className="text-xs text-gray-400 truncate hidden sm:inline">{m.fileName} ({(m.fileSize / 1024).toFixed(1)} KB)</span>
+                            )}
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <button onClick={() => {
+                              setEditManualId(m.id);
+                              setManualForm({
+                                title: m.title,
+                                type: m.type,
+                                url: m.url || '',
+                                content: m.content || '',
+                                subject: m.subject,
+                                workType: m.workType,
+                                sortOrder: m.sortOrder || 1,
+                              });
+                              setManualFile(null);
+                            }}
+                              className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
+                            <button onClick={async () => {
+                              if (m.fileAttachmentId) {
+                                try { await deleteAttachment(m.fileAttachmentId); } catch (e) { /* ignore */ }
+                              }
+                              deleteManual(m.id);
+                            }}
+                              className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          });
+        })()}
       </div>
       )}
 

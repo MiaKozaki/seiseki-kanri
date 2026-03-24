@@ -1,12 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { get, save, getAll, saveAll, generateId, generateInitialPassword, generateLoginId } from '../utils/storage.js';
+import { get, save, getAll, generateId, generateInitialPassword, generateLoginId } from '../utils/storage.js';
 import { deleteAttachmentsByAssignment } from '../utils/fileStorage.js';
-import { useFirestore } from '../firebase/config.js';
-import {
-  fetchAllData, saveDocument, deleteDocument, saveMultipleDocuments,
-  batchWrite,
-} from '../firebase/firestoreService.js';
-import { checkAndSeed, migrateFromLocalStorage } from '../firebase/seedData.js';
 
 const DataContext = createContext(null);
 
@@ -19,11 +13,8 @@ const calcDays = (startDate, endDate) => {
 /** 完了判定ヘルパー（後方互換: 旧 'completed' も含む） */
 export const isFinished = (status) => status === 'completed' || status === 'approved';
 
-// Firestore書き込みのエラーハンドリング（fire-and-forget）
-const fsWrite = (fn) => {
-  if (!useFirestore) return;
-  fn().catch(err => console.error('[Firestore write error]', err));
-};
+// No-op: Firestore removed
+const fsWrite = () => {};
 
 export const DataProvider = ({ children }) => {
   const [data, setData] = useState(null);
@@ -32,45 +23,13 @@ export const DataProvider = ({ children }) => {
   const forceRefresh = useCallback(() => setTick(t => t + 1), []);
   const initialized = useRef(false);
 
-  // 初期化: Firestore or localStorage からデータロード
+  // 初期化: localStorage からデータロード
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
 
-    const init = async () => {
-      if (useFirestore) {
-        try {
-          let fsData = await fetchAllData();
-          const hasData = Object.values(fsData).some(arr => arr.length > 0);
-
-          if (!hasData) {
-            // localStorageに既存データがあれば移行、なければシード
-            const localData = getAll();
-            const hasLocalData = (localData.users?.length || 0) > 0;
-
-            if (hasLocalData) {
-              await migrateFromLocalStorage(localData);
-              setData(localData);
-              return;
-            } else {
-              await checkAndSeed(fsData);
-              fsData = await fetchAllData();
-            }
-          }
-
-          // localStorageキャッシュ更新
-          saveAll(fsData);
-          setData(fsData);
-        } catch (err) {
-          console.warn('[Firestore] 接続失敗、localStorageフォールバック:', err);
-          setData(getAll());
-        }
-      } else {
-        setData(getAll());
-      }
-    };
-
-    init().finally(() => setLoading(false));
+    setData(getAll());
+    setLoading(false);
   }, []);
 
   // --- ヘルパー: state + Firestore + localStorage に書き込み ---
@@ -1217,6 +1176,36 @@ export const DataProvider = ({ children }) => {
     forceRefresh();
   };
 
+  // ---- Manuals (マニュアル管理) ----
+  const getManuals = (subject = null, workType = undefined) => {
+    let items = d('manuals') || [];
+    if (subject !== null) {
+      items = items.filter(m => m.subject === null || m.subject === subject);
+    }
+    if (workType !== undefined) {
+      items = items.filter(m => m.workType === null || m.workType === workType);
+    }
+    return items.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  };
+
+  const addManual = (manualData) => {
+    const manual = { ...manualData, id: generateId(), createdAt: new Date().toISOString() };
+    updateCollection('manuals', [...(d('manuals') || []), manual]);
+    forceRefresh();
+    return manual;
+  };
+
+  const updateManual = (id, updates) => {
+    const updated = (d('manuals') || []).map(m => m.id === id ? { ...m, ...updates } : m);
+    updateCollection('manuals', updated);
+    forceRefresh();
+  };
+
+  const deleteManual = (id) => {
+    updateCollection('manuals', (d('manuals') || []).filter(m => m.id !== id));
+    forceRefresh();
+  };
+
   // ---- autoAssign用: 一括データ取得 + 結果反映 ----
   const getAllData = () => data || getAll();
 
@@ -1260,6 +1249,7 @@ export const DataProvider = ({ children }) => {
       getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
       getFields, addField, updateField, deleteField,
       getWorkTypes, addWorkType, deleteWorkType,
+      getManuals, addManual, updateManual, deleteManual,
       getUserFields, addUserField, removeUserField, bulkSetUserFields, bulkImportUserFields,
       getFeedbacks, addFeedback,
       getNotifications, markNotificationRead, markAllNotificationsRead,

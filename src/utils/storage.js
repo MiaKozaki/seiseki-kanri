@@ -485,6 +485,7 @@ export const INITIAL_DATA = {
     { id: 'wt4', name: '部分点', sortOrder: 4, createdAt: '2026-01-01T00:00:00.000Z' },
     { id: 'wt5', name: 'tensakitインポート', sortOrder: 5, createdAt: '2026-01-01T00:00:00.000Z' },
   ],
+  manuals: [],
 };
 
 export const SUBJECTS_LIST = ['国語', '算数', '理科', '社会'];
@@ -826,6 +827,7 @@ export const initStorage = () => {
       data._demoExamInputV1 = true;
       updated = true;
     }
+    if (!data.manuals) { data.manuals = []; updated = true; }
     if (updated) localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 };

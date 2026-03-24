@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
 import { DataProvider, useData } from './contexts/DataContext.jsx';
-import { SheetsProvider } from './contexts/SheetsContext.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import CorrectorDashboard from './pages/CorrectorDashboard.jsx';
 import LeaderDashboard from './pages/LeaderDashboard.jsx';
@@ -82,12 +81,10 @@ const AppContent = () => {
 
 export default function App() {
   return (
-    <SheetsProvider>
-      <AuthProvider>
-        <DataProvider>
-          <AppContent />
-        </DataProvider>
-      </AuthProvider>
-    </SheetsProvider>
+    <AuthProvider>
+      <DataProvider>
+        <AppContent />
+      </DataProvider>
+    </AuthProvider>
   );
 }

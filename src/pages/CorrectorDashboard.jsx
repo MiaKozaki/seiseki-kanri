@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
-// import { useSheetsSync } from '../contexts/SheetsContext.jsx'; // Google Sheets連携削除
-// import { writeExamSheets } from '../utils/sheetsApi.js'; // Google Sheets連携削除
 import { downloadExamExcel } from '../utils/excelExport.js';
 // storage.js no longer needed in CorrectorDashboard
-import { saveAttachment, deleteAttachmentsByAssignment, validateFile, MAX_FILES_PER_SUBMISSION } from '../utils/fileStorage.js';
+import { saveAttachment, deleteAttachmentsByAssignment, validateFile, MAX_FILES_PER_SUBMISSION, downloadAttachment } from '../utils/fileStorage.js';
 
 // Helper to parse structured FB message into parts
 const parseFbMessage = (message) => {
@@ -81,6 +79,7 @@ export default function CorrectorDashboard() {
     getRejections, getRejectionCategories, getRejectionSeverities,
     getVerificationItems,
     getFeedbacks,
+    getManuals,
   } = useData();
   const [activeTab, setActiveTab] = useState(0);
   const [capForm, setCapForm] = useState({ startDate: '', endDate: '', hoursPerDay: 8, note: '' });
@@ -920,6 +919,101 @@ export default function CorrectorDashboard() {
                   </div>
                 )}
               </div>
+
+              {/* マニュアルセクション */}
+              {(() => {
+                const userSubjects = user.subjects || [];
+                const relevantManuals = (getManuals() || []).filter(m =>
+                  m.subject === null || userSubjects.includes(m.subject)
+                );
+                if (relevantManuals.length === 0) return null;
+
+                const subjectGroups = {};
+                relevantManuals.forEach(m => {
+                  const sKey = m.subject || '全科目共通';
+                  if (!subjectGroups[sKey]) subjectGroups[sKey] = [];
+                  subjectGroups[sKey].push(m);
+                });
+                const sortedSubjects = Object.keys(subjectGroups).sort((a, b) => {
+                  if (a === '全科目共通') return -1;
+                  if (b === '全科目共通') return 1;
+                  return a.localeCompare(b);
+                });
+
+                return (
+                  <div className="bg-white rounded-xl shadow-sm p-6 mt-4">
+                    <div
+                      className="flex items-center justify-between cursor-pointer"
+                      onClick={() => setOpenManualSections(prev => ({ ...prev, _manualMain: !prev._manualMain }))}
+                    >
+                      <h2 className="text-base font-semibold text-gray-800">{'\u{1F4D6}'} マニュアル</h2>
+                      <span className="text-gray-400 text-xs">{openManualSections._manualMain ? '▼' : '▶'} {relevantManuals.length}件</span>
+                    </div>
+                    <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openManualSections._manualMain ? 'max-h-[2000px] opacity-100 mt-4' : 'max-h-0 opacity-0'}`}>
+                      {sortedSubjects.map(subjectKey => {
+                        const manuals = subjectGroups[subjectKey];
+                        return (
+                          <div key={subjectKey} className="mb-3">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${subjectKey === '全科目共通' ? 'bg-gray-100 text-gray-600' : 'bg-blue-50 text-blue-700'}`}>
+                                {subjectKey}
+                              </span>
+                            </div>
+                            <div className="space-y-2 ml-2">
+                              {manuals.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(m => (
+                                <div key={m.id} className="bg-gray-50 rounded-lg p-3">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                                      m.type === 'url' ? 'bg-blue-100 text-blue-600' :
+                                      m.type === 'file' ? 'bg-green-100 text-green-600' :
+                                      'bg-yellow-100 text-yellow-600'
+                                    }`}>
+                                      {m.type === 'url' ? 'URL' : m.type === 'file' ? 'ファイル' : 'テキスト'}
+                                    </span>
+                                    {m.workType && (
+                                      <span className="text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">{m.workType}</span>
+                                    )}
+                                    <span className="text-sm font-medium text-gray-800">{m.title}</span>
+                                  </div>
+                                  {m.type === 'url' && m.url && (
+                                    <a href={m.url} target="_blank" rel="noopener noreferrer"
+                                      className="text-xs text-blue-500 hover:underline inline-flex items-center gap-1">
+                                      {'\u{1F517}'} リンクを開く
+                                    </a>
+                                  )}
+                                  {m.type === 'text' && m.content && (
+                                    <div>
+                                      <button
+                                        onClick={() => setOpenManualSections(prev => ({ ...prev, [`manual_${m.id}`]: !prev[`manual_${m.id}`] }))}
+                                        className="text-xs text-blue-500 hover:underline"
+                                      >
+                                        {openManualSections[`manual_${m.id}`] ? '内容を閉じる' : '内容を表示'}
+                                      </button>
+                                      {openManualSections[`manual_${m.id}`] && (
+                                        <div className="mt-2 p-2 bg-white rounded border border-gray-200 text-xs text-gray-700 whitespace-pre-wrap">
+                                          {m.content}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  {m.type === 'file' && m.fileAttachmentId && (
+                                    <button
+                                      onClick={() => downloadAttachment(m.fileAttachmentId, m.fileName)}
+                                      className="text-xs text-green-600 hover:underline inline-flex items-center gap-1"
+                                    >
+                                      {'\u{1F4E5}'} {m.fileName || 'ダウンロード'} {m.fileSize ? `(${(m.fileSize / 1024).toFixed(1)} KB)` : ''}
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
           </>
         )}
 

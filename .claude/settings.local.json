@@ -95,7 +95,11 @@
       "Bash(PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/*/bin\")",
       "Bash(mdfind \"kMDItemFSName == ''''node'''' && kMDItemKind == ''''Unix Executable File''''\")",
       "Bash(PATH=\"/usr/local/bin:/opt/homebrew/bin:$PATH\" npm run build)",
-      "Bash(ls /Users/mia/.local/share/fnm/*/bin/node)"
+      "Bash(ls /Users/mia/.local/share/fnm/*/bin/node)",
+      "Bash(git remote:*)",
+      "Bash(printf \"protocol=https\\\\nhost=github.com\\\\n\")",
+      "Bash(git credential:*)",
+      "Bash(env)"
     ]
   }
 }
