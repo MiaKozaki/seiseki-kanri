@@ -478,6 +478,13 @@ export const INITIAL_DATA = {
     { id: 'ws6', subject: null, workType: null, name: 'verification_reviewing', label: '検証中', color: '#eab308', sortOrder: 5, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
     { id: 'ws7', subject: null, workType: null, name: 'verification_completed', label: '検証完了', color: '#10b981', sortOrder: 6, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
   ],
+  workTypes: [
+    { id: 'wt1', name: '新年度試験種', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'wt2', name: 'タグ付け', sortOrder: 2, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'wt3', name: '解答出し', sortOrder: 3, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'wt4', name: '部分点', sortOrder: 4, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'wt5', name: 'tensakitインポート', sortOrder: 5, createdAt: '2026-01-01T00:00:00.000Z' },
+  ],
 };
 
 export const SUBJECTS_LIST = ['国語', '算数', '理科', '社会', 'マクロ'];
@@ -615,6 +622,7 @@ export const initStorage = () => {
       updated = true;
     }
     if (!data.workflowStatuses) { data.workflowStatuses = INITIAL_DATA.workflowStatuses || []; updated = true; }
+    if (!data.workTypes) { data.workTypes = INITIAL_DATA.workTypes || []; updated = true; }
     if (!data._demoVerificationV1) {
       const demoItems = INITIAL_DATA.verificationItems || [];
       const existingViIds = new Set(data.verificationItems.map(vi => vi.id));

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData, isFinished } from '../../contexts/DataContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { SUBJECTS_LIST, WORK_TYPES_LIST } from '../../utils/storage.js';
+import { SUBJECTS_LIST } from '../../utils/storage.js';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { predictAllTasks } from '../../utils/prediction.js';
 import { downloadAttachment, getAttachment } from '../../utils/fileStorage.js';
@@ -125,8 +125,10 @@ const ProgressTab = ({ activeSubjects }) => {
     updateAssignment,
     getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
     getFeedbacks, addFeedback,
+    getWorkTypes,
   } = useData();
   const { user } = useAuth();
+  const workTypesList = getWorkTypes().map(wt => wt.name);
 
   // ---- Raw data ----
   const allTasks = getTasks();
@@ -366,7 +368,7 @@ const ProgressTab = ({ activeSubjects }) => {
             <select value={workTypeFilter} onChange={e => setWorkTypeFilter(e.target.value)}
               className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
               <option value="all">全て</option>
-              {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+              {workTypesList.map(w => <option key={w} value={w}>{w}</option>)}
             </select>
           </div>
           <div>
@@ -827,7 +829,7 @@ const ProgressTab = ({ activeSubjects }) => {
                           </div>
 
                           {/* Verification checklist panel + file preview */}
-                          {openChecklistId === assignment.id && assignment.verificationStatus === 'reviewing' && (() => {
+                          {openChecklistId === assignment.id && (assignment.verificationStatus === 'reviewing' || assignment.verificationStatus === undefined) && (() => {
                             const results = getVerificationResults(assignment.id) || [];
                             const allItems = getVerificationItems(task.subject, 'verification', task.workType) || [];
                             const checkedCount = results.filter(r => r.checked).length;
@@ -1162,7 +1164,7 @@ const ProgressTab = ({ activeSubjects }) => {
                 <select value={cfgWorkType ?? ''} onChange={e => setCfgWorkType(e.target.value || null)}
                   className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
                   <option value="">全て</option>
-                  {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+                  {workTypesList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
               </div>
             </div>

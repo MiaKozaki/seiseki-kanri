@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
 import { toCSV, downloadCSV, importCSVFile, validateUserCSV, validateFieldClearanceCSV, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
-import { SUBJECTS_LIST, WORK_TYPES_LIST, generateId } from '../utils/storage.js';
+import { SUBJECTS_LIST, generateId } from '../utils/storage.js';
 import { useSheetsSync } from '../contexts/SheetsContext.jsx';
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
 import { downloadAttachment } from '../utils/fileStorage.js';
@@ -1000,9 +1000,10 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     getAssignments, deleteAssignment, updateAssignment,
     getCorrectors, getCapacities, forceRefresh,
     getExamInputs, getTimeLogs, getTaskTotalTime, getDaimonTotalTime, getUsers,
-    getAllData, applyAutoAssignResult, getFields,
+    getAllData, applyAutoAssignResult, getFields, getWorkTypes,
   } = useData();
   const { user } = useAuth();
+  const workTypesList = getWorkTypes().map(wt => wt.name);
 
   const allTasks = getTasks();
   const tasks = allTasks.filter(t => activeSubjects.includes(t.subject));
@@ -1284,7 +1285,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 >
                   <option value="">選択してください</option>
-                  {WORK_TYPES_LIST.map(w => (
+                  {workTypesList.map(w => (
                     <option key={w} value={w}>{w}</option>
                   ))}
                 </select>
@@ -1512,7 +1513,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                   <select value={workTypeFilter} onChange={e => setWorkTypeFilter(e.target.value)}
                     className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
                     <option value="all">すべて</option>
-                    {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+                    {workTypesList.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1697,7 +1698,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                       <select value={assignWorkTypeFilter} onChange={e => setAssignWorkTypeFilter(e.target.value)}
                         className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
                         <option value="all">すべて</option>
-                        {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+                        {workTypesList.map(w => <option key={w} value={w}>{w}</option>)}
                       </select>
                     </div>
                     <div>
@@ -1967,8 +1968,10 @@ const ExamProcessingTab = ({ activeSubjects }) => {
     getExamInputs, getTimeLogs, getTaskTotalTime, getDaimonTotalTime,
     getRejectionCategories, getRejectionSeverities, getRejections, addRejection,
     getVerificationItems, getVerificationResults, initVerificationResults, toggleVerificationResult,
+    getWorkTypes,
   } = useData();
   const { user } = useAuth();
+  const workTypesList = getWorkTypes().map(wt => wt.name);
 
   const allTasks = getTasks();
   const tasks = allTasks.filter(t => activeSubjects.includes(t.subject));
@@ -2109,7 +2112,7 @@ const ExamProcessingTab = ({ activeSubjects }) => {
                 <select value={epWorkTypeFilter} onChange={e => setEpWorkTypeFilter(e.target.value)}
                   className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
                   <option value="all">すべて</option>
-                  {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+                  {workTypesList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
               </div>
               <div>
@@ -3955,9 +3958,10 @@ const RecruitmentTab = ({ activeSubjects }) => {
 
 // ---- Master Data Tab ----
 const MasterDataTab = ({ activeSubjects }) => {
-  const { getSchools, addSchool, deleteSchool, getExamTypes, addExamType, deleteExamType, getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField } = useData();
+  const { getSchools, addSchool, deleteSchool, getExamTypes, addExamType, deleteExamType, getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType } = useData();
   const sheets = useSheetsSync();
   const schools = getSchools();
+  const workTypesList = getWorkTypes().map(wt => wt.name);
   const examTypes = getExamTypes();
   const [schoolName, setSchoolName] = useState('');
   const [etSchool, setEtSchool] = useState('');
@@ -3970,6 +3974,12 @@ const MasterDataTab = ({ activeSubjects }) => {
   const [editViId, setEditViId] = useState(null);
   const [fieldForm, setFieldForm] = useState({ name: '', subject: '理科', category: null, sortOrder: 1 });
   const [editFieldId, setEditFieldId] = useState(null);
+  const [bulkFieldInput, setBulkFieldInput] = useState('');
+  const [showBulkFieldForm, setShowBulkFieldForm] = useState(false);
+  const [bulkFieldSubject, setBulkFieldSubject] = useState('理科');
+  const [bulkFieldCategory, setBulkFieldCategory] = useState(null);
+  const [bulkFieldResult, setBulkFieldResult] = useState(null);
+  const [wtForm, setWtForm] = useState({ name: '', sortOrder: 1 });
 
   // Google Sheets 設定フォームの一時状態
   const [draftClientId, setDraftClientId] = useState(sheets.settings.clientId);
@@ -4177,7 +4187,7 @@ const MasterDataTab = ({ activeSubjects }) => {
             onChange={e => setCatForm({ ...catForm, workType: e.target.value || null })}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="">全作業種（共通）</option>
-            {WORK_TYPES_LIST.map(w => (
+            {workTypesList.map(w => (
               <option key={w} value={w}>{w}</option>
             ))}
           </select>
@@ -4372,7 +4382,64 @@ const MasterDataTab = ({ activeSubjects }) => {
             <button onClick={() => { setEditFieldId(null); setFieldForm({ name: '', subject: '理科', category: null, sortOrder: 1 }); }}
               className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
           )}
+          <button onClick={() => { setShowBulkFieldForm(!showBulkFieldForm); setBulkFieldResult(null); }}
+            className={`text-sm px-3 py-2 rounded-lg transition border ${showBulkFieldForm ? 'bg-orange-50 text-orange-700 border-orange-200' : 'text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+            一括登録
+          </button>
         </div>
+
+        {showBulkFieldForm && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-3">
+            <h5 className="text-sm font-semibold text-orange-700 mb-2">一括登録</h5>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <select value={bulkFieldSubject}
+                onChange={e => { setBulkFieldSubject(e.target.value); if (e.target.value !== '理科') setBulkFieldCategory(null); }}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <option value="理科">理科</option>
+                <option value="算数">算数</option>
+              </select>
+              {bulkFieldSubject === '理科' && (
+                <select value={bulkFieldCategory || ''}
+                  onChange={e => setBulkFieldCategory(e.target.value || null)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                  <option value="">カテゴリを選択</option>
+                  <option value="化学">化学</option>
+                  <option value="物理">物理</option>
+                  <option value="生物">生物</option>
+                  <option value="地学">地学</option>
+                </select>
+              )}
+            </div>
+            <textarea
+              value={bulkFieldInput}
+              onChange={e => setBulkFieldInput(e.target.value)}
+              placeholder="分野名を1行に1つずつ入力してください&#10;例：&#10;力のつりあい&#10;電流と磁界&#10;化学変化"
+              rows={6}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono mb-2 focus:ring-2 focus:ring-orange-400 outline-none"
+            />
+            <div className="flex items-center gap-3">
+              <button onClick={() => {
+                const lines = bulkFieldInput.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                if (lines.length === 0) return;
+                const existingFields = getFields(bulkFieldSubject) || [];
+                const maxOrder = existingFields.length > 0 ? Math.max(...existingFields.map(f => f.sortOrder || 0)) : 0;
+                let count = 0;
+                lines.forEach((name, idx) => {
+                  addField({ name, subject: bulkFieldSubject, category: bulkFieldSubject === '理科' ? bulkFieldCategory : null, sortOrder: maxOrder + idx + 1 });
+                  count++;
+                });
+                setBulkFieldResult(count);
+                setBulkFieldInput('');
+              }}
+                className="bg-orange-600 hover:bg-orange-700 text-white text-sm px-4 py-2 rounded-lg transition">
+                一括追加
+              </button>
+              {bulkFieldResult !== null && (
+                <span className="text-sm text-green-600 font-medium">{bulkFieldResult}件 追加しました</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* グループ別表示: 科目 → カテゴリ */}
         {(() => {
@@ -4457,6 +4524,44 @@ const MasterDataTab = ({ activeSubjects }) => {
         })()}
       </div>
 
+      {/* 作業種マスタの管理 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">🔧 作業種マスタの管理</h4>
+        <p className="text-xs text-gray-500 mb-3">タスクの作業種（作業内容）を管理します。差し戻し項目やチェックリストの絞り込みに使用します。</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <input type="text" placeholder="作業種名" value={wtForm.name}
+            onChange={e => setWtForm({ ...wtForm, name: e.target.value })}
+            className="flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <input type="number" placeholder="表示順" value={wtForm.sortOrder} min="1" max="99"
+            onChange={e => setWtForm({ ...wtForm, sortOrder: Number(e.target.value) })}
+            className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm" title="表示順" />
+          <button onClick={() => {
+            if (!wtForm.name.trim()) return;
+            addWorkType({ name: wtForm.name.trim(), sortOrder: wtForm.sortOrder });
+            setWtForm({ name: '', sortOrder: (getWorkTypes().length || 0) + 1 });
+          }}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
+            追加
+          </button>
+        </div>
+        <div className="space-y-1">
+          {getWorkTypes().length === 0 ? (
+            <p className="text-xs text-gray-400">作業種が登録されていません</p>
+          ) : (
+            getWorkTypes().map(wt => (
+              <div key={wt.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-sm flex-shrink-0 w-6 text-center text-gray-400">{wt.sortOrder}</span>
+                  <span className="text-sm font-medium truncate">{wt.name}</span>
+                </div>
+                <button onClick={() => deleteWorkType(wt.id)}
+                  className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       {/* チェックリストの管理 */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h4 className="text-sm font-semibold text-gray-700 mb-3">✅ チェックリストの管理</h4>
@@ -4480,7 +4585,7 @@ const MasterDataTab = ({ activeSubjects }) => {
             onChange={e => setViForm({ ...viForm, workType: e.target.value || null })}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="">全作業種（共通）</option>
-            {WORK_TYPES_LIST.map(w => (
+            {workTypesList.map(w => (
               <option key={w} value={w}>{w}</option>
             ))}
           </select>

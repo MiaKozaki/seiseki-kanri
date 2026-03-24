@@ -1103,6 +1103,21 @@ export const DataProvider = ({ children }) => {
     return newEntries.length;
   };
 
+  // ---- WorkTypes (作業種マスタ) ----
+  const getWorkTypes = () => (d('workTypes') || []).sort((a, b) => a.sortOrder - b.sortOrder);
+  const addWorkType = (wtData) => {
+    const wt = { ...wtData, id: generateId(), createdAt: new Date().toISOString() };
+    updateCollection('workTypes', [...(d('workTypes') || []), wt]);
+    fsWrite(() => saveDocument('workTypes', wt));
+    forceRefresh();
+    return wt;
+  };
+  const deleteWorkType = (id) => {
+    updateCollection('workTypes', (d('workTypes') || []).filter(wt => wt.id !== id));
+    fsWrite(async () => { await deleteDocument('workTypes', id); });
+    forceRefresh();
+  };
+
   // ---- autoAssign用: 一括データ取得 + 結果反映 ----
   const getAllData = () => data || getAll();
 
@@ -1145,6 +1160,7 @@ export const DataProvider = ({ children }) => {
       getRejections, addRejection,
       getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
       getFields, addField, updateField, deleteField,
+      getWorkTypes, addWorkType, deleteWorkType,
       getUserFields, addUserField, removeUserField, bulkSetUserFields, bulkImportUserFields,
       getFeedbacks, addFeedback,
       getNotifications, markNotificationRead, markAllNotificationsRead,

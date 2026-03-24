@@ -71,7 +71,9 @@
       "Bash(export PATH=\"$HOME/.bun/bin:$PATH\")",
       "Bash(bun run:*)",
       "Bash(npx --yes vite build --logLevel error)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\")",
+      "Bash(ls /Users/mia/.nvm/versions/node/*/bin/npm)"
     ]
   }
 }

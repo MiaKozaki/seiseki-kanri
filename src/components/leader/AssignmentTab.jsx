@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { useData, isFinished } from '../../contexts/DataContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { previewAutoAssign, confirmAutoAssign, manualAssign } from '../../utils/autoAssign.js';
-import { SUBJECTS_LIST, WORK_TYPES_LIST } from '../../utils/storage.js';
+import { SUBJECTS_LIST } from '../../utils/storage.js';
 
 const AssignmentTab = ({ activeSubjects }) => {
   const {
     getTasks, getAssignments, getCorrectors, getCapacities,
-    getAllData, applyAutoAssignResult,
+    getAllData, applyAutoAssignResult, getWorkTypes,
   } = useData();
+  const workTypesList = getWorkTypes().map(wt => wt.name);
   const { user } = useAuth();
 
   const allTasks = getTasks();
@@ -207,7 +208,7 @@ const AssignmentTab = ({ activeSubjects }) => {
                   <select value={assignWorkTypeFilter} onChange={e => setAssignWorkTypeFilter(e.target.value)}
                     className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
                     <option value="all">すべて</option>
-                    {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+                    {workTypesList.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
                 </div>
                 <div>
