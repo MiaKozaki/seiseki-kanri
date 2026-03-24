@@ -1472,7 +1472,9 @@ export default function CorrectorDashboard() {
               {(() => {
                 const myUserFields = getUserFields ? getUserFields(user.id) : [];
                 const myFieldIds = myUserFields.map(uf => uf.fieldId);
-                const vikingTasks = tasks.filter(t => t.viking && t.status === 'pending' && user.subjects?.includes(t.subject) && (!t.fieldId || myFieldIds.includes(t.fieldId)));
+                const vikingTasks = tasks.filter(t => t.viking && t.status === 'pending' && (
+                  user.subjects?.includes(t.subject) || (t.macroTask && user.subjects?.includes('マクロ'))
+                ) && (!t.fieldId || myFieldIds.includes(t.fieldId)));
                 if (vikingTasks.length === 0) return null;
                 return (
                   <div className="bg-white rounded-xl shadow-sm p-6 mb-4 border-2 border-orange-200">
@@ -1487,6 +1489,7 @@ export default function CorrectorDashboard() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">VIKING</span>
+                              {task.macroTask && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">takos</span>}
                               <span className="text-sm font-medium text-gray-800">{task.name}</span>
                             </div>
                             <p className="text-xs text-gray-400 mt-0.5">

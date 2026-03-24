@@ -74,7 +74,11 @@
       "Bash(node -e \":*)",
       "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\")",
       "Bash(ls /Users/mia/.nvm/versions/node/*/bin/npm)",
-      "Bash(eval '$\\(fnm env 2>/dev/null\\)')"
+      "Bash(eval '$\\(fnm env 2>/dev/null\\)')",
+      "Bash(PATH=\"$PATH:./node_modules/.bin\" npm run build)",
+      "Bash(ls /usr/local/bin/node /opt/homebrew/bin/node ~/.nvm/versions/node/*/bin/node)",
+      "Bash(ls /opt/homebrew/bin/node* /usr/local/bin/node*)",
+      "Bash(PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin:./node_modules/.bin\" npm run build)"
     ]
   }
 }

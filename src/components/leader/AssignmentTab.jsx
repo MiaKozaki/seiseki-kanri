@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData, isFinished } from '../../contexts/DataContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { previewAutoAssign, confirmAutoAssign, manualAssign } from '../../utils/autoAssign.js';
@@ -45,7 +45,18 @@ const AssignmentTab = ({ activeSubjects }) => {
   });
 
   const handleAutoAssign = () => {
-    const proposals = previewAutoAssign(getAllData());
+    const allData = getAllData();
+    // Filter tasks by subject and workType if filters are set
+    const filteredData = {
+      ...allData,
+      tasks: allData.tasks.filter(t => {
+        if (!activeSubjects.includes(t.subject)) return false;
+        if (autoSubjectFilter !== 'all' && t.subject !== autoSubjectFilter) return false;
+        if (autoWorkTypeFilter !== 'all' && t.workType !== autoWorkTypeFilter) return false;
+        return true;
+      }),
+    };
+    const proposals = previewAutoAssign(filteredData);
     if (proposals.length === 0) {
       setMessage('振り分けできるタスクがありませんでした');
       setTimeout(() => setMessage(''), 4000);
@@ -86,6 +97,71 @@ const AssignmentTab = ({ activeSubjects }) => {
   const pendingVikingTasks = tasks.filter(t => t.viking && t.status === 'pending');
   const claimedVikingTasks = tasks.filter(t => t.viking && t.status !== 'pending');
 
+  // 振り分け漏れチェック
+  const [showGapCheck, setShowGapCheck] = useState(false);
+  const gapChecks = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const issues = [];
+
+    // 1. 未割当 + 期限迫り
+    tasks.filter(t => t.status === 'pending' && t.deadline).forEach(t => {
+      const daysLeft = Math.ceil((new Date(t.deadline) - new Date()) / 86400000);
+      if (daysLeft <= 7) {
+        issues.push({
+          severity: daysLeft <= 3 ? 'critical' : 'warning',
+          icon: '\u{1F6A8}',
+          message: `「${t.name}」が未割当（期限${daysLeft <= 0 ? '超過' : `まであと${daysLeft}日`}）`,
+        });
+      }
+    });
+
+    // 2. 期限超過（進行中タスク）
+    tasks.filter(t => !isFinished(t.status) && t.status !== 'pending' && t.deadline && t.deadline < today).forEach(t => {
+      issues.push({
+        severity: 'critical',
+        icon: '\u23F0',
+        message: `「${t.name}」の期限が超過（期限: ${t.deadline}）`,
+      });
+    });
+
+    // 3. 工数不足割当
+    tasks.filter(t => t.status === 'assigned').forEach(t => {
+      const activeAssign = assignments.find(a => a.taskId === t.id && !isFinished(a.status) && a.status !== 'submitted');
+      if (activeAssign && t.requiredHours && activeAssign.assignedHours < t.requiredHours) {
+        const deficit = t.requiredHours - activeAssign.assignedHours;
+        issues.push({
+          severity: 'warning',
+          icon: '\u26A0\uFE0F',
+          message: `「${t.name}」の割当工数が不足（${activeAssign.assignedHours}h / 必要${t.requiredHours}h、不足${deficit}h）`,
+        });
+      }
+    });
+
+    // 4. 工数登録あり・割当なし
+    correctors.forEach(c => {
+      const hasActiveCap = capacities.some(cap => cap.userId === c.id && cap.endDate >= today);
+      const hasActiveAssign = assignments.some(a => a.userId === c.id && !isFinished(a.status));
+      if (hasActiveCap && !hasActiveAssign) {
+        issues.push({ severity: 'info', icon: '\u{1F4A4}', message: `${c.name} は工数登録あり・割当なし` });
+      }
+    });
+
+    // 5. 工数未登録の添削者
+    correctors.forEach(c => {
+      const hasFutureCap = capacities.some(cap => cap.userId === c.id && cap.endDate >= today);
+      if (!hasFutureCap) {
+        issues.push({ severity: 'info', icon: '\u{1F4CB}', message: `${c.name} の工数が未登録です` });
+      }
+    });
+
+    const order = { critical: 0, warning: 1, info: 2 };
+    return issues.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3));
+  }, [tasks, assignments, capacities, correctors]);
+
+  // 自動振り分けフィルタ
+  const [autoSubjectFilter, setAutoSubjectFilter] = useState('all');
+  const [autoWorkTypeFilter, setAutoWorkTypeFilter] = useState('all');
+
   return (
     <div className="space-y-4">
       {message && (
@@ -93,6 +169,48 @@ const AssignmentTab = ({ activeSubjects }) => {
           {message}
         </div>
       )}
+
+      {/* ===== 振り分け漏れチェック ===== */}
+      {gapChecks.length > 0 ? (
+        <div className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-amber-400">
+          <button
+            onClick={() => setShowGapCheck(!showGapCheck)}
+            className="w-full flex items-center justify-between"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <span>{'\u{1F50D}'}</span> 振り分け漏れチェック
+              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                {gapChecks.length}件
+              </span>
+              {gapChecks.some(g => g.severity === 'critical') && (
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                  要対応 {gapChecks.filter(g => g.severity === 'critical').length}件
+                </span>
+              )}
+            </span>
+            <span className="text-gray-400 text-xs">{showGapCheck ? '\u25B2 閉じる' : '\u25BC 詳細を表示'}</span>
+          </button>
+          {showGapCheck && (
+            <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+              {gapChecks.map((issue, i) => (
+                <div key={i} className={`flex items-start gap-2 p-2.5 rounded-lg text-sm ${
+                  issue.severity === 'critical' ? 'bg-red-50 text-red-800' :
+                  issue.severity === 'warning' ? 'bg-amber-50 text-amber-800' :
+                  'bg-blue-50 text-blue-800'
+                }`}>
+                  <span className="shrink-0 mt-0.5">{issue.icon}</span>
+                  <span>{issue.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : tasks.length > 0 ? (
+        <div className="bg-green-50 rounded-xl p-4 border border-green-100 flex items-center gap-2">
+          <span>{'\u2705'}</span>
+          <span className="text-sm text-green-700 font-medium">振り分け漏れはありません</span>
+        </div>
+      ) : null}
 
       {/* ===== 自動振り分け ===== */}
       <div className="bg-white rounded-xl shadow-sm p-5">
@@ -109,10 +227,40 @@ const AssignmentTab = ({ activeSubjects }) => {
             自動振り分け実行
           </button>
         </div>
+        <div className="flex flex-wrap gap-2 mb-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-0.5">科目</label>
+            <select value={autoSubjectFilter} onChange={e => setAutoSubjectFilter(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+              <option value="all">すべて</option>
+              {SUBJECTS_LIST.filter(s => activeSubjects.includes(s)).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-0.5">作業内容</label>
+            <select value={autoWorkTypeFilter} onChange={e => setAutoWorkTypeFilter(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+              <option value="all">すべて</option>
+              {workTypesList.map(w => <option key={w} value={w}>{w}</option>)}
+            </select>
+          </div>
+          {(autoSubjectFilter !== 'all' || autoWorkTypeFilter !== 'all') && (
+            <div className="flex items-end">
+              <button onClick={() => { setAutoSubjectFilter('all'); setAutoWorkTypeFilter('all'); }}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 transition">
+                条件クリア
+              </button>
+            </div>
+          )}
+        </div>
         {allPendingTasks.length === 0 ? (
           <p className="text-green-600 text-xs">未割当のタスクはありません</p>
         ) : (
-          <p className="text-amber-600 text-xs">未割当タスク: {allPendingTasks.length}件</p>
+          <p className="text-amber-600 text-xs">未割当タスク: {allPendingTasks.length}件
+            {(autoSubjectFilter !== 'all' || autoWorkTypeFilter !== 'all') && (
+              <span className="ml-1">（フィルタ適用中）</span>
+            )}
+          </p>
         )}
 
         {previewData && (

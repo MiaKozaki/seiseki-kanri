@@ -122,7 +122,7 @@ const ProgressTab = ({ activeSubjects }) => {
     getExamInputs, getTimeLogs, getTaskTotalTime, getDaimonTotalTime,
     getRejectionCategories, getRejectionSeverities, getRejections, addRejection,
     getVerificationItems, getVerificationResults, initVerificationResults, toggleVerificationResult,
-    updateAssignment,
+    updateAssignment, confirmStorage,
     getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
     getFeedbacks, addFeedback,
     getWorkTypes,
@@ -190,6 +190,8 @@ const ProgressTab = ({ activeSubjects }) => {
   // ---- Filtering ----
   const filteredPairs = useMemo(() => {
     return taskAssignmentPairs.filter(({ task, assignment, wfStatus }) => {
+      // Always keep the task visible if its checklist is currently open (actively reviewing)
+      if (openChecklistId && assignment && assignment.id === openChecklistId) return true;
       if (subjectFilter !== 'all' && task.subject !== subjectFilter) return false;
       if (workTypeFilter !== 'all' && task.workType !== workTypeFilter) return false;
       if (deadlineFrom && task.deadline && task.deadline < deadlineFrom) return false;
@@ -208,7 +210,7 @@ const ProgressTab = ({ activeSubjects }) => {
       }
       return true;
     });
-  }, [taskAssignmentPairs, subjectFilter, workTypeFilter, deadlineFrom, deadlineTo, assignedFrom, assignedTo, statusFilter, workerFilter, searchText, correctors]);
+  }, [taskAssignmentPairs, subjectFilter, workTypeFilter, deadlineFrom, deadlineTo, assignedFrom, assignedTo, statusFilter, workerFilter, searchText, correctors, openChecklistId]);
 
   // ---- Status counts (respond to all filters EXCEPT statusFilter) ----
   const statusCounts = useMemo(() => {
@@ -668,6 +670,18 @@ const ProgressTab = ({ activeSubjects }) => {
                       {isOverdue && ' (期限超過)'}
                     </span>
 
+                    {/* Storage status badge */}
+                    {assignment?.storageStatus === 'pending_storage' && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                        格納待ち
+                      </span>
+                    )}
+                    {assignment?.storageStatus === 'stored' && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                        格納済み
+                      </span>
+                    )}
+
                     {/* Rejection count */}
                     {assignment?.rejectionCount > 0 && (
                       <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">
@@ -694,6 +708,13 @@ const ProgressTab = ({ activeSubjects }) => {
                         {assignment?.assignedAt && (
                           <span>振り分け日: <strong>{new Date(assignment.assignedAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}</strong></span>
                         )}
+                        {assignment?.storageStatus && (
+                          <span>格納状態: <strong className={assignment.storageStatus === 'stored' ? 'text-indigo-700' : 'text-amber-600'}>
+                            {assignment.storageStatus === 'pending_storage' ? '格納待ち' : '格納済み'}
+                          </strong></span>
+                        )}
+                        {task.macroTask && <span className="text-indigo-600 font-medium">マクロタスク</span>}
+                        {task.linkedTaskId && <span>元タスク: <strong>{allTasks.find(t => t.id === task.linkedTaskId)?.name || task.linkedTaskId}</strong></span>}
                       </div>
 
                       {/* Spreadsheet link */}
@@ -811,6 +832,29 @@ const ProgressTab = ({ activeSubjects }) => {
                               >
                                 承認
                               </button>
+                            )}
+
+                            {/* 格納確認 (新年度試験種 承認後) */}
+                            {assignment.status === 'approved' && assignment.storageStatus === 'pending_storage' && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm('格納確認を行います。takos作成タスクが自動生成されます。よろしいですか？')) {
+                                    confirmStorage(assignment.id);
+                                    setMessage('格納確認完了 - takos作成タスクを生成しました');
+                                    setTimeout(() => setMessage(''), 3000);
+                                  }
+                                }}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition text-sm font-medium"
+                              >
+                                格納確認
+                              </button>
+                            )}
+
+                            {/* 格納済みバッジ */}
+                            {assignment.storageStatus === 'stored' && (
+                              <span className="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-xl text-sm font-medium">
+                                格納済み
+                              </span>
                             )}
 
                             {/* Reject */}
@@ -1036,13 +1080,26 @@ const ProgressTab = ({ activeSubjects }) => {
                                   className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">キャンセル</button>
                                 <button onClick={() => {
                                   const results = getVerificationResults(assignment.id) || [];
+                                  const allItems = getVerificationItems(task.subject, 'verification', task.workType) || [];
                                   const failedVerificationItemIds = results
                                     .filter(r => !r.checked)
                                     .map(r => r.verificationItemId);
+                                  // Auto-append unchecked item names to reviewNote
+                                  const uncheckedNames = failedVerificationItemIds.map(id => {
+                                    const item = allItems.find(vi => vi.id === id);
+                                    return item?.name || null;
+                                  }).filter(Boolean);
+                                  let finalNote = reviewNote;
+                                  if (uncheckedNames.length > 0) {
+                                    const uncheckedText = '未通過項目: ' + uncheckedNames.join(', ');
+                                    finalNote = finalNote.trim()
+                                      ? finalNote.trim() + '\n' + uncheckedText
+                                      : uncheckedText;
+                                  }
                                   updateAssignment(assignment.id, {
                                     status: 'rejected',
                                     verificationStatus: null,
-                                    reviewNote: reviewNote,
+                                    reviewNote: finalNote,
                                     reviewedAt: new Date().toISOString(),
                                     rejectionCount: (assignment.rejectionCount || 0) + 1,
                                     rejectionDetails: rejectionItems.map(item => ({

@@ -88,68 +88,6 @@ const OverviewTab = ({ activeSubjects }) => {
     { label: '割当工数合計', value: totalAssigned, unit: 'h', color: 'bg-orange-50 text-orange-700 border-orange-100' },
   ];
 
-  const [showGapCheck, setShowGapCheck] = useState(false);
-
-  // 振り分け漏れチェック
-  const gapChecks = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const issues = [];
-
-    // 1. 未割当 + 期限迫り
-    tasks.filter(t => t.status === 'pending' && t.deadline).forEach(t => {
-      const daysLeft = Math.ceil((new Date(t.deadline) - new Date()) / 86400000);
-      if (daysLeft <= 7) {
-        issues.push({
-          severity: daysLeft <= 3 ? 'critical' : 'warning',
-          icon: '🚨',
-          message: `「${t.name}」が未割当（期限${daysLeft <= 0 ? '超過' : `まであと${daysLeft}日`}）`,
-        });
-      }
-    });
-
-    // 2. 期限超過（進行中タスク）
-    tasks.filter(t => !isFinished(t.status) && t.status !== 'pending' && t.deadline && t.deadline < today).forEach(t => {
-      issues.push({
-        severity: 'critical',
-        icon: '⏰',
-        message: `「${t.name}」の期限が超過（期限: ${t.deadline}）`,
-      });
-    });
-
-    // 3. 工数不足割当
-    tasks.filter(t => t.status === 'assigned').forEach(t => {
-      const activeAssign = assignments.find(a => a.taskId === t.id && !isFinished(a.status) && a.status !== 'submitted');
-      if (activeAssign && t.requiredHours && activeAssign.assignedHours < t.requiredHours) {
-        const deficit = t.requiredHours - activeAssign.assignedHours;
-        issues.push({
-          severity: 'warning',
-          icon: '⚠️',
-          message: `「${t.name}」の割当工数が不足（${activeAssign.assignedHours}h / 必要${t.requiredHours}h、不足${deficit}h）`,
-        });
-      }
-    });
-
-    // 4. 工数登録あり・割当なし
-    correctors.forEach(c => {
-      const hasActiveCap = capacities.some(cap => cap.userId === c.id && cap.endDate >= today);
-      const hasActiveAssign = assignments.some(a => a.userId === c.id && !isFinished(a.status));
-      if (hasActiveCap && !hasActiveAssign) {
-        issues.push({ severity: 'info', icon: '💤', message: `${c.name} は工数登録あり・割当なし` });
-      }
-    });
-
-    // 5. 工数未登録の添削者
-    correctors.forEach(c => {
-      const hasFutureCap = capacities.some(cap => cap.userId === c.id && cap.endDate >= today);
-      if (!hasFutureCap) {
-        issues.push({ severity: 'info', icon: '📋', message: `${c.name} の工数が未登録です` });
-      }
-    });
-
-    const order = { critical: 0, warning: 1, info: 2 };
-    return issues.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3));
-  }, [tasks, assignments, capacities, correctors]);
-
   // 科目別予測データ（業務完了予測セクション用）
   const subjectPredictions = predictAllSubjects(assignments, capacities, allTasks, getUsers());
   const filteredSubjectPredictions = subjectPredictions.filter(p => activeSubjects.includes(p.subject));
@@ -192,48 +130,6 @@ const OverviewTab = ({ activeSubjects }) => {
           </div>
         ))}
       </div>
-
-      {/* 振り分け漏れチェック */}
-      {gapChecks.length > 0 ? (
-        <div className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-amber-400">
-          <button
-            onClick={() => setShowGapCheck(!showGapCheck)}
-            className="w-full flex items-center justify-between"
-          >
-            <span className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-              <span>🔍</span> 振り分け漏れチェック
-              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-                {gapChecks.length}件
-              </span>
-              {gapChecks.some(g => g.severity === 'critical') && (
-                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                  要対応 {gapChecks.filter(g => g.severity === 'critical').length}件
-                </span>
-              )}
-            </span>
-            <span className="text-gray-400 text-xs">{showGapCheck ? '▲ 閉じる' : '▼ 詳細を表示'}</span>
-          </button>
-          {showGapCheck && (
-            <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
-              {gapChecks.map((issue, i) => (
-                <div key={i} className={`flex items-start gap-2 p-2.5 rounded-lg text-sm ${
-                  issue.severity === 'critical' ? 'bg-red-50 text-red-800' :
-                  issue.severity === 'warning' ? 'bg-amber-50 text-amber-800' :
-                  'bg-blue-50 text-blue-800'
-                }`}>
-                  <span className="shrink-0 mt-0.5">{issue.icon}</span>
-                  <span>{issue.message}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : tasks.length > 0 ? (
-        <div className="bg-green-50 rounded-xl p-4 border border-green-100 flex items-center gap-2">
-          <span>✅</span>
-          <span className="text-sm text-green-700 font-medium">振り分け漏れはありません</span>
-        </div>
-      ) : null}
 
       {/* 業務完了予測（科目別）— HERO section */}
       {filteredSubjectPredictions.length > 0 && (
@@ -989,6 +885,113 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
             </>
           )}
         </div>
+
+      {/* ===== マクロ/takos インセンティブ（月間作業工数） ===== */}
+      <MacroIncentiveSection tasks={allTasks} assignments={assignments} users={allUsers} />
+    </div>
+  );
+};
+
+// ---- マクロ/takos インセンティブセクション ----
+const MacroIncentiveSection = ({ tasks, assignments, users }) => {
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+
+  const monthOptions = useMemo(() => {
+    const months = [];
+    for (let i = -6; i <= 1; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    return months;
+  }, []);
+
+  const incentiveData = useMemo(() => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const startOfMonth = new Date(year, month - 1, 1).toISOString();
+    const endOfMonth = new Date(year, month, 0, 23, 59, 59).toISOString();
+
+    // takos/マクロ完了タスクのassignmentを抽出
+    const takosTaskIds = new Set(
+      tasks.filter(t => t.macroTask || t.workType === 'takos作成').map(t => t.id)
+    );
+
+    const completedAssignments = assignments.filter(a => {
+      if (!takosTaskIds.has(a.taskId)) return false;
+      if (!isFinished(a.status)) return false;
+      const dateField = a.reviewedAt || a.submittedAt || a.storedAt;
+      if (!dateField) return false;
+      return dateField >= startOfMonth && dateField <= endOfMonth;
+    });
+
+    // ユーザーごとに集計
+    const userMap = {};
+    completedAssignments.forEach(a => {
+      if (!userMap[a.userId]) {
+        const u = users.find(u => u.id === a.userId);
+        userMap[a.userId] = { name: u?.name || '不明', loginId: u?.loginId || '', taskCount: 0, totalHours: 0 };
+      }
+      userMap[a.userId].taskCount += 1;
+      userMap[a.userId].totalHours += (a.actualHours || a.assignedHours || 0);
+    });
+
+    return Object.values(userMap).sort((a, b) => b.totalHours - a.totalHours);
+  }, [selectedMonth, tasks, assignments, users]);
+
+  const totalTasks = incentiveData.reduce((s, d) => s + d.taskCount, 0);
+  const totalHours = incentiveData.reduce((s, d) => s + d.totalHours, 0);
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700">マクロ/takos作成 月間実績（インセンティブ）</h3>
+          <p className="text-xs text-gray-400 mt-0.5">takos作成タスクの月別完了実績</p>
+        </div>
+        <select
+          value={selectedMonth}
+          onChange={e => setSelectedMonth(e.target.value)}
+          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 outline-none"
+        >
+          {monthOptions.map(m => (
+            <option key={m} value={m}>{m.replace('-', '年')}月</option>
+          ))}
+        </select>
+      </div>
+
+      {incentiveData.length === 0 ? (
+        <p className="text-gray-400 text-sm text-center py-8">選択月のtakos作成完了実績はありません</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2 px-2 text-gray-500 font-medium">作業者名</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium">ID</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium">完了タスク数</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium">合計工数(h)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {incentiveData.map((row, i) => (
+                <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                  <td className="py-2 px-2 font-medium text-gray-800">{row.name}</td>
+                  <td className="py-2 px-2 font-mono text-blue-600">{row.loginId}</td>
+                  <td className="py-2 px-2 text-right">{row.taskCount}</td>
+                  <td className="py-2 px-2 text-right font-medium">{row.totalHours}h</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-gray-200 font-medium">
+                <td colSpan={2} className="py-2 px-2 text-right text-gray-600">合計:</td>
+                <td className="py-2 px-2 text-right text-indigo-700">{totalTasks}件</td>
+                <td className="py-2 px-2 text-right text-indigo-700">{totalHours}h</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
@@ -3767,7 +3770,7 @@ const UserManagementTab = ({ activeSubjects }) => {
   const { getUsers, getCorrectors, addUser, updateUser, deleteUser, resetUserPassword, getFields, getUserFields, bulkImportUserFields, bulkSetUserFields, addUserField, removeUserField } = useData();
   const correctors = getCorrectors();
 
-  const [form, setForm] = useState({ name: '', email: '', loginId: '' });
+  const [form, setForm] = useState({ name: '', email: '', loginId: '', subjects: [] });
   const [editId, setEditId] = useState(null);
   const [editSubjectsId, setEditSubjectsId] = useState(null);
   const [selectedSubjects, setSelectedSubjects] = useState([]);
@@ -3843,12 +3846,12 @@ const UserManagementTab = ({ activeSubjects }) => {
         const dupLoginId = allUsers.find(u => u.loginId === form.loginId);
         if (dupLoginId) { setError('このログインIDは既に使用されています'); return; }
       }
-      const result = addUser({ ...form, loginId: form.loginId || undefined, role: 'corrector', subjects: [] });
+      const result = addUser({ ...form, loginId: form.loginId || undefined, role: 'corrector', subjects: form.subjects || [] });
       setGeneratedPw(result._tempPassword);
       setGeneratedPwUser(form.name);
       setGeneratedPwLoginId(result.loginId);
     }
-    setForm({ name: '', email: '', loginId: '' });
+    setForm({ name: '', email: '', loginId: '', subjects: [] });
   };
 
   const handleResetPassword = (userId, userName) => {
@@ -3878,33 +3881,56 @@ const UserManagementTab = ({ activeSubjects }) => {
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow-sm p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">{editId ? '添削者を編集' : '添削者を追加'}</h3>
-        <form onSubmit={handleSubmit} className="flex flex-wrap gap-2">
-          <input
-            type="text" placeholder="氏名" value={form.name}
-            onChange={e => setForm({ ...form, name: e.target.value })}
-            className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            required
-          />
-          <input
-            type="email" placeholder="メールアドレス" value={form.email}
-            onChange={e => setForm({ ...form, email: e.target.value })}
-            className="flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            required
-          />
-          <input
-            type="text" placeholder="ログインID（空欄で自動生成）" value={form.loginId}
-            onChange={e => setForm({ ...form, loginId: e.target.value })}
-            className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
-            {editId ? '更新' : '追加'}
-          </button>
-          {editId && (
-            <button type="button" onClick={() => { setEditId(null); setForm({ name: '', email: '', loginId: '' }); }}
-              className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg transition">
-              キャンセル
-            </button>
+        <form onSubmit={handleSubmit} className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text" placeholder="氏名" value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              required
+            />
+            <input
+              type="email" placeholder="メールアドレス" value={form.email}
+              onChange={e => setForm({ ...form, email: e.target.value })}
+              className="flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              required
+            />
+            <input
+              type="text" placeholder="ログインID（空欄で自動生成）" value={form.loginId}
+              onChange={e => setForm({ ...form, loginId: e.target.value })}
+              className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          {!editId && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-gray-500">担当科目:</span>
+              {SUBJECTS_LIST.filter(s => s !== 'マクロ').map(s => (
+                <label key={s} className="flex items-center gap-1 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={(form.subjects || []).includes(s)}
+                    onChange={e => {
+                      const subjects = form.subjects || [];
+                      setForm({ ...form, subjects: e.target.checked ? [...subjects, s] : subjects.filter(x => x !== s) });
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${subjectColor[s] || 'bg-gray-50 text-gray-700'}`}>{s}</span>
+                </label>
+              ))}
+            </div>
           )}
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
+              {editId ? '更新' : '追加'}
+            </button>
+            {editId && (
+              <button type="button" onClick={() => { setEditId(null); setForm({ name: '', email: '', loginId: '', subjects: [] }); }}
+                className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg transition">
+                キャンセル
+              </button>
+            )}
+          </div>
         </form>
         <div className="flex gap-2 mt-3">
           <button onClick={handleExportCSV}

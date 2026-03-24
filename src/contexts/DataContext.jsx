@@ -329,15 +329,29 @@ export const DataProvider = ({ children }) => {
 
     // リーダーが承認
     if (updates.status === 'approved') {
-      const updatedTasks = d('tasks').map(t => t.id === assignment.taskId ? { ...t, status: 'completed' } : t);
-      collectionUpdates.tasks = updatedTasks;
+      const task = d('tasks').find(t => t.id === assignment.taskId);
 
-      const task = updatedTasks.find(t => t.id === assignment.taskId);
-      batchOps.push({ type: 'set', collection: 'tasks', id: assignment.taskId, data: { ...task, id: undefined, status: 'completed' } });
+      // 新年度試験種の場合: 格納確認待ちにする（完了にしない）
+      if (task?.workType === '新年度試験種') {
+        const updatedTasks = d('tasks').map(t => t.id === assignment.taskId ? { ...t, status: 'approved' } : t);
+        collectionUpdates.tasks = updatedTasks;
+        batchOps.push({ type: 'set', collection: 'tasks', id: assignment.taskId, data: { ...updatedTasks.find(t => t.id === assignment.taskId), id: undefined, status: 'approved' } });
+
+        // assignmentにstorageStatusを付与
+        const idx = collectionUpdates.assignments.findIndex(a => a.id === id);
+        if (idx !== -1) {
+          collectionUpdates.assignments[idx] = { ...collectionUpdates.assignments[idx], storageStatus: 'pending_storage' };
+          batchOps.push({ type: 'set', collection: 'assignments', id, data: (() => { const { id: _, ...rest } = collectionUpdates.assignments[idx]; return rest; })() });
+        }
+      } else {
+        const updatedTasks = d('tasks').map(t => t.id === assignment.taskId ? { ...t, status: 'completed' } : t);
+        collectionUpdates.tasks = updatedTasks;
+        batchOps.push({ type: 'set', collection: 'tasks', id: assignment.taskId, data: { ...updatedTasks.find(t => t.id === assignment.taskId), id: undefined, status: 'completed' } });
+      }
 
       const notif = {
         id: generateId(), userId: assignment.userId,
-        message: `「${task?.name ?? '不明'}」が承認されました`,
+        message: `「${task?.name ?? '不明'}」が承認されました${task?.workType === '新年度試験種' ? '（格納確認待ち）' : ''}`,
         type: 'approved', relatedId: id, read: false, createdAt: new Date().toISOString(),
       };
       collectionUpdates.notifications = [...(collectionUpdates.notifications || d('notifications')), notif];
@@ -417,6 +431,64 @@ export const DataProvider = ({ children }) => {
       }
       await batchWrite(ops);
     });
+    forceRefresh();
+  };
+
+  // ---- 格納確認（新年度試験種 → takos作成タスク自動生成） ----
+  const confirmStorage = (assignmentId) => {
+    const assignment = d('assignments').find(a => a.id === assignmentId);
+    if (!assignment) return;
+    const task = d('tasks').find(t => t.id === assignment.taskId);
+    if (!task) return;
+
+    const batchOps = [];
+    const collectionUpdates = {};
+
+    // 1. assignmentのstorageStatusを'stored'に更新、タスクを完了に
+    const updatedAssignments = d('assignments').map(a =>
+      a.id === assignmentId ? { ...a, storageStatus: 'stored', storedAt: new Date().toISOString() } : a
+    );
+    collectionUpdates.assignments = updatedAssignments;
+    const updatedAssignment = updatedAssignments.find(a => a.id === assignmentId);
+    batchOps.push({ type: 'set', collection: 'assignments', id: assignmentId, data: (() => { const { id: _, ...rest } = updatedAssignment; return rest; })() });
+
+    const updatedTasks = d('tasks').map(t =>
+      t.id === assignment.taskId ? { ...t, status: 'completed' } : t
+    );
+
+    // 2. takos作成タスクを自動生成
+    const takosTaskId = generateId();
+    const takosTask = {
+      id: takosTaskId,
+      name: `${task.name} takos作成`,
+      subject: task.subject,
+      workType: 'takos作成',
+      viking: true,
+      macroTask: true,
+      requiredHours: 1,
+      linkedTaskId: task.id,
+      deadline: task.deadline || '',
+      sheetsUrl: '',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+
+    collectionUpdates.tasks = [...updatedTasks, takosTask];
+    batchOps.push({ type: 'set', collection: 'tasks', id: assignment.taskId, data: { ...updatedTasks.find(t => t.id === assignment.taskId), id: undefined, status: 'completed' } });
+    batchOps.push({ type: 'set', collection: 'tasks', id: takosTaskId, data: (() => { const { id: _, ...rest } = takosTask; return rest; })() });
+
+    // 3. マクロ作業者に通知
+    const macroWorkers = d('users').filter(u => u.role === 'corrector' && (u.subjects ?? []).includes('マクロ'));
+    const newNotifs = macroWorkers.map(w => ({
+      id: generateId(), userId: w.id,
+      message: `新しいtakos作成タスク「${takosTask.name}」が利用可能です（VIKING）`,
+      type: 'viking_task', relatedId: takosTaskId, read: false, createdAt: new Date().toISOString(),
+    }));
+    collectionUpdates.notifications = [...d('notifications'), ...newNotifs];
+    newNotifs.forEach(n => batchOps.push({ type: 'set', collection: 'notifications', id: n.id, data: (() => { const { id: _, ...r } = n; return r; })() }));
+
+    updateMultipleCollections(collectionUpdates);
+    fsWrite(() => batchWrite(batchOps));
     forceRefresh();
   };
 
@@ -1147,7 +1219,7 @@ export const DataProvider = ({ children }) => {
       getExamTypes, addExamType, deleteExamType,
       getCapacities, addCapacity, deleteCapacity,
       getTasks, addTask, updateTask, deleteTask,
-      getAssignments, updateAssignment, deleteAssignment,
+      getAssignments, updateAssignment, deleteAssignment, confirmStorage,
       getEvaluationCriteria, addEvaluationCriteria, updateEvaluationCriteria, deleteEvaluationCriteria,
       getEvaluations, setEvaluation,
       getExamInputs, saveExamInput, deleteExamInput,
