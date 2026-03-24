@@ -1018,9 +1018,10 @@ export default function CorrectorDashboard() {
   };
   const handleChecklistComplete = () => {
     if (!checklistModalData) return;
-    setSubmittingId(checklistModalData.assignmentId);
-    setSubmitForm({ actualHours: String(checklistModalData.defaultHours), note: '', files: [] });
+    const aid = checklistModalData.assignmentId;
+    setSubmittingId(aid);
     setChecklistModalData(null);
+    handleConfirmSubmit(aid);
   };
   const handleCancelSubmit = () => {
     setSubmittingId(null);
@@ -1055,7 +1056,7 @@ export default function CorrectorDashboard() {
     setSubmitForm(prev => ({ ...prev, files: prev.files.filter((_, i) => i !== index) }));
   };
   const handleConfirmSubmit = async (assignmentId) => {
-    if (!submitForm.actualHours || isSubmitBusy) return;
+    if (isSubmitBusy) return;
     setIsSubmitBusy(true);
 
     try {
@@ -1144,13 +1145,16 @@ export default function CorrectorDashboard() {
 
       // Update assignment
       stopActiveTimer(user.id);
+      // タイマーから実績工数を自動計算（0.5時間単位、最低0.5時間）
+      const totalSeconds = getTaskTotalTime(taskId) || 0;
+      const autoHours = Math.max(0.5, Math.round((totalSeconds / 3600) * 2) / 2);
       // チェックリスト結果を含める
       const clResults = Object.keys(checklistResults).length > 0
         ? Object.entries(checklistResults).map(([itemId, checked]) => ({ itemId, checked, checkedAt: new Date().toISOString() }))
         : undefined;
       updateAssignment(assignmentId, {
         status: 'submitted',
-        actualHours: Number(submitForm.actualHours),
+        actualHours: autoHours,
         submittedAt: new Date().toISOString(),
         ...(submitForm.note ? { note: submitForm.note } : {}),
         ...(attachmentMeta.length > 0 ? { attachments: attachmentMeta } : {}),
@@ -1158,6 +1162,7 @@ export default function CorrectorDashboard() {
       });
       setSubmittingId(null);
       setSubmitForm({ actualHours: '', note: '', files: [] });
+      setInputViewTaskId(null);
     } finally {
       setIsSubmitBusy(false);
     }
@@ -1186,11 +1191,28 @@ export default function CorrectorDashboard() {
     .filter(a => !isFinished(a.status))
     .reduce((s, a) => s + a.assignedHours, 0);
 
-  // 入力フォームビューを開く
+  // 入力フォームビューを開く（自動タイマー開始）
   const openInputView = (taskId) => {
     setInputViewTaskId(taskId);
     // 担当業務タブに切り替え
     setActiveTab(1);
+    // 自動的にタイマーを開始し、ステータスをin_progressに変更
+    const assignment = myAssignments.find(a => a.taskId === taskId);
+    if (assignment && (assignment.status === 'assigned' || assignment.status === 'rejected')) {
+      updateAssignment(assignment.id, { status: 'in_progress' });
+      startTimer(assignment.id, taskId, user.id);
+    } else if (assignment && assignment.status === 'in_progress') {
+      // 既にin_progressでもタイマーが動いていなければ開始
+      const active = getActiveTimer(user.id);
+      if (!active || active.taskId !== taskId) {
+        startTimer(assignment.id, taskId, user.id);
+      }
+    }
+  };
+  // 入力フォームビューを閉じる（タイマー自動停止）
+  const closeInputView = () => {
+    stopActiveTimer(user.id);
+    setInputViewTaskId(null);
   };
 
   return (
@@ -1429,21 +1451,89 @@ export default function CorrectorDashboard() {
               const assignment = myAssignments.find(a => a.taskId === inputViewTaskId);
               const existingInputs = getExamInputs(inputViewTaskId);
               const existingInput = existingInputs[0] ?? null;
+              const timerTotalSec = getTaskTotalTime(task.id) || 0;
+              const timerMin = Math.floor(timerTotalSec / 60);
+              const timerHours = Math.max(0.5, Math.round((timerTotalSec / 3600) * 2) / 2);
+              const hasInput = !!existingInput;
               return (
-                <ExamInputForm
-                  task={task}
-                  assignment={assignment}
-                  existingInput={existingInput}
-                  onSave={(data) => saveExamInput(data)}
-                  onBack={() => setInputViewTaskId(null)}
-                  sheetsSignedIn={false}
-                  sheets={null}
-                  onDaimonFocus={(daimonId) => {
-                    const current = getActiveTimer(user.id);
-                    if (current?.daimonId === daimonId && current?.taskId === task.id) return;
-                    startTimer(assignment.id, task.id, user.id, daimonId);
-                  }}
-                />
+                <>
+                  <ExamInputForm
+                    task={task}
+                    assignment={assignment}
+                    existingInput={existingInput}
+                    onSave={(data) => saveExamInput(data)}
+                    onBack={closeInputView}
+                    sheetsSignedIn={false}
+                    sheets={null}
+                    onDaimonFocus={(daimonId) => {
+                      const current = getActiveTimer(user.id);
+                      if (current?.daimonId === daimonId && current?.taskId === task.id) return;
+                      startTimer(assignment.id, task.id, user.id, daimonId);
+                    }}
+                  />
+                  {/* 提出セクション（入力フォーム下部） */}
+                  {hasInput && assignment && assignment.status !== 'submitted' && (
+                    <div className="mx-4 mb-6 p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+                      <h3 className="text-sm font-semibold text-gray-800 mb-3">提出</h3>
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="text-xs text-gray-500">作業時間:</span>
+                        <span className="text-sm font-medium text-blue-700">{timerMin}分（{timerHours}時間として計上）</span>
+                      </div>
+                      <div className="mb-3">
+                        <label className="block text-xs text-gray-500 mb-1">ファイル添付（任意・Excel/Word・最大5MB/件）</label>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition border border-gray-300">
+                            ファイルを選択
+                            <input type="file" accept=".xlsx,.xls,.docx,.doc" multiple onChange={handleFileAdd} className="hidden" />
+                          </label>
+                          {submitForm.files.length > 0 && (
+                            <span className="text-xs text-gray-500">{submitForm.files.length}件選択中</span>
+                          )}
+                        </div>
+                        {submitForm.files.length > 0 && (
+                          <div className="mt-1.5 space-y-1">
+                            {submitForm.files.map((file, i) => (
+                              <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 rounded-lg px-2 py-1.5">
+                                <span className="text-gray-600 truncate flex-1">
+                                  {file.name}
+                                  <span className="text-gray-400 ml-1">({(file.size / 1024).toFixed(0)}KB)</span>
+                                </span>
+                                <button onClick={() => handleFileRemove(i)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="mb-3">
+                        <label className="block text-xs text-gray-500 mb-1">メモ（任意）</label>
+                        <input
+                          type="text"
+                          value={submitForm.note}
+                          onChange={e => setSubmitForm(prev => ({ ...prev, note: e.target.value }))}
+                          className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          placeholder="例：修正点あり"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          // 提出前チェックリストがあるか確認
+                          const checkItems = getVerificationItems(task.subject, 'submission', task.workType);
+                          if (checkItems.length > 0) {
+                            setChecklistModalData({ assignmentId: assignment.id, defaultHours: timerHours, items: checkItems });
+                            setChecklistResults({});
+                            return;
+                          }
+                          setSubmittingId(assignment.id);
+                          handleConfirmSubmit(assignment.id);
+                        }}
+                        disabled={isSubmitBusy}
+                        className="w-full text-sm bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg transition font-medium"
+                      >
+                        {isSubmitBusy ? '送信中...' : '提出する'}
+                      </button>
+                    </div>
+                  )}
+                </>
               );
             })() : (
               /* VIKINGタスク + タスク一覧 */
@@ -1654,25 +1744,10 @@ export default function CorrectorDashboard() {
                                 >
                                   ✏️ 入力する
                                 </button>
-                                {(assignment.status === 'assigned' || isRejected) && (
+                                {/* 入力データがある場合は提出ボタンも表示（入力フォームを開いて提出セクションへ） */}
+                                {!isRejected && getExamInputs(task.id).length > 0 && (
                                   <button
-                                    onClick={() => { updateAssignment(assignment.id, { status: 'in_progress' }); startTimer(assignment.id, assignment.taskId, user.id); }}
-                                    className="text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-3 py-1.5 rounded-lg transition font-medium"
-                                  >
-                                    {isRejected ? '再作業開始' : (getTimeLogs({ assignmentId: assignment.id }).length > 0 ? '作業再開' : '作業開始')}
-                                  </button>
-                                )}
-                                {!isRejected && assignment.status === 'in_progress' && (
-                                  <button
-                                    onClick={() => { stopActiveTimer(user.id); updateAssignment(assignment.id, { status: 'assigned' }); }}
-                                    className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded-lg transition font-medium"
-                                  >
-                                    ⏸ 作業停止
-                                  </button>
-                                )}
-                                {!isRejected && assignment.status !== 'assigned' && (
-                                  <button
-                                    onClick={() => handleStartSubmit(assignment.id, task.requiredHours)}
+                                    onClick={() => openInputView(task.id)}
                                     className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition font-medium"
                                   >
                                     提出する
@@ -1703,80 +1778,7 @@ export default function CorrectorDashboard() {
                             )}
                           </div>
 
-                          {/* 提出フォーム（インライン展開） */}
-                          {isSubmitting && (
-                            <div className="mt-3 pt-3 border-t border-gray-200">
-                              <p className="text-xs font-semibold text-gray-700 mb-2">実績工数を入力して提出</p>
-                              <div className="flex flex-wrap gap-2 items-end">
-                                <div>
-                                  <label className="block text-xs text-gray-500 mb-1">実績工数（時間）</label>
-                                  <div className="flex items-center gap-1">
-                                    <input
-                                      type="number"
-                                      value={submitForm.actualHours}
-                                      onChange={e => setSubmitForm({ ...submitForm, actualHours: e.target.value })}
-                                      min="0.5" step="0.5"
-                                      className="w-24 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                      autoFocus
-                                    />
-                                    <span className="text-xs text-gray-500">h</span>
-                                  </div>
-                                </div>
-                                <div className="flex-1 min-w-40">
-                                  <label className="block text-xs text-gray-500 mb-1">メモ（任意）</label>
-                                  <input
-                                    type="text"
-                                    value={submitForm.note}
-                                    onChange={e => setSubmitForm({ ...submitForm, note: e.target.value })}
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="例：修正点あり"
-                                  />
-                                </div>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => handleConfirmSubmit(assignment.id)}
-                                    disabled={!submitForm.actualHours || isSubmitBusy}
-                                    className="text-sm bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg transition font-medium"
-                                  >
-                                    {isSubmitBusy ? '送信中...' : '提出'}
-                                  </button>
-                                  <button
-                                    onClick={handleCancelSubmit}
-                                    disabled={isSubmitBusy}
-                                    className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg transition"
-                                  >
-                                    キャンセル
-                                  </button>
-                                </div>
-                              </div>
-                              {/* ファイル添付セクション */}
-                              <div className="mt-2">
-                                <label className="block text-xs text-gray-500 mb-1">ファイル添付（任意・Excel/Word・最大5MB/件）</label>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition border border-gray-300">
-                                    📎 ファイルを選択
-                                    <input type="file" accept=".xlsx,.xls,.docx,.doc" multiple onChange={handleFileAdd} className="hidden" />
-                                  </label>
-                                  {submitForm.files.length > 0 && (
-                                    <span className="text-xs text-gray-500">{submitForm.files.length}件選択中</span>
-                                  )}
-                                </div>
-                                {submitForm.files.length > 0 && (
-                                  <div className="mt-1.5 space-y-1">
-                                    {submitForm.files.map((file, i) => (
-                                      <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 rounded-lg px-2 py-1.5">
-                                        <span className="text-gray-600 truncate flex-1">
-                                          📄 {file.name}
-                                          <span className="text-gray-400 ml-1">({(file.size / 1024).toFixed(0)}KB)</span>
-                                        </span>
-                                        <button onClick={() => handleFileRemove(i)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
+                          {/* 提出フォームは入力ビューに統合済み */}
 
                         </div>
                       );
