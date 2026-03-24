@@ -6,7 +6,7 @@ import {
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
-import { toCSV, downloadCSV, importCSVFile, validateUserCSV, validateFieldClearanceCSV, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
+import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, TASK_IMPORT_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
 import { SUBJECTS_LIST, generateId } from '../utils/storage.js';
 import { useSheetsSync } from '../contexts/SheetsContext.jsx';
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
@@ -1000,7 +1000,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     getAssignments, deleteAssignment, updateAssignment,
     getCorrectors, getCapacities, forceRefresh,
     getExamInputs, getTimeLogs, getTaskTotalTime, getDaimonTotalTime, getUsers,
-    getAllData, applyAutoAssignResult, getFields, getWorkTypes,
+    getAllData, applyAutoAssignResult, getFields, getWorkTypes, getSchools,
   } = useData();
   const { user } = useAuth();
   const workTypesList = getWorkTypes().map(wt => wt.name);
@@ -1037,6 +1037,12 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const [assignDeadlineFrom, setAssignDeadlineFrom] = useState('');
   const [assignDeadlineTo, setAssignDeadlineTo] = useState('');
   const [showAssignSearch, setShowAssignSearch] = useState(false);
+
+  // Bulk CSV import state
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [bulkCsvText, setBulkCsvText] = useState('');
+  const [bulkParsed, setBulkParsed] = useState(null); // { valid: [], errors: [] }
+  const [bulkImportDone, setBulkImportDone] = useState(null); // success count message
 
   // Assignment state
   const [message, setMessage] = useState('');
@@ -1186,6 +1192,74 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     });
     const csv = toCSV(data, TASK_CSV_COLUMNS);
     downloadCSV(csv, `タスク一覧_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  // --- Bulk CSV import helpers ---
+  const handleBulkCsvParse = (text) => {
+    setBulkCsvText(text);
+    setBulkImportDone(null);
+    if (!text.trim()) { setBulkParsed(null); return; }
+    // Handle tab-separated by replacing tabs with commas (only if no commas present and tabs exist)
+    let csvText = text;
+    if (!text.includes(',') && text.includes('\t')) {
+      csvText = text.split('\n').map(line => line.split('\t').map(cell => {
+        const trimmed = cell.trim();
+        if (trimmed.includes(',') || trimmed.includes('"') || trimmed.includes('\n')) return '"' + trimmed.replace(/"/g, '""') + '"';
+        return trimmed;
+      }).join(',')).join('\n');
+    }
+    const { rows } = parseCSV(csvText);
+    if (rows.length === 0) { setBulkParsed({ valid: [], errors: [{ line: 0, message: 'データ行がありません', row: {} }] }); return; }
+    const result = validateTaskCSV(rows, {
+      subjects: SUBJECTS_LIST,
+      workTypes: workTypesList,
+      getFieldsFn: getFields,
+    });
+    setBulkParsed(result);
+  };
+
+  const handleBulkCsvFile = async () => {
+    try {
+      const { headers, rows } = await importCSVFile();
+      // Re-construct CSV text from imported data for display
+      const csvText = [headers.join(','), ...rows.map(r => headers.map(h => r[h] ?? '').join(','))].join('\n');
+      setBulkCsvText(csvText);
+      handleBulkCsvParse(csvText);
+    } catch (err) {
+      // user cancelled or error
+    }
+  };
+
+  const handleBulkImportConfirm = () => {
+    if (!bulkParsed || bulkParsed.valid.length === 0) return;
+    let count = 0;
+    bulkParsed.valid.forEach(row => {
+      addTask({
+        name: row.name,
+        subject: row.subject,
+        workType: row.workType,
+        requiredHours: row.requiredHours,
+        deadline: row.deadline,
+        viking: row.viking,
+        sheetsUrl: row.sheetsUrl || '',
+        fieldId: row.fieldId || null,
+      });
+      count++;
+    });
+    setBulkImportDone(`${count}件のタスクを登録しました`);
+    setBulkParsed(null);
+    setBulkCsvText('');
+    setMessage(`CSV一括登録: ${count}件のタスクを追加しました`);
+    setTimeout(() => setMessage(''), 5000);
+  };
+
+  const handleDownloadTaskTemplate = () => {
+    const templateData = [
+      { name: '○○中学 算数 第1回 大問1', subject: '算数', workType: workTypesList[0] || '新年度試験種', requiredHours: 2, deadline: '2026-04-30', viking: 'TRUE', sheetsUrl: '', fieldName: '' },
+      { name: '○○中学 理科 第1回 大問1', subject: '理科', workType: workTypesList[0] || '新年度試験種', requiredHours: 1.5, deadline: '2026-04-30', viking: 'FALSE', sheetsUrl: '', fieldName: '' },
+    ];
+    const csv = toCSV(templateData, TASK_IMPORT_CSV_COLUMNS);
+    downloadCSV(csv, 'タスク一括登録テンプレート.csv');
   };
 
   const clearTaskFilters = () => {
@@ -1433,6 +1507,130 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
               )}
             </div>
           </form>
+
+          {/* CSV一括登録セクション */}
+          <div className="mt-6 border-t border-gray-200 pt-5">
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => { setShowBulkImport(v => !v); setBulkImportDone(null); }}
+                className={`text-sm font-medium px-4 py-2 rounded-lg transition ${showBulkImport ? 'bg-orange-600 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100'}`}
+              >
+                {showBulkImport ? '▲ CSV一括登録を閉じる' : '📄 CSV一括登録'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadTaskTemplate}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition font-medium"
+              >
+                テンプレートDL
+              </button>
+            </div>
+
+            {showBulkImport && (
+              <div className="space-y-3 bg-orange-50/50 border border-orange-200 rounded-lg p-4">
+                <p className="text-xs text-gray-500">
+                  CSVまたはTSV形式でタスクを一括登録できます。ヘッダ行: タスク名,科目,作業内容,工数(h),期限,VIKING,スプレッドシートURL,分野名
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleBulkCsvFile}
+                    className="text-sm px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition font-medium"
+                  >
+                    CSVファイルを選択
+                  </button>
+                  <span className="text-xs text-gray-400 self-center">または下のテキストエリアに貼り付け</span>
+                </div>
+                <textarea
+                  value={bulkCsvText}
+                  onChange={e => handleBulkCsvParse(e.target.value)}
+                  rows={6}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-orange-500 outline-none"
+                  placeholder={`タスク名,科目,作業内容,工数(h),期限,VIKING,スプレッドシートURL,分野名\n○○中学 算数 第1回,算数,新年度試験種,2,2026-04-30,TRUE,,`}
+                />
+
+                {bulkParsed && (
+                  <div className="space-y-2">
+                    {/* Validation summary */}
+                    <div className="flex gap-3 text-xs font-medium">
+                      <span className="text-green-700">有効: {bulkParsed.valid.length}件</span>
+                      <span className="text-red-600">エラー: {bulkParsed.errors.length}件</span>
+                    </div>
+
+                    {/* Error list */}
+                    {bulkParsed.errors.length > 0 && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                        {bulkParsed.errors.map((err, i) => (
+                          <p key={i} className="text-xs text-red-600">{err.line}行目: {err.message}</p>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Preview table */}
+                    {bulkParsed.valid.length > 0 && (
+                      <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-gray-100">
+                              <th className="px-2 py-1 text-left border border-gray-200">行</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">タスク名</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">科目</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">作業内容</th>
+                              <th className="px-2 py-1 text-right border border-gray-200">工数</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">期限</th>
+                              <th className="px-2 py-1 text-center border border-gray-200">VIKING</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">分野</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {bulkParsed.valid.map((row, i) => (
+                              <tr key={i} className="bg-green-50/50 hover:bg-green-100/50">
+                                <td className="px-2 py-1 border border-gray-200 text-gray-400">{row._line}</td>
+                                <td className="px-2 py-1 border border-gray-200">{row.name}</td>
+                                <td className="px-2 py-1 border border-gray-200">{row.subject}</td>
+                                <td className="px-2 py-1 border border-gray-200">{row.workType}</td>
+                                <td className="px-2 py-1 border border-gray-200 text-right">{row.requiredHours}h</td>
+                                <td className="px-2 py-1 border border-gray-200">{row.deadline}</td>
+                                <td className="px-2 py-1 border border-gray-200 text-center">{row.viking ? '○' : ''}</td>
+                                <td className="px-2 py-1 border border-gray-200 text-gray-500">{row.fieldId ? getFields(row.subject).find(f => f.id === row.fieldId)?.name || '' : ''}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Confirm button */}
+                    {bulkParsed.valid.length > 0 && (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleBulkImportConfirm}
+                          className="bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+                        >
+                          一括登録（{bulkParsed.valid.length}件）
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setBulkParsed(null); setBulkCsvText(''); }}
+                          className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg transition"
+                        >
+                          クリア
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {bulkImportDone && (
+                  <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm font-medium">
+                    {bulkImportDone}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

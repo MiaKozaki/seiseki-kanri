@@ -261,6 +261,102 @@ export const validateFieldClearanceCSV = (rows, fields, users) => {
   };
 };
 
+/**
+ * タスク一括登録CSVのバリデーション
+ * CSVフォーマット: タスク名,科目,作業内容,工数(h),期限,VIKING,分野名
+ *
+ * @param {Object[]} rows - parseCSVで得られたオブジェクト配列
+ * @param {Object} context - { subjects: string[], workTypes: string[], fields: Function, getFields(subject) }
+ * @returns {{ valid: Object[], errors: {line: number, message: string, row: Object}[] }}
+ */
+export const validateTaskCSV = (rows, context) => {
+  const { subjects, workTypes, getFieldsFn } = context;
+  const valid = [];
+  const errors = [];
+
+  rows.forEach((row, i) => {
+    const lineNum = i + 2;
+    const rowErrors = [];
+
+    const name = (row['タスク名'] || '').trim();
+    if (!name) rowErrors.push('タスク名が空です');
+
+    const subject = (row['科目'] || '').trim();
+    if (!subject) {
+      rowErrors.push('科目が空です');
+    } else if (!subjects.includes(subject)) {
+      rowErrors.push(`科目「${subject}」は無効です（${subjects.join('/')}）`);
+    }
+
+    const workType = (row['作業内容'] || '').trim();
+    if (!workType) {
+      rowErrors.push('作業内容が空です');
+    } else if (!workTypes.includes(workType)) {
+      rowErrors.push(`作業内容「${workType}」は無効です`);
+    }
+
+    const hoursStr = (row['工数(h)'] || row['工数'] || '').trim();
+    const requiredHours = parseFloat(hoursStr);
+    if (!hoursStr || isNaN(requiredHours) || requiredHours <= 0) {
+      rowErrors.push('工数は正の数値で入力してください');
+    }
+
+    const deadline = (row['期限'] || '').trim();
+    if (!deadline) {
+      rowErrors.push('期限が空です');
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
+      rowErrors.push('期限はYYYY-MM-DD形式で入力してください');
+    }
+
+    const vikingRaw = (row['VIKING'] || '').trim().toUpperCase();
+    const viking = vikingRaw === 'TRUE' || vikingRaw === '1' || vikingRaw === 'YES' || vikingRaw === '○';
+
+    const sheetsUrl = (row['スプレッドシートURL'] || '').trim();
+
+    // 分野名（オプション）
+    const fieldName = (row['分野名'] || '').trim();
+    let fieldId = null;
+    if (fieldName && subject && getFieldsFn) {
+      const fields = getFieldsFn(subject);
+      const matched = fields.find(f => f.name === fieldName);
+      if (matched) {
+        fieldId = matched.id;
+      } else {
+        rowErrors.push(`分野「${fieldName}」が科目「${subject}」に見つかりません`);
+      }
+    }
+
+    if (rowErrors.length > 0) {
+      errors.push({ line: lineNum, message: rowErrors.join('；'), row });
+    } else {
+      valid.push({
+        name,
+        subject,
+        workType,
+        requiredHours,
+        deadline,
+        viking,
+        sheetsUrl,
+        fieldId,
+        _line: lineNum,
+      });
+    }
+  });
+
+  return { valid, errors };
+};
+
+export const TASK_IMPORT_CSV_COLUMNS = [
+  { key: 'name', header: 'タスク名' },
+  { key: 'subject', header: '科目' },
+  { key: 'workType', header: '作業内容' },
+  { key: 'requiredHours', header: '工数(h)' },
+  { key: 'deadline', header: '期限' },
+  { key: 'viking', header: 'VIKING' },
+  { key: 'sheetsUrl', header: 'スプレッドシートURL' },
+  { key: 'fieldName', header: '分野名' },
+];
+
 // ---------- カラム定義 ----------
 
 export const USER_CSV_COLUMNS = [

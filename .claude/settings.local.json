@@ -73,7 +73,8 @@
       "Bash(npx --yes vite build --logLevel error)",
       "Bash(node -e \":*)",
       "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\")",
-      "Bash(ls /Users/mia/.nvm/versions/node/*/bin/npm)"
+      "Bash(ls /Users/mia/.nvm/versions/node/*/bin/npm)",
+      "Bash(eval '$\\(fnm env 2>/dev/null\\)')"
     ]
   }
 }
