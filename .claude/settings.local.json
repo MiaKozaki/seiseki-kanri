@@ -84,7 +84,8 @@
       "Bash(ls /opt/homebrew/bin/npm /usr/local/bin/npm ~/.nvm/versions/node/*/bin/npm)",
       "Bash(PATH=\"/usr/local/bin:/opt/homebrew/bin:$PATH\")",
       "Read(//usr/**)",
-      "Read(//Users/mia/Desktop/seiseki-kanri/**)"
+      "Read(//Users/mia/Desktop/seiseki-kanri/**)",
+      "Bash(/Users/mia/.nvm/versions/node/v20.19.0/bin/npx vite:*)"
     ]
   }
 }

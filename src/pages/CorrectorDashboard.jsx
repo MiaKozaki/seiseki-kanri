@@ -19,7 +19,8 @@ const parseFbMessage = (message) => {
 };
 
 // Component to render structured FB message
-const StructuredFbDisplay = ({ message }) => {
+// hideDetail: 添削者向け表示ではカテゴリ項目のみ表示し、詳細は非公開
+const StructuredFbDisplay = ({ message, hideDetail = true }) => {
   const parsed = parseFbMessage(message);
   if (!parsed) {
     return <p className="text-gray-700">{message}</p>;
@@ -32,7 +33,7 @@ const StructuredFbDisplay = ({ message }) => {
           <li key={i} className="text-gray-700 text-xs leading-relaxed">{item.replace(/^・/, '')}</li>
         ))}
       </ul>
-      {parsed.detail && (
+      {!hideDetail && parsed.detail && (
         <>
           <p className="text-[10px] font-semibold text-amber-700 mt-1.5">詳細：</p>
           <p className="text-gray-700 whitespace-pre-wrap">{parsed.detail}</p>

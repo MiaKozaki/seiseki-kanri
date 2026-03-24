@@ -1092,13 +1092,21 @@ export const DataProvider = ({ children }) => {
     const fb = { ...feedbackData, id: generateId(), createdAt: new Date().toISOString() };
     updateCollection('feedbacks', [...(d('feedbacks') || []), fb]);
     fsWrite(() => saveDocument('feedbacks', fb));
-    // 作業者への通知を自動生成
+    // 作業者への通知を自動生成（カテゴリ項目のみ、詳細は含めない）
     const fromUser = d('users').find(u => u.id === fb.fromUserId);
     const task = d('tasks').find(t => t.id === fb.taskId);
+    // 通知メッセージにはFB内容（カテゴリ）のみ含め、【詳細】セクションは除外
+    let notifDetail = '';
+    if (fb.message) {
+      const contentMatch = fb.message.match(/【FB内容】\n([\s\S]*?)(?:\n\n【詳細】|$)/);
+      if (contentMatch) {
+        notifDetail = '\n【FB内容】\n' + contentMatch[1];
+      }
+    }
     const notif = {
       id: generateId(),
       userId: fb.toUserId,
-      message: `${fromUser?.name || 'リーダー'}から「${task?.name || ''}」にFBがあります`,
+      message: `${fromUser?.name || 'リーダー'}から「${task?.name || ''}」にFBがあります${notifDetail}`,
       type: 'feedback',
       relatedId: fb.assignmentId,
       read: false,

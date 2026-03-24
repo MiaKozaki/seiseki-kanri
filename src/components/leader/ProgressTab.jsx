@@ -910,8 +910,8 @@ const ProgressTab = ({ activeSubjects }) => {
                               </span>
                             )}
 
-                            {/* Reject */}
-                            {assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
+                            {/* Reject - 社会は差し戻しの代わりにFBを使うため非表示 */}
+                            {task.subject !== '社会' && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
                               <button
                                 onClick={() => {
                                   setReviewingId(reviewingId === assignment.id ? null : assignment.id);
@@ -921,6 +921,16 @@ const ProgressTab = ({ activeSubjects }) => {
                                 className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition text-sm font-medium"
                               >
                                 差し戻し
+                              </button>
+                            )}
+
+                            {/* 社会用: FB送信ボタン（差し戻しの代わり） */}
+                            {task.subject === '社会' && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
+                              <button
+                                onClick={() => setFeedbackAssignmentId(feedbackAssignmentId === assignment.id ? null : assignment.id)}
+                                className="px-4 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition text-sm font-medium"
+                              >
+                                💬 FB送信
                               </button>
                             )}
                           </div>
@@ -1175,8 +1185,8 @@ const ProgressTab = ({ activeSubjects }) => {
                             </div>
                           )}
 
-                          {/* FB（フィードバック）パネル - 社会のみ */}
-                          {task.subject === '社会' && (assignment.status === 'submitted' || assignment.status === 'approved') && (
+                          {/* FB（フィードバック）パネル - 社会のみ（submitted, reviewing, approved 全ステータスで表示） */}
+                          {task.subject === '社会' && (assignment.status === 'submitted' || assignment.status === 'approved' || assignment.verificationStatus === 'reviewing') && (
                             <div className="mt-2">
                               {feedbackAssignmentId === assignment.id ? (
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
@@ -1257,12 +1267,7 @@ const ProgressTab = ({ activeSubjects }) => {
                                     </button>
                                   </div>
                                 </div>
-                              ) : (
-                                <button onClick={() => setFeedbackAssignmentId(assignment.id)}
-                                  className="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 px-3 py-1.5 rounded-lg transition">
-                                  💬 FB送信
-                                </button>
-                              )}
+                              ) : null}
                               {/* 送信済みFB一覧 */}
                               {(() => {
                                 const fbs = (getFeedbacks({ assignmentId: assignment.id }) || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
