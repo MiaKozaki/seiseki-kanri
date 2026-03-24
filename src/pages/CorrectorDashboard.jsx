@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
-import { useSheetsSync } from '../contexts/SheetsContext.jsx';
-import { writeExamSheets } from '../utils/sheetsApi.js';
+// import { useSheetsSync } from '../contexts/SheetsContext.jsx'; // Google Sheets連携削除
+// import { writeExamSheets } from '../utils/sheetsApi.js'; // Google Sheets連携削除
 import { downloadExamExcel } from '../utils/excelExport.js';
 import { generateId, SUBJECTS_LIST } from '../utils/storage.js';
 import { saveAttachment, deleteAttachmentsByAssignment, validateFile, MAX_FILES_PER_SUBMISSION } from '../utils/fileStorage.js';
@@ -341,36 +341,7 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
     }
   };
 
-  const handleWriteSheets = async () => {
-    if (!task.sheetsUrl) {
-      showToast('⚠️ タスクにスプシURLが設定されていません');
-      return;
-    }
-    if (!sheets?.signedIn) {
-      showToast('⚠️ Googleにサインインしていません');
-      return;
-    }
-    if (liveErrors.length > 0) {
-      showToast('⚠️ エラーを修正してから提出してください');
-      return;
-    }
-    setExporting(true);
-    try {
-      const match = task.sheetsUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-      if (!match) {
-        showToast('⚠️ スプシURLの形式が正しくありません');
-        return;
-      }
-      const spreadsheetId = match[1];
-      await writeExamSheets(spreadsheetId, form);
-      onSave({ ...form, status: 'submitted' });
-      showToast('✅ スプシに書き出しました！');
-    } catch (e) {
-      showToast(`❌ 書き出しエラー: ${e.message}`);
-    } finally {
-      setExporting(false);
-    }
-  };
+  // handleWriteSheets removed (Google Sheets連携削除)
 
   return (
     <div className="space-y-4">
@@ -898,25 +869,6 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
 
       {/* アクションボタン */}
       <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
-        {/* Google サインイン状態（スプシ書き出しはオプション） */}
-        {task.sheetsUrl && !sheets?.signedIn && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400">📊 スプシ書き出しも使えます（任意）:</span>
-            {sheets?.settings?.clientId ? (
-              <button onClick={sheets.handleSignIn}
-                className="text-xs bg-white border border-gray-300 hover:bg-gray-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
-                🔑 Google サインイン
-              </button>
-            ) : (
-              <span className="text-xs text-gray-400">マスタタブで Client ID を設定してください</span>
-            )}
-          </div>
-        )}
-        {sheets?.signedIn && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-green-600 bg-green-50 border border-green-100 px-2.5 py-1 rounded-full">✅ Google 接続中</span>
-          </div>
-        )}
         {/* ボタン群 */}
         <div className="flex flex-wrap gap-2 items-center">
           <button onClick={handleSave} disabled={saving}
@@ -927,12 +879,6 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
             className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition font-medium">
             📥 Excelダウンロード
           </button>
-          {task.sheetsUrl && sheets?.signedIn && (
-            <button onClick={handleWriteSheets} disabled={exporting}
-              className="text-sm bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg transition font-medium">
-              {exporting ? '書き出し中...' : '📊 スプシに書き出す'}
-            </button>
-          )}
           <button onClick={onBack}
             className="text-sm text-gray-400 hover:text-gray-600 border border-gray-200 px-3 py-2 rounded-lg transition">
             ← 戻る
@@ -968,8 +914,6 @@ export default function CorrectorDashboard() {
     getVerificationItems,
     getFeedbacks,
   } = useData();
-  const sheets = useSheetsSync();
-
   const [activeTab, setActiveTab] = useState(0);
   const [capForm, setCapForm] = useState({ startDate: '', endDate: '', hoursPerDay: 8, note: '' });
   const [capError, setCapError] = useState('');
@@ -1456,8 +1400,8 @@ export default function CorrectorDashboard() {
                   existingInput={existingInput}
                   onSave={(data) => saveExamInput(data)}
                   onBack={() => setInputViewTaskId(null)}
-                  sheetsSignedIn={sheets.signedIn}
-                  sheets={sheets}
+                  sheetsSignedIn={false}
+                  sheets={null}
                   onDaimonFocus={(daimonId) => {
                     const current = getActiveTimer(user.id);
                     if (current?.daimonId === daimonId && current?.taskId === task.id) return;
@@ -1995,21 +1939,14 @@ export default function CorrectorDashboard() {
 
         {activeTab === 4 && (() => {
           const correctorSections = [
-            { key: 'login', icon: '🔑', title: 'ログイン', desc: 'ログイン方法' },
-            { key: 'capacity', icon: '⏱️', title: '工数登録タブ', desc: '作業可能な期間と時間の登録' },
-            { key: 'tasks', icon: '📋', title: '担当業務タブ', desc: 'タスクの確認と作業の流れ' },
-            { key: 'input', icon: '✏️', title: '入力フォーム', desc: '試験内容の入力方法' },
-            { key: 'recruit', icon: '📢', title: '業務募集タブ', desc: '業務募集への応募' },
-            { key: 'notify', icon: '🔔', title: '通知タブ', desc: '通知の確認方法' },
+            { key: 'capacity', icon: '⏱️', title: '工数登録', desc: '作業可能な期間と時間の登録' },
+            { key: 'tasks', icon: '📋', title: '担当業務', desc: 'タスク一覧・提出・ファイル添付' },
+            { key: 'recruit', icon: '📢', title: '業務募集', desc: 'VIKINGタスクの取得' },
+            { key: 'notify', icon: '🔔', title: '通知', desc: '承認・差し戻し・FB通知' },
+            { key: 'feedback', icon: '💬', title: 'フィードバック', desc: 'リーダーからのFB表示' },
           ];
 
           const correctorContent = {
-            login: (
-              <div className="text-sm text-gray-600 space-y-2">
-                <p>リーダーから共有されたメールアドレスとパスワードでログインしてください。</p>
-                <p className="text-xs text-gray-400">※ アカウントはリーダーが「作業者管理」から作成します。自分でアカウントを作ることはできません。</p>
-              </div>
-            ),
             capacity: (
               <div className="text-sm text-gray-600 space-y-2">
                 <p>自分が作業可能な期間と時間を登録します。</p>
@@ -2027,68 +1964,46 @@ export default function CorrectorDashboard() {
             tasks: (
               <div className="text-sm text-gray-600 space-y-2">
                 <p>リーダーから割り当てられたタスクの一覧と、作業の流れを確認できます。</p>
-
-                <h4 className="font-semibold text-gray-700 mt-3">タスクの状態</h4>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li><span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">割当済</span> リーダーからタスクが割り当てられた状態</li>
-                  <li><span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full">作業中</span> 「作業開始」をクリックした後の状態</li>
-                  <li><span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">提出済</span> リーダーの検証を待っている状態</li>
-                  <li><span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full">差し戻し</span> リーダーから修正を求められた状態</li>
-                  <li><span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">完了</span> リーダーに承認された状態</li>
+                  <li><strong>タスク一覧</strong>：割当済み・作業中・提出済み・差し戻し・完了のステータスで管理</li>
+                  <li><strong>提出</strong>：提出前チェックリストを確認してから提出。ファイル添付にも対応</li>
+                  <li><strong>ファイル添付</strong>：Excelファイル等を添付して提出可能</li>
+                  <li><strong>差し戻し対応</strong>：差し戻し理由を確認し、修正して再提出</li>
                 </ul>
-
-                <h4 className="font-semibold text-gray-700 mt-3">作業の流れ</h4>
-                <div className="space-y-2 mt-2">
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">1</span>
-                    <p>「<strong>作業開始</strong>」ボタンをクリック → ステータスが「作業中」に変わります</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">2</span>
-                    <p>「<strong>✏️ 入力する</strong>」ボタンから、試験の構成や内容を入力します</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">3</span>
-                    <p>作業が完了したら「<strong>提出する</strong>」ボタンをクリック → 実績工数を入力して提出</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">4</span>
-                    <p>リーダーが承認すれば完了。差し戻された場合は修正して再提出します</p>
-                  </div>
+                <div className="mt-3 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+                  <strong>💡 作業フロー</strong>：作業開始 → 入力/作業 → 提出前チェック → 提出 → リーダー検証 → 承認 or 差し戻し
                 </div>
-              </div>
-            ),
-            input: (
-              <div className="text-sm text-gray-600 space-y-2">
-                <p>「入力する」ボタンを押すと、試験の入力フォームが開きます。</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li><strong>構成タブ</strong>：試験の基本情報（タイトル、出典、著者）と大問の構成を入力</li>
-                  <li><strong>内容タブ</strong>：各大問の詳細な内容を入力</li>
-                  <li>入力内容は「下書き保存」で途中保存できます</li>
-                  <li>すべて入力し終わったら「入力提出」で確定します</li>
-                </ul>
               </div>
             ),
             recruit: (
               <div className="text-sm text-gray-600 space-y-2">
-                <p>リーダーが出した業務募集に応募できます。</p>
+                <p>VIKING形式の業務募集タスクを取得できます。</p>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>自分の担当科目に合った募集のみ表示されます</li>
-                  <li>「応募する」ボタンからメッセージを添えて応募できます</li>
-                  <li>リーダーが承認すると、タスクが割り当てられます</li>
+                  <li>自分の担当科目・クリア済み分野に合った募集のみ表示されます（分野制限あり）</li>
+                  <li>「取得する」ボタンでタスクを自分にアサイン</li>
+                  <li>リーダーが募集を締め切ると取得できなくなります</li>
                 </ul>
               </div>
             ),
             notify: (
               <div className="text-sm text-gray-600 space-y-2">
-                <p>リーダーからの通知を確認できます。以下の場合に通知が届きます。</p>
+                <p>リーダーからの通知を確認できます。</p>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>新しいタスクが割り当てられた時</li>
-                  <li>提出したタスクが承認された時</li>
-                  <li>タスクが差し戻された時（差し戻し理由も表示されます）</li>
-                  <li>業務募集の応募が承認/却下された時</li>
+                  <li><strong>承認通知</strong>：タスクが承認された時</li>
+                  <li><strong>差し戻し通知</strong>：差し戻し理由も表示されます</li>
+                  <li><strong>FB通知</strong>：リーダーからのフィードバック</li>
+                  <li><strong>割当通知</strong>：新しいタスクが割り当てられた時</li>
                 </ul>
                 <p>「既読」ボタンで個別に、「すべて既読」で一括で既読にできます。</p>
+              </div>
+            ),
+            feedback: (
+              <div className="text-sm text-gray-600 space-y-2">
+                <p>リーダーからのフィードバックを確認できます。</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>差し戻し時のコメントやカテゴリ・重大度</li>
+                  <li>過去のフィードバック履歴の参照</li>
+                </ul>
               </div>
             ),
           };
@@ -2140,7 +2055,7 @@ export default function CorrectorDashboard() {
                   </div>
                   <div className="flex items-start gap-3">
                     <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">2</span>
-                    <p><strong>タスク確認</strong>：担当業務タブでアサインされたタスクを確認</p>
+                    <p><strong>タスク確認</strong>：担当業務タブでアサインされたタスクを確認 / 業務募集からVIKINGタスクを取得</p>
                   </div>
                   <div className="flex items-start gap-3">
                     <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">3</span>
@@ -2148,15 +2063,11 @@ export default function CorrectorDashboard() {
                   </div>
                   <div className="flex items-start gap-3">
                     <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">4</span>
-                    <p><strong>入力作業</strong>：入力フォームで試験内容を入力・保存</p>
+                    <p><strong>提出</strong>：提出前チェックリストを確認 → ファイル添付 → 提出</p>
                   </div>
                   <div className="flex items-start gap-3">
                     <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">5</span>
-                    <p><strong>提出</strong>：作業完了後に実績工数を入力して提出</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">6</span>
-                    <p><strong>確認</strong>：通知タブで承認/差し戻しの結果を確認</p>
+                    <p><strong>確認</strong>：通知タブで承認/差し戻し/FBの結果を確認</p>
                   </div>
                 </div>
               </section>

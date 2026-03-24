@@ -80,7 +80,8 @@
       "Bash(ls /opt/homebrew/bin/node* /usr/local/bin/node*)",
       "Bash(PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin:./node_modules/.bin\" npm run build)",
       "Bash(/Users/mia/.volta/bin/npx vite:*)",
-      "Bash(export PATH=/usr/local/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/*/bin:$PATH)"
+      "Bash(export PATH=/usr/local/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/*/bin:$PATH)",
+      "Bash(ls /opt/homebrew/bin/npm /usr/local/bin/npm ~/.nvm/versions/node/*/bin/npm)"
     ]
   }
 }

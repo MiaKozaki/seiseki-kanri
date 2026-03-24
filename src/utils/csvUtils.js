@@ -155,8 +155,15 @@ export const validateUserCSV = (rows) => {
       .map(s => s.trim())
       .filter(Boolean);
 
+    const employeeId = (row['管理ID'] || '').trim() || null;
+    if (employeeId && !/^N\d{8}$/.test(employeeId)) {
+      errors.push(`${lineNum}行目: 管理IDは N+8桁の数字 (例: N00000001) の形式にしてください`);
+      return;
+    }
+
     valid.push({
       name,
+      employeeId,
       loginId: (row['ログインID'] || '').trim() || null,
       email: (row['メールアドレス'] || '').trim() || '',
       role: normalizedRole,
@@ -360,8 +367,9 @@ export const TASK_IMPORT_CSV_COLUMNS = [
 // ---------- カラム定義 ----------
 
 export const USER_CSV_COLUMNS = [
-  { key: 'loginId', header: 'ログインID' },
   { key: 'name', header: '氏名' },
+  { key: 'employeeId', header: '管理ID' },
+  { key: 'loginId', header: 'ログインID' },
   { key: 'email', header: 'メールアドレス' },
   { key: 'role', header: 'ロール' },
   { key: 'subjects', header: '担当科目' },

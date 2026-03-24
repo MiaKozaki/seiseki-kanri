@@ -8,7 +8,7 @@ import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
 import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, validateDaimonTaskCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, DAIMON_TASK_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
 import { SUBJECTS_LIST, WORK_TYPES_LIST, generateId } from '../utils/storage.js';
-import { useSheetsSync } from '../contexts/SheetsContext.jsx';
+// import { useSheetsSync } from '../contexts/SheetsContext.jsx'; // Google Sheets連携削除
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
 import { downloadAttachment } from '../utils/fileStorage.js';
 import { downloadHistoryExcel } from '../utils/excelExport.js';
@@ -3798,7 +3798,7 @@ const UserManagementTab = ({ activeSubjects }) => {
   const { getUsers, getCorrectors, addUser, updateUser, deleteUser, resetUserPassword, getFields, getUserFields, bulkImportUserFields, bulkSetUserFields, addUserField, removeUserField } = useData();
   const correctors = getCorrectors();
 
-  const [form, setForm] = useState({ name: '', email: '', loginId: '', subjects: [] });
+  const [form, setForm] = useState({ name: '', email: '', loginId: '', employeeId: '', subjects: [] });
   const [editId, setEditId] = useState(null);
   const [editSubjectsId, setEditSubjectsId] = useState(null);
   const [selectedSubjects, setSelectedSubjects] = useState([]);
@@ -3811,8 +3811,9 @@ const UserManagementTab = ({ activeSubjects }) => {
 
   const handleExportCSV = () => {
     const data = correctors.map(c => ({
-      loginId: c.loginId || '',
       name: c.name,
+      employeeId: c.employeeId || '',
+      loginId: c.loginId || '',
       email: c.email || '',
       role: c.role === 'leader' ? 'リーダー' : '添削者',
       subjects: (c.subjects || []).join('；'),
@@ -3842,6 +3843,7 @@ const UserManagementTab = ({ activeSubjects }) => {
     csvPreview.forEach(u => {
       const result = addUser({
         name: u.name,
+        employeeId: u.employeeId || null,
         loginId: u.loginId || undefined,
         email: u.email,
         role: u.role,
@@ -3864,7 +3866,7 @@ const UserManagementTab = ({ activeSubjects }) => {
     e.preventDefault();
     setError('');
     if (editId) {
-      updateUser(editId, { name: form.name, email: form.email });
+      updateUser(editId, { name: form.name, email: form.email, employeeId: form.employeeId || null });
       setEditId(null);
     } else {
       const existing = getCorrectors().find(u => u.email === form.email);
@@ -3874,12 +3876,15 @@ const UserManagementTab = ({ activeSubjects }) => {
         const dupLoginId = allUsers.find(u => u.loginId === form.loginId);
         if (dupLoginId) { setError('このログインIDは既に使用されています'); return; }
       }
-      const result = addUser({ ...form, loginId: form.loginId || undefined, role: 'corrector', subjects: form.subjects || [] });
+      if (form.employeeId && !/^N\d{8}$/.test(form.employeeId)) {
+        setError('管理IDは N+8桁の数字 (例: N00000001) の形式にしてください'); return;
+      }
+      const result = addUser({ ...form, employeeId: form.employeeId || null, loginId: form.loginId || undefined, role: 'corrector', subjects: form.subjects || [] });
       setGeneratedPw(result._tempPassword);
       setGeneratedPwUser(form.name);
       setGeneratedPwLoginId(result.loginId);
     }
-    setForm({ name: '', email: '', loginId: '', subjects: [] });
+    setForm({ name: '', email: '', loginId: '', employeeId: '', subjects: [] });
   };
 
   const handleResetPassword = (userId, userName) => {
@@ -3924,6 +3929,12 @@ const UserManagementTab = ({ activeSubjects }) => {
               required
             />
             <input
+              type="text" placeholder="管理ID (N+8桁)" value={form.employeeId}
+              onChange={e => setForm({ ...form, employeeId: e.target.value })}
+              className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+              maxLength={9}
+            />
+            <input
               type="text" placeholder="ログインID（空欄で自動生成）" value={form.loginId}
               onChange={e => setForm({ ...form, loginId: e.target.value })}
               className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
@@ -3953,7 +3964,7 @@ const UserManagementTab = ({ activeSubjects }) => {
               {editId ? '更新' : '追加'}
             </button>
             {editId && (
-              <button type="button" onClick={() => { setEditId(null); setForm({ name: '', email: '', loginId: '', subjects: [] }); }}
+              <button type="button" onClick={() => { setEditId(null); setForm({ name: '', email: '', loginId: '', employeeId: '', subjects: [] }); }}
                 className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg transition">
                 キャンセル
               </button>
@@ -3968,6 +3979,17 @@ const UserManagementTab = ({ activeSubjects }) => {
           <button onClick={handleImportCSV}
             className="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-3 py-1.5 rounded-lg transition">
             📥 CSV インポート
+          </button>
+          <button onClick={() => {
+            const templateData = [
+              { name: '山田 太郎', employeeId: 'N00000001', loginId: 'T001', email: 'yamada@test.com', role: '添削者', subjects: '国語；算数' },
+              { name: '鈴木 花子', employeeId: 'N00000002', loginId: '', email: 'suzuki@test.com', role: '添削者', subjects: '理科' },
+            ];
+            const csv = toCSV(templateData, USER_CSV_COLUMNS);
+            downloadCSV(csv, '作業者一括登録テンプレート.csv');
+          }}
+            className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg transition">
+            📄 テンプレートCSVダウンロード
           </button>
         </div>
         {!editId && <p className="text-xs text-gray-400 mt-2">* パスワードは自動生成されます。追加後に表示されるパスワードを作業者に共有してください。</p>}
@@ -4010,6 +4032,7 @@ const UserManagementTab = ({ activeSubjects }) => {
               {csvPreview.map((u, i) => (
                 <div key={i} className="text-xs flex items-center gap-2 bg-white rounded p-2">
                   <span className="font-mono text-purple-600">{u.loginId || '自動'}</span>
+                  {u.employeeId && <span className="font-mono text-green-600">{u.employeeId}</span>}
                   <span className="font-medium">{u.name}</span>
                   <span className="text-gray-400">{u.email}</span>
                   <span className="text-gray-400">{(u.subjects || []).join('・')}</span>
@@ -4098,11 +4121,11 @@ const UserManagementTab = ({ activeSubjects }) => {
                 <div key={c.id} className="p-3 border border-gray-200 rounded-xl">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-sm font-semibold text-gray-800">{c.name} <span className="text-xs font-mono text-blue-500">{c.loginId}</span></p>
+                      <p className="text-sm font-semibold text-gray-800">{c.name} <span className="text-xs font-mono text-blue-500">{c.loginId}</span>{c.employeeId && <span className="text-xs font-mono text-green-600 ml-1">{c.employeeId}</span>}</p>
                       <p className="text-xs text-gray-400">{c.email}</p>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => { setEditId(c.id); setForm({ name: c.name, email: c.email, loginId: c.loginId || '' }); }}
+                      <button onClick={() => { setEditId(c.id); setForm({ name: c.name, email: c.email, loginId: c.loginId || '', employeeId: c.employeeId || '' }); }}
                         className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded transition">編集</button>
                       <button onClick={() => handleResetPassword(c.id, c.name)}
                         className="text-xs text-amber-500 hover:bg-amber-50 px-2 py-1 rounded transition">PW リセット</button>
@@ -4482,7 +4505,6 @@ const RecruitmentTab = ({ activeSubjects }) => {
 // ---- Master Data Tab ----
 const MasterDataTab = ({ activeSubjects }) => {
   const { getSchools, addSchool, deleteSchool, getExamTypes, addExamType, deleteExamType, getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType } = useData();
-  const sheets = useSheetsSync();
   const schools = getSchools();
   const workTypesList = getWorkTypes().map(wt => wt.name);
   const examTypes = getExamTypes();
@@ -4562,140 +4584,13 @@ const MasterDataTab = ({ activeSubjects }) => {
     downloadCSV(csv, '分野一括登録テンプレート.csv');
   };
 
-  // Google Sheets 設定フォームの一時状態
-  const [draftClientId, setDraftClientId] = useState(sheets.settings.clientId);
-  const [draftSheetId, setDraftSheetId] = useState(sheets.settings.spreadsheetId);
-
-  const handleSaveSheetSettings = () => {
-    sheets.saveSettings({ clientId: draftClientId.trim(), spreadsheetId: draftSheetId.trim() });
-  };
-
   const examTypeName = (et) => {
     const s = schools.find(s => s.id === et.schoolId);
     return `${s?.name} / ${et.subject}`;
   };
 
-  const statusLabel = { idle: '', syncing: '同期中…', success: '同期完了', error: 'エラー' };
-  const statusCls = { idle: '', syncing: 'text-blue-500', success: 'text-green-600', error: 'text-red-500' };
-
   return (
     <div className="space-y-4">
-
-      {/* ===== Google Sheets 連携 ===== */}
-      <div className="bg-white rounded-xl shadow-sm p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-lg">📊</span>
-          <h3 className="text-sm font-semibold text-gray-700">Google Sheets 連携</h3>
-          {sheets.signedIn && (
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">接続中</span>
-          )}
-        </div>
-
-        {/* 設定入力 */}
-        <div className="space-y-2 mb-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              OAuth 2.0 クライアント ID
-              <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener"
-                className="ml-1 text-blue-400 hover:underline">（Google Cloud Console）</a>
-            </label>
-            <input
-              type="text"
-              value={draftClientId}
-              onChange={e => setDraftClientId(e.target.value)}
-              placeholder="xxxxxxxxxxxx.apps.googleusercontent.com"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              スプレッドシート ID
-              <span className="ml-1 text-gray-400 font-normal">（URLの /d/ と /edit の間の文字列）</span>
-            </label>
-            <input
-              type="text"
-              value={draftSheetId}
-              onChange={e => setDraftSheetId(e.target.value)}
-              placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-            />
-          </div>
-          <button
-            onClick={handleSaveSheetSettings}
-            className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition"
-          >
-            設定を保存
-          </button>
-        </div>
-
-        {/* 認証・同期ボタン */}
-        <div className="flex flex-wrap items-center gap-2">
-          {!sheets.signedIn ? (
-            <button
-              onClick={sheets.handleSignIn}
-              disabled={!sheets.gisReady}
-              className="flex items-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition shadow-sm disabled:opacity-40"
-            >
-              <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-3.59-13.46-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-              Google でサインイン
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={sheets.upload}
-                disabled={sheets.status === 'syncing' || !sheets.settings.spreadsheetId}
-                className="text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg transition"
-              >
-                ↑ Sheets に保存
-              </button>
-              <button
-                onClick={sheets.download}
-                disabled={sheets.status === 'syncing' || !sheets.settings.spreadsheetId}
-                className="text-sm bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg transition"
-              >
-                ↓ Sheets から読み込む
-              </button>
-              <button
-                onClick={sheets.handleSignOut}
-                className="text-sm text-gray-400 hover:text-gray-600 px-3 py-2 rounded-lg transition"
-              >
-                サインアウト
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* ステータス */}
-        {(sheets.status !== 'idle' || sheets.lastSync || sheets.errorMsg) && (
-          <div className="mt-3 text-xs space-y-0.5">
-            {sheets.status !== 'idle' && (
-              <p className={statusCls[sheets.status]}>{statusLabel[sheets.status]}</p>
-            )}
-            {sheets.lastSync && (
-              <p className="text-gray-400">最終同期: {sheets.lastSync}（60秒ごと自動アップロード）</p>
-            )}
-            {sheets.errorMsg && (
-              <p className="text-red-500">{sheets.errorMsg}</p>
-            )}
-          </div>
-        )}
-
-        {/* セットアップ手順 */}
-        {!sheets.signedIn && (
-          <details className="mt-4">
-            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">セットアップ手順を見る</summary>
-            <ol className="mt-2 text-xs text-gray-500 space-y-1 list-decimal list-inside leading-relaxed">
-              <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener" className="text-blue-400 hover:underline">Google Cloud Console</a> でプロジェクトを作成</li>
-              <li>「APIとサービス」→「ライブラリ」で <strong>Google Sheets API</strong> を有効化</li>
-              <li>「認証情報」→「認証情報を作成」→「OAuth 2.0 クライアント ID」を選択</li>
-              <li>アプリケーションの種類: <strong>ウェブアプリケーション</strong></li>
-              <li>承認済みの JavaScript 生成元に <code className="bg-gray-100 px-1 rounded">http://localhost:5173</code> を追加</li>
-              <li>クライアント ID をコピーして上のフォームに貼り付け</li>
-              <li>Google スプレッドシートを新規作成し、URLからスプレッドシート ID をコピー</li>
-            </ol>
-          </details>
-        )}
-      </div>
 
       <div className="bg-white rounded-xl shadow-sm p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">学校の管理</h3>
@@ -5568,116 +5463,114 @@ const LeaderManualTab = () => {
   const toggle = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   const sections = [
-    { key: 'account', icon: '👤', title: 'アカウント登録・ログイン', desc: 'ユーザーの追加とログイン方法' },
-    { key: 'overview', icon: '📊', title: '概要タブ', desc: 'KPI・グラフ・完了予測の確認' },
-    { key: 'filter', icon: '🔍', title: '科目フィルター', desc: '表示科目の切り替え' },
-    { key: 'analysis', icon: '📈', title: '工数分析タブ', desc: '添削者ごとの工数状況' },
-    { key: 'tasks', icon: '📋', title: '試験種管理タブ', desc: 'タスクの登録・検索・振り分け' },
-    { key: 'processing', icon: '✅', title: '試験種処理タブ', desc: '提出物の検証・承認・差し戻し' },
-    { key: 'recruit', icon: '📢', title: '業務募集タブ', desc: '添削者の募集' },
-    { key: 'eval', icon: '⭐', title: '作業者評価タブ', desc: '評価・作業時間分析' },
-    { key: 'users', icon: '👥', title: '作業者管理タブ', desc: 'ユーザーの管理' },
-    { key: 'master', icon: '⚙️', title: 'マスタタブ', desc: '基本設定の管理' },
+    { key: 'overview', icon: '📊', title: '概要', desc: 'KPIサマリー' },
+    { key: 'tasks', icon: '📋', title: '試験種管理', desc: 'タスク追加・CSV一括登録・大問分割' },
+    { key: 'assign', icon: '🔀', title: '振り分け', desc: '自動/手動振り分け・漏れチェック' },
+    { key: 'users', icon: '👥', title: '作業者管理', desc: '添削者追加・CSV一括登録・分野研修' },
+    { key: 'analysis', icon: '📈', title: '工数分析', desc: '棒グラフ・月間工数履歴' },
+    { key: 'processing', icon: '✅', title: '進捗管理', desc: '検証・差し戻し・格納確認' },
+    { key: 'recruit', icon: '📢', title: '業務募集', desc: 'VIKING形式タスク' },
+    { key: 'eval', icon: '⭐', title: '作業者評価', desc: 'スター評価' },
+    { key: 'merge', icon: '📁', title: 'ファイル統合', desc: 'Excel統合' },
+    { key: 'master', icon: '⚙️', title: 'マスタ', desc: '学校・試験種・分野等の管理' },
   ];
 
   const sectionContent = {
-    account: (
-      <div className="text-sm text-gray-600 space-y-2">
-        <p>1. 「作業者管理」タブから新しいユーザーを追加できます。</p>
-        <p>2. 名前、メールアドレスを入力して登録します。パスワードは自動生成されます。</p>
-        <p>3. 登録後に表示される初期パスワードを作業者に共有してください。初回ログイン時にパスワード変更が求められます。</p>
-        <p className="text-xs text-gray-400 mt-2">※ データはブラウザのlocalStorageに保存されます。ブラウザやデバイスが変わるとデータは引き継がれません。</p>
-      </div>
-    ),
     overview: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>ダッシュボードのトップ画面です。以下の情報が一覧で確認できます。</p>
+        <p>ダッシュボードのトップ画面です。</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>KPIサマリー</strong>：添削者数、タスク総数、未割当タスク、遅延リスク、検証待ち、完了タスク、工数合計</li>
+          <li><strong>KPIサマリー</strong>：添削者数、タスク総数、未割当、遅延リスク、検証待ち、完了数、工数合計</li>
           <li><strong>タスクステータス分布</strong>：円グラフで割当状況を可視化</li>
-          <li><strong>科目別 完了予測</strong>：各科目ごとの残り工数、利用可能工数、完了見込み日を表示</li>
-          <li><strong>タスク進捗予測テーブル</strong>：各タスクの担当者、残り工数、予測完了日、期限、状態を一覧表示</li>
-        </ul>
-      </div>
-    ),
-    filter: (
-      <div className="text-sm text-gray-600 space-y-2">
-        <p>画面上部の科目フィルターで、表示する科目を切り替えられます。</p>
-        <ul className="list-disc pl-5 space-y-1">
-          <li><strong>★マーク付きの科目</strong>：あなたの担当科目です。ログイン時に自動でONになります。</li>
-          <li><strong>「全体」ボタン</strong>：すべての科目を一括でON/OFFします。</li>
-          <li>各科目ボタンをクリックすると、個別にON/OFFを切り替えられます。</li>
-        </ul>
-      </div>
-    ),
-    analysis: (
-      <div className="text-sm text-gray-600 space-y-2">
-        <p>添削者ごとの工数状況をグラフで確認できます。</p>
-        <ul className="list-disc pl-5 space-y-1">
-          <li>棒グラフ：各添削者の登録工数 vs 割当工数</li>
-          <li>キャパシティ（空き工数）の確認</li>
+          <li><strong>科目別 完了予測</strong>：残り工数、利用可能工数、完了見込み日</li>
+          <li><strong>タスク進捗予測テーブル</strong>：担当者、残り工数、予測完了日、期限、状態の一覧</li>
         </ul>
       </div>
     ),
     tasks: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>試験種（タスク）の登録・検索・振り分け・実績管理をまとめて行えるタブです。5つのサブタブがあります。</p>
+        <p>試験種（タスク）の登録・管理を行うタブです。</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>タスク登録</strong>：科目、作業内容、必要工数（時間）、期限、スプシURLを入力して作成</li>
-          <li><strong>タスク一覧</strong>：全タスクの検索（名前）とステータスフィルター。ソート機能付き</li>
-          <li><strong>振り分け</strong>：自動振り分け（プレビュー＋確定）と手動振り分け</li>
-          <li><strong>割当済み</strong>：割当済みタスクの確認。大問別作業時間も表示。解除も可能</li>
-          <li><strong>実績</strong>：完了タスクの計画vs実績レポート。CSV出力可能</li>
+          <li><strong>タスク追加</strong>：科目、作業内容、必要工数、期限を入力して作成</li>
+          <li><strong>CSV一括登録</strong>：タスクCSV / 試験種タスクCSVで一括投入</li>
+          <li><strong>大問分割CSV登録</strong>：学校名・科目・大問名・分野・工数・期限のCSVで大問単位に分割登録</li>
+          <li><strong>タスク一覧</strong>：名前検索・ステータスフィルター・ソート</li>
+          <li><strong>割当済み</strong>：割当タスクの確認、大問別作業時間表示、解除</li>
+          <li><strong>実績</strong>：完了タスクの計画vs実績レポート、CSV出力</li>
         </ul>
-        <div className="mt-3 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-          <strong>💡 作業時間について</strong>：添削者が作業を開始した時点から自動で計測されます。割当済みタスクに⏱マークで累計時間・大問別時間が表示されます。
-        </div>
+      </div>
+    ),
+    assign: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>タスクの振り分けを行います。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>自動振り分け</strong>：科目+作業内容フィルタで対象を絞り、プレビュー後に確定</li>
+          <li><strong>手動振り分け</strong>：個別タスクを指定して添削者にアサイン</li>
+          <li><strong>振り分け漏れチェック</strong>：未割当タスクの確認</li>
+        </ul>
+      </div>
+    ),
+    users: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>添削者の追加・編集・削除を行います。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>添削者追加</strong>：氏名、メール、管理ID（N+8桁）、担当科目を入力。パスワードは自動生成</li>
+          <li><strong>CSV一括登録</strong>：氏名、管理ID、ログインID、メール、ロール、担当科目のCSVで一括投入。テンプレートCSVもダウンロード可能</li>
+          <li><strong>分野研修クリア管理</strong>：添削者ごとの分野研修クリア状況を管理。CSV一括インポートにも対応</li>
+          <li><strong>PWリセット</strong>：パスワードを再発行（初回ログイン時に変更必須）</li>
+          <li><strong>担当科目編集</strong>：添削者の担当科目を変更</li>
+        </ul>
+      </div>
+    ),
+    analysis: (
+      <div className="text-sm text-gray-600 space-y-2">
+        <p>添削者ごとの工数状況を確認します。</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>棒グラフ</strong>：各添削者の登録工数 vs 割当工数</li>
+          <li><strong>月間工数履歴</strong>：月ごとの工数推移をフィルタ付きで確認</li>
+          <li><strong>キャパシティ管理</strong>：空き工数の把握</li>
+        </ul>
       </div>
     ),
     processing: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>添削者がタスクを提出すると、このタブに「検証待ち」として表示されます。</p>
+        <p>添削者の提出物を検証・管理します。</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>承認</strong>：内容に問題なければ「承認」をクリック → タスクが完了になります</li>
-          <li><strong>差し戻し</strong>：カテゴリ・重大度を選択し、詳細メモを入力して差し戻し → 添削者に通知が届き再作業</li>
-          <li><strong>添付ファイル</strong>：添削者が提出したExcelファイルなどをダウンロード可能</li>
-          <li><strong>大問別作業時間</strong>：各大問にかかった時間と割合が表示されます</li>
+          <li><strong>検証チェックリスト</strong>：提出物のチェック項目を確認</li>
+          <li><strong>ファイルプレビュー</strong>：添付ファイルの確認・ダウンロード</li>
+          <li><strong>承認</strong>：内容に問題なければ承認 → タスク完了</li>
+          <li><strong>差し戻し自動化</strong>：カテゴリ・重大度を選択して差し戻し → 添削者に自動通知</li>
+          <li><strong>格納確認 → takos放出</strong>：格納確認後のフロー</li>
         </ul>
       </div>
     ),
     recruit: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>添削者を募集する機能です。</p>
+        <p>VIKING形式のタスク募集を管理します。</p>
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>募集作成</strong>：科目、タイトル、説明、必要工数、期限を入力して募集を開始</li>
           <li><strong>応募管理</strong>：添削者からの応募を確認し、承認または却下</li>
-          <li>募集は手動で「締切」にすることもできます</li>
+          <li>VIKINGタスクでは分野制限が適用されます</li>
         </ul>
       </div>
     ),
     eval: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>添削者の評価と作業時間の分析を行います。5つのサブタブがあります。</p>
+        <p>添削者のスター評価と作業時間分析を行います。</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>評価基準</strong>：評価基準の追加・編集・削除。自動メトリクス（差し戻し率、重大度、作業時間等）も設定可能</li>
-          <li><strong>添削者評価</strong>：各添削者をスライダーで評価。科目別フィルター・自動計算メトリクス付き</li>
-          <li><strong>作業時間一覧</strong>：全タイムログを一覧表示。作業者・科目・日付範囲でフィルター可能</li>
-          <li><strong>個人別時間</strong>：作業者を選択して合計時間・タスク数・効率%を確認</li>
-          <li><strong>科目・大問別</strong>：科目別の合計時間・割合のプログレスバー。大問別の時間内訳</li>
+          <li><strong>評価基準</strong>：評価基準の管理。自動メトリクス（差し戻し率、重大度、作業時間等）も対応</li>
+          <li><strong>添削者評価</strong>：スライダーで評価。科目フィルター・自動計算メトリクス付き</li>
+          <li><strong>作業時間一覧</strong>：タイムログを一覧表示。作業者・科目・日付でフィルター</li>
+          <li><strong>個人別時間</strong>：合計時間・タスク数・効率%を確認</li>
+          <li><strong>科目・大問別</strong>：科目別合計時間の割合、大問別の時間内訳</li>
         </ul>
-        <div className="mt-3 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-          <strong>💡 評価と振り分けの連携</strong>：評価は自動振り分けのアルゴリズムに反映されます（高評価の人に優先的にアサイン）。
-        </div>
       </div>
     ),
-    users: (
+    merge: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>ユーザー（リーダー・添削者）の追加・編集・削除を行います。</p>
+        <p>添削者が提出したExcelファイルを統合します。</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>追加</strong>：名前、メールを入力（パスワードは自動生成。初回ログイン時に変更必須）</li>
-          <li><strong>PWリセット</strong>：パスワードを再発行し、初回ログイン時に変更を求める</li>
-          <li><strong>編集</strong>：既存ユーザーの情報を変更</li>
-          <li><strong>削除</strong>：不要なユーザーを削除（割り当て済みタスクがある場合は先に解除が必要）</li>
+          <li>複数の添付ファイルを1つのExcelにまとめてダウンロード</li>
         </ul>
       </div>
     ),
@@ -5687,7 +5580,11 @@ const LeaderManualTab = () => {
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>学校マスタ</strong>：学校名の追加・削除</li>
           <li><strong>試験種マスタ</strong>：学校と科目の組み合わせを登録</li>
-          <li><strong>評価基準マスタ</strong>：評価項目の追加・編集・削除</li>
+          <li><strong>差し戻しカテゴリ</strong>：差し戻し理由のカテゴリ管理</li>
+          <li><strong>重大度</strong>：差し戻しの重大度レベル管理</li>
+          <li><strong>チェックリスト</strong>：検証・提出前チェック項目の管理</li>
+          <li><strong>分野マスタ</strong>：科目別の分野登録・CSV一括登録</li>
+          <li><strong>作業種マスタ</strong>：作業内容の種類を管理</li>
         </ul>
       </div>
     ),
@@ -5736,19 +5633,19 @@ const LeaderManualTab = () => {
         <div className="text-sm text-gray-700 space-y-2">
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">1</span>
-            <p><strong>マスタ設定</strong>：学校・試験種・評価基準を登録</p>
+            <p><strong>マスタ設定</strong>：学校・試験種・分野・チェックリストを登録</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">2</span>
-            <p><strong>作業者登録</strong>：添削者のアカウントを作成</p>
+            <p><strong>作業者登録</strong>：添削者のアカウントを作成（管理ID・担当科目対応、CSV一括登録可）</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">3</span>
-            <p><strong>タスク作成</strong>：試験種管理タブ →「タスク登録」で新しいタスクを追加</p>
+            <p><strong>タスク作成</strong>：試験種管理 → タスク追加 / CSV一括登録 / 大問分割CSV登録</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">4</span>
-            <p><strong>振り分け</strong>：試験種管理タブ →「振り分け」で自動/手動アサイン</p>
+            <p><strong>振り分け</strong>：自動振り分け（科目+作業内容フィルタ）/ 手動振り分け / 振り分け漏れチェック</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">5</span>
@@ -5756,11 +5653,11 @@ const LeaderManualTab = () => {
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">6</span>
-            <p><strong>検証</strong>：試験種処理タブで提出されたタスクを承認or差し戻し</p>
+            <p><strong>検証</strong>：進捗管理タブで検証チェックリスト確認 → 承認 or 差し戻し</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">7</span>
-            <p><strong>評価・分析</strong>：作業者評価タブで評価入力＋作業時間を分析</p>
+            <p><strong>評価・分析</strong>：作業者評価タブでスター評価 + 作業時間分析</p>
           </div>
         </div>
       </section>

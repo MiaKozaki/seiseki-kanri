@@ -21,22 +21,22 @@ export const INITIAL_DATA = {
     {
       id: 'u2', name: '山田 太郎', email: 'yamada@test.com', loginId: 'T001',
       password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['国語', '算数'],
-      createdAt: '2025-01-01T00:00:00.000Z'
+      employeeId: 'N00000001', createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
       id: 'u3', name: '鈴木 花子', email: 'suzuki@test.com', loginId: 'T002',
       password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['算数', '理科', '国語', '社会'],
-      createdAt: '2025-01-01T00:00:00.000Z'
+      employeeId: 'N00000002', createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
       id: 'u4', name: '佐藤 一郎', email: 'sato@test.com', loginId: 'T003',
       password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['国語', '社会'],
-      createdAt: '2025-01-01T00:00:00.000Z'
+      employeeId: 'N00000003', createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
       id: 'u5', name: '田中 美咲', email: 'mtanaka@test.com', loginId: 'T004',
       password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['理科', '社会', '国語'],
-      createdAt: '2025-01-01T00:00:00.000Z'
+      employeeId: 'N00000004', createdAt: '2025-01-01T00:00:00.000Z'
     },
     // === デモ用追加添削者 (40名: u8-u47, T005-T044) ===
     { id: 'u8', name: '高橋 翔太', email: 'takahashi@test.com', loginId: 'T005', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['国語'], createdAt: '2025-01-01T00:00:00.000Z' },
