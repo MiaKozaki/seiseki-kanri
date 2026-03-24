@@ -6,7 +6,7 @@ import {
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
-import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
+import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, validateDaimonTaskCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, DAIMON_TASK_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
 import { SUBJECTS_LIST, generateId } from '../utils/storage.js';
 import { useSheetsSync } from '../contexts/SheetsContext.jsx';
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
@@ -1001,6 +1001,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     getCorrectors, getCapacities, forceRefresh,
     getExamInputs, getTimeLogs, getTaskTotalTime, getDaimonTotalTime, getUsers,
     getAllData, applyAutoAssignResult, getFields, getWorkTypes, getSchools,
+    addSchool, getExamTypes, addExamType,
   } = useData();
   const { user } = useAuth();
   const workTypesList = getWorkTypes().map(wt => wt.name);
@@ -1043,6 +1044,12 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const [bulkCsvText, setBulkCsvText] = useState('');
   const [bulkParsed, setBulkParsed] = useState(null); // { valid: [], errors: [] }
   const [bulkImportDone, setBulkImportDone] = useState(null); // success count message
+
+  // Daimon CSV import state
+  const [showDaimonCsv, setShowDaimonCsv] = useState(false);
+  const [daimonCsvText, setDaimonCsvText] = useState('');
+  const [daimonCsvParsed, setDaimonCsvParsed] = useState(null);
+  const [daimonCsvImportDone, setDaimonCsvImportDone] = useState(null);
 
   // Assignment state
   const [message, setMessage] = useState('');
@@ -1285,6 +1292,95 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     ];
     const csv = toCSV(templateData, EXAM_TASK_CSV_COLUMNS);
     downloadCSV(csv, '試験種一括登録テンプレート.csv');
+  };
+
+  // --- Daimon CSV import helpers ---
+  const handleDaimonCsvParse = (text) => {
+    setDaimonCsvText(text);
+    setDaimonCsvImportDone(null);
+    if (!text.trim()) { setDaimonCsvParsed(null); return; }
+    let csvText = text;
+    if (!text.includes(',') && text.includes('\t')) {
+      csvText = text.split('\n').map(line => line.split('\t').map(cell => {
+        const trimmed = cell.trim();
+        if (trimmed.includes(',') || trimmed.includes('"') || trimmed.includes('\n')) return '"' + trimmed.replace(/"/g, '""') + '"';
+        return trimmed;
+      }).join(',')).join('\n');
+    }
+    const { rows } = parseCSV(csvText);
+    if (rows.length === 0) { setDaimonCsvParsed({ valid: [], errors: [{ line: 0, message: 'データ行がありません', row: {} }] }); return; }
+    const result = validateDaimonTaskCSV(rows, schools, getFields);
+    setDaimonCsvParsed(result);
+  };
+
+  const handleDaimonCsvFile = async () => {
+    try {
+      const { headers, rows } = await importCSVFile();
+      const csvText = [headers.join(','), ...rows.map(r => headers.map(h => r[h] ?? '').join(','))].join('\n');
+      setDaimonCsvText(csvText);
+      handleDaimonCsvParse(csvText);
+    } catch (err) {
+      // user cancelled or error
+    }
+  };
+
+  const handleDaimonCsvConfirm = () => {
+    if (!daimonCsvParsed || daimonCsvParsed.valid.length === 0) return;
+    // Group by school+subject+deadline
+    const groupMap = {};
+    daimonCsvParsed.valid.forEach(row => {
+      const key = `${row.schoolName}__${row.subject}__${row.deadline}`;
+      if (!groupMap[key]) groupMap[key] = { rows: [], parentTaskGroup: generateId() };
+      groupMap[key].rows.push(row);
+    });
+
+    let count = 0;
+    const examTypes = getExamTypes();
+    Object.values(groupMap).forEach(group => {
+      group.rows.forEach(row => {
+        // Look up or create school
+        let school = schools.find(s => s.name === row.schoolName);
+        if (!school) {
+          school = addSchool(row.schoolName);
+        }
+        // Look up or create examType
+        let et = examTypes.find(e => e.schoolId === school.id && e.subject === row.subject);
+        if (!et) {
+          et = addExamType(school.id, row.subject);
+          examTypes.push(et); // add to local list so subsequent rows can find it
+        }
+
+        addTask({
+          name: row.taskName,
+          subject: row.subject,
+          workType: '新年度試験種',
+          requiredHours: row.hours,
+          deadline: row.deadline,
+          sheetsUrl: '',
+          viking: row.subject === '理科',
+          fieldId: row.fieldId,
+          parentTaskGroup: group.parentTaskGroup,
+        });
+        count++;
+      });
+    });
+
+    setDaimonCsvImportDone(`${count}件の大問分割タスクを登録しました`);
+    setDaimonCsvParsed(null);
+    setDaimonCsvText('');
+    setMessage(`大問分割CSV一括登録: ${count}件のタスクを追加しました`);
+    setTimeout(() => setMessage(''), 5000);
+  };
+
+  const handleDownloadDaimonTemplate = () => {
+    const templateData = [
+      { schoolName: schools[0]?.name || '開成中学', subject: '算数', daimonName: '大問1', fieldName: '旅人算', hours: 2, deadline: '2026-04-01' },
+      { schoolName: schools[0]?.name || '開成中学', subject: '算数', daimonName: '大問2', fieldName: '食塩水', hours: 1.5, deadline: '2026-04-01' },
+      { schoolName: schools[1]?.name || '麻布中学', subject: '理科', daimonName: '大問1', fieldName: '中和', hours: 3, deadline: '2026-04-15' },
+      { schoolName: schools[1]?.name || '麻布中学', subject: '理科', daimonName: '大問2', fieldName: 'てこ', hours: 2, deadline: '2026-04-15' },
+    ];
+    const csv = toCSV(templateData, DAIMON_TASK_CSV_COLUMNS);
+    downloadCSV(csv, '大問分割タスク一括登録テンプレート.csv');
   };
 
   const clearTaskFilters = () => {
@@ -1677,6 +1773,130 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 {bulkImportDone && (
                   <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm font-medium">
                     {bulkImportDone}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 大問分割CSV一括登録セクション */}
+          <div className="mt-4 border-t border-gray-200 pt-5">
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => { setShowDaimonCsv(v => !v); setDaimonCsvImportDone(null); }}
+                className={`text-sm font-medium px-4 py-2 rounded-lg transition ${showDaimonCsv ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'}`}
+              >
+                {showDaimonCsv ? '▲ 大問分割CSV一括登録を閉じる' : '📄 大問分割CSV一括登録'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadDaimonTemplate}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition font-medium"
+              >
+                テンプレートDL
+              </button>
+            </div>
+
+            {showDaimonCsv && (
+              <div className="space-y-3 bg-purple-50/50 border border-purple-200 rounded-lg p-4">
+                <p className="text-xs text-gray-500">
+                  大問ごとに分野付きタスクを一括登録します。同じ学校+科目+期限の行は1つのグループとして登録されます。
+                  理科はVIKING（自己選択）、算数はリーダー割当になります。
+                </p>
+                <p className="text-xs text-gray-400">
+                  ヘッダ行: 学校名,科目,大問名,分野,工数,期限
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDaimonCsvFile}
+                    className="text-sm px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition font-medium"
+                  >
+                    CSVファイルを選択
+                  </button>
+                  <span className="text-xs text-gray-400 self-center">または下のテキストエリアに貼り付け</span>
+                </div>
+                <textarea
+                  value={daimonCsvText}
+                  onChange={e => handleDaimonCsvParse(e.target.value)}
+                  rows={6}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-purple-500 outline-none"
+                  placeholder={`学校名,科目,大問名,分野,工数,期限\n開成中学,算数,大問1,旅人算,2,2026-04-01\n開成中学,算数,大問2,食塩水,1.5,2026-04-01\n麻布中学,理科,大問1,中和,3,2026-04-15`}
+                />
+
+                {daimonCsvParsed && (
+                  <div className="space-y-2">
+                    <div className="flex gap-3 text-xs font-medium">
+                      <span className="text-green-700">有効: {daimonCsvParsed.valid.length}件</span>
+                      <span className="text-red-600">エラー: {daimonCsvParsed.errors.length}件</span>
+                    </div>
+
+                    {daimonCsvParsed.errors.length > 0 && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                        {daimonCsvParsed.errors.map((err, i) => (
+                          <p key={i} className="text-xs text-red-600">{err.line}行目: {err.message}</p>
+                        ))}
+                      </div>
+                    )}
+
+                    {daimonCsvParsed.valid.length > 0 && (
+                      <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-gray-100">
+                              <th className="px-2 py-1 text-left border border-gray-200">行</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">学校名</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">科目</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">大問名</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">分野</th>
+                              <th className="px-2 py-1 text-right border border-gray-200">工数</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">期限</th>
+                              <th className="px-2 py-1 text-center border border-gray-200">VIKING</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {daimonCsvParsed.valid.map((row, i) => (
+                              <tr key={i} className="bg-green-50/50 hover:bg-green-100/50">
+                                <td className="px-2 py-1 border border-gray-200 text-gray-400">{row._line}</td>
+                                <td className="px-2 py-1 border border-gray-200">{row.schoolName}</td>
+                                <td className="px-2 py-1 border border-gray-200">{row.subject}</td>
+                                <td className="px-2 py-1 border border-gray-200">{row.daimonName}</td>
+                                <td className="px-2 py-1 border border-gray-200">{row.fieldName}</td>
+                                <td className="px-2 py-1 border border-gray-200 text-right">{row.hours}h</td>
+                                <td className="px-2 py-1 border border-gray-200">{row.deadline}</td>
+                                <td className="px-2 py-1 border border-gray-200 text-center">{row.subject === '理科' ? '✓' : '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {daimonCsvParsed.valid.length > 0 && (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleDaimonCsvConfirm}
+                          className="bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+                        >
+                          一括登録（{daimonCsvParsed.valid.length}件）
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setDaimonCsvParsed(null); setDaimonCsvText(''); }}
+                          className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg transition"
+                        >
+                          クリア
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {daimonCsvImportDone && (
+                  <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm font-medium">
+                    {daimonCsvImportDone}
                   </div>
                 )}
               </div>

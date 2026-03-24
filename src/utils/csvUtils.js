@@ -534,3 +534,96 @@ export const FIELD_MASTER_CSV_COLUMNS = [
   { key: 'subject', header: '科目' },
   { key: 'category', header: 'カテゴリ' },
 ];
+
+/**
+ * 大問分割タスクCSVのバリデーション
+ * CSVフォーマット: 学校名,科目,大問名,分野,工数,期限
+ *
+ * @param {Object[]} rows - parseCSVで得られたオブジェクト配列
+ * @param {Object[]} schools - 学校マスタ一覧
+ * @param {Function} getFieldsFn - getFields(subject) で分野一覧を返す関数
+ * @returns {{ valid: Object[], errors: {line: number, message: string, row: Object}[] }}
+ */
+export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
+  const valid = [];
+  const errors = [];
+  const validSubjects = ['理科', '算数'];
+
+  rows.forEach((row, i) => {
+    const lineNum = i + 2;
+    const rowErrors = [];
+
+    const schoolName = (row['学校名'] || '').trim();
+    if (!schoolName) {
+      rowErrors.push('学校名が空です');
+    } else if (!schools.find(s => s.name === schoolName)) {
+      rowErrors.push(`学校「${schoolName}」が見つかりません`);
+    }
+
+    const subject = (row['科目'] || '').trim();
+    if (!subject) {
+      rowErrors.push('科目が空です');
+    } else if (!validSubjects.includes(subject)) {
+      rowErrors.push(`科目「${subject}」は無効です（${validSubjects.join('/')}）`);
+    }
+
+    const daimonName = (row['大問名'] || '').trim();
+    if (!daimonName) {
+      rowErrors.push('大問名が空です');
+    }
+
+    const fieldName = (row['分野'] || '').trim();
+    let fieldId = null;
+    if (!fieldName) {
+      rowErrors.push('分野が空です');
+    } else if (subject && validSubjects.includes(subject) && getFieldsFn) {
+      const fields = getFieldsFn(subject);
+      const matched = fields.find(f => f.name === fieldName);
+      if (matched) {
+        fieldId = matched.id;
+      } else {
+        rowErrors.push(`分野「${fieldName}」が科目「${subject}」に見つかりません`);
+      }
+    }
+
+    const hoursStr = (row['工数'] || row['工数(h)'] || '').trim();
+    const hours = parseFloat(hoursStr);
+    if (!hoursStr || isNaN(hours) || hours <= 0) {
+      rowErrors.push('工数は正の数値で入力してください');
+    }
+
+    const deadline = (row['期限'] || '').trim();
+    if (!deadline) {
+      rowErrors.push('期限が空です');
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
+      rowErrors.push('期限はYYYY-MM-DD形式で入力してください');
+    }
+
+    if (rowErrors.length > 0) {
+      errors.push({ line: lineNum, message: rowErrors.join('；'), row });
+    } else {
+      valid.push({
+        schoolName,
+        subject,
+        daimonName,
+        fieldName,
+        fieldId,
+        hours,
+        deadline,
+        taskName: `${schoolName} ${subject} ${daimonName}`,
+        _line: lineNum,
+      });
+    }
+  });
+
+  return { valid, errors };
+};
+
+export const DAIMON_TASK_CSV_COLUMNS = [
+  { key: 'schoolName', header: '学校名' },
+  { key: 'subject', header: '科目' },
+  { key: 'daimonName', header: '大問名' },
+  { key: 'fieldName', header: '分野' },
+  { key: 'hours', header: '工数' },
+  { key: 'deadline', header: '期限' },
+];
