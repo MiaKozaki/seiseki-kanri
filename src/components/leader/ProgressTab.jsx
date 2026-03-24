@@ -178,6 +178,7 @@ const ProgressTab = ({ activeSubjects }) => {
     getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
     getFeedbacks, addFeedback,
     getWorkTypes,
+    getReviewMemos, addReviewMemo,
   } = useData();
   const { user } = useAuth();
   const workTypesList = getWorkTypes().map(wt => wt.name);
@@ -213,6 +214,11 @@ const ProgressTab = ({ activeSubjects }) => {
   const [feedbackDetail, setFeedbackDetail] = useState('');
   const [showTaskDetail, setShowTaskDetail] = useState(false);
   const [showStatusConfig, setShowStatusConfig] = useState(false);
+
+  // ---- Memo state ----
+  const [memoText, setMemoText] = useState('');
+  const [memoShared, setMemoShared] = useState(false);
+  const [memoType, setMemoType] = useState('review');
 
   // Status config panel state
   const [cfgSubject, setCfgSubject] = useState(null);
@@ -935,8 +941,8 @@ const ProgressTab = ({ activeSubjects }) => {
                               </span>
                             )}
 
-                            {/* Reject - 社会は差し戻しの代わりにFBを使うため非表示 */}
-                            {task.subject !== '社会' && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
+                            {/* Reject - 社会・国語は差し戻しの代わりにFBを使うため非表示 */}
+                            {task.subject !== '社会' && task.subject !== '国語' && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
                               <button
                                 onClick={() => {
                                   setReviewingId(reviewingId === assignment.id ? null : assignment.id);
@@ -949,8 +955,8 @@ const ProgressTab = ({ activeSubjects }) => {
                               </button>
                             )}
 
-                            {/* 社会用: FB送信ボタン（差し戻しの代わり） */}
-                            {task.subject === '社会' && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
+                            {/* 社会・国語用: FB送信ボタン（差し戻しの代わり） */}
+                            {(task.subject === '社会' || task.subject === '国語') && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
                               <button
                                 onClick={() => setFeedbackAssignmentId(feedbackAssignmentId === assignment.id ? null : assignment.id)}
                                 className="px-4 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition text-sm font-medium"
@@ -1102,6 +1108,79 @@ const ProgressTab = ({ activeSubjects }) => {
                             );
                           })()}
 
+                          {/* 作業者傾向メモ */}
+                          {(() => {
+                            const tendencyMemos = getReviewMemos({ userId: assignment.userId, type: 'tendency' });
+                            if (tendencyMemos.length === 0) return null;
+                            return (
+                              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl mb-2">
+                                <p className="text-xs font-semibold text-yellow-700 mb-1">📝 この作業者の傾向メモ（{tendencyMemos.length}件）</p>
+                                <div className="space-y-1 max-h-32 overflow-y-auto">
+                                  {tendencyMemos.map(m => (
+                                    <div key={m.id} className="text-xs text-gray-700 bg-white rounded p-1.5">
+                                      {m.content}
+                                      <span className="text-[10px] text-gray-400 ml-1">{new Date(m.createdAt).toLocaleDateString('ja-JP')}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* メモを追加 */}
+                          <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                            <p className="text-xs font-semibold text-gray-600 mb-2">📝 メモを追加</p>
+                            <textarea value={memoText} onChange={e => setMemoText(e.target.value)}
+                              placeholder="検証メモ、作業者への伝達事項、傾向メモなど..."
+                              rows={2} className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2 mb-2" />
+                            <div className="flex items-center gap-3 mb-2">
+                              <select value={memoType} onChange={e => setMemoType(e.target.value)}
+                                className="text-xs border border-gray-300 rounded-lg px-2 py-1">
+                                <option value="review">検証メモ</option>
+                                <option value="tendency">作業者傾向メモ</option>
+                              </select>
+                              <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+                                <input type="checkbox" checked={memoShared} onChange={e => setMemoShared(e.target.checked)}
+                                  className="rounded border-gray-300" />
+                                作業者に共有する
+                              </label>
+                            </div>
+                            <button onClick={() => {
+                              if (!memoText.trim()) return;
+                              addReviewMemo({
+                                assignmentId: assignment.id,
+                                taskId: task.id,
+                                userId: assignment.userId,
+                                authorId: user?.id,
+                                content: memoText.trim(),
+                                shared: memoShared,
+                                type: memoType,
+                              });
+                              setMemoText(''); setMemoShared(false); setMemoType('review');
+                            }}
+                              disabled={!memoText.trim()}
+                              className="text-xs bg-gray-600 hover:bg-gray-700 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg transition">
+                              メモを保存
+                            </button>
+                            {/* Show existing memos for this assignment */}
+                            {(() => {
+                              const memos = getReviewMemos({ assignmentId: assignment.id });
+                              if (memos.length === 0) return null;
+                              return (
+                                <div className="mt-2 space-y-1">
+                                  <p className="text-[10px] text-gray-500">この検証のメモ（{memos.length}件）</p>
+                                  {memos.map(m => (
+                                    <div key={m.id} className={`text-xs p-1.5 rounded ${m.type === 'tendency' ? 'bg-yellow-50' : 'bg-white'} border border-gray-100`}>
+                                      <span className="font-medium">{m.content}</span>
+                                      {m.shared && <span className="text-[10px] bg-blue-100 text-blue-600 px-1 py-0.5 rounded-full ml-1">共有</span>}
+                                      <span className="text-[10px] text-gray-400 ml-1">{new Date(m.createdAt).toLocaleDateString('ja-JP')}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
+
                           {/* Rejection panel */}
                           {reviewingId === assignment.id && (
                             <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-3">
@@ -1210,8 +1289,8 @@ const ProgressTab = ({ activeSubjects }) => {
                             </div>
                           )}
 
-                          {/* FB（フィードバック）パネル - 社会のみ（submitted, reviewing, approved 全ステータスで表示） */}
-                          {task.subject === '社会' && (assignment.status === 'submitted' || assignment.status === 'approved' || assignment.verificationStatus === 'reviewing') && (
+                          {/* FB（フィードバック）パネル - 社会・国語（submitted, reviewing, approved 全ステータスで表示） */}
+                          {(task.subject === '社会' || task.subject === '国語') && (assignment.status === 'submitted' || assignment.status === 'approved' || assignment.verificationStatus === 'reviewing') && (
                             <div className="mt-2">
                               {feedbackAssignmentId === assignment.id ? (
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">

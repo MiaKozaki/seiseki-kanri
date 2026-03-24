@@ -80,6 +80,7 @@ export default function CorrectorDashboard() {
     getVerificationItems,
     getFeedbacks,
     getManuals,
+    getReviewMemos,
   } = useData();
   const [activeTab, setActiveTab] = useState(0);
   const [capForm, setCapForm] = useState({ startDate: '', endDate: '', hoursPerDay: 8, note: '' });
@@ -754,6 +755,25 @@ export default function CorrectorDashboard() {
                                         <div key={fb.id} className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs">
                                           <StructuredFbDisplay message={fb.message} />
                                           <p className="text-[10px] text-gray-400 mt-0.5">{new Date(fb.createdAt).toLocaleString('ja-JP')}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* 共有メモ表示 */}
+                              {(() => {
+                                const sharedMemos = getReviewMemos ? (getReviewMemos({ assignmentId: assignment.id, shared: true }) || []) : [];
+                                if (sharedMemos.length === 0) return null;
+                                return (
+                                  <div className="mt-2">
+                                    <p className="text-[10px] text-blue-600 font-semibold mb-1">📝 リーダーからのメモ（{sharedMemos.length}件）</p>
+                                    <div className="space-y-1">
+                                      {sharedMemos.map(m => (
+                                        <div key={m.id} className="p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs">
+                                          <p className="text-gray-700">{m.content}</p>
+                                          <p className="text-[10px] text-gray-400 mt-0.5">{new Date(m.createdAt).toLocaleString('ja-JP')}</p>
                                         </div>
                                       ))}
                                     </div>

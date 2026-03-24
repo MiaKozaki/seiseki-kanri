@@ -1206,6 +1206,41 @@ export const DataProvider = ({ children }) => {
     forceRefresh();
   };
 
+  // ---- ReviewMemos ----
+  const getReviewMemos = (filters = {}) => {
+    let items = d('reviewMemos') || [];
+    if (filters.assignmentId) items = items.filter(m => m.assignmentId === filters.assignmentId);
+    if (filters.userId) items = items.filter(m => m.userId === filters.userId);
+    if (filters.type) items = items.filter(m => m.type === filters.type);
+    if (filters.shared !== undefined) items = items.filter(m => m.shared === filters.shared);
+    return items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  };
+  const addReviewMemo = (memoData) => {
+    const memo = { ...memoData, id: generateId(), createdAt: new Date().toISOString() };
+    updateCollection('reviewMemos', [...(d('reviewMemos') || []), memo]);
+    // If shared, create notification for the corrector
+    if (memo.shared && memo.userId) {
+      const author = d('users').find(u => u.id === memo.authorId);
+      const task = d('tasks').find(t => t.id === memo.taskId);
+      const notif = {
+        id: generateId(),
+        userId: memo.userId,
+        message: `${author?.name || 'リーダー'}から「${task?.name || ''}」にメモが共有されました`,
+        type: 'memo',
+        relatedId: memo.assignmentId,
+        read: false,
+        createdAt: new Date().toISOString(),
+      };
+      updateCollection('notifications', [...d('notifications'), notif]);
+    }
+    forceRefresh();
+    return memo;
+  };
+  const deleteReviewMemo = (id) => {
+    updateCollection('reviewMemos', (d('reviewMemos') || []).filter(m => m.id !== id));
+    forceRefresh();
+  };
+
   // ---- autoAssign用: 一括データ取得 + 結果反映 ----
   const getAllData = () => data || getAll();
 
@@ -1252,6 +1287,7 @@ export const DataProvider = ({ children }) => {
       getManuals, addManual, updateManual, deleteManual,
       getUserFields, addUserField, removeUserField, bulkSetUserFields, bulkImportUserFields,
       getFeedbacks, addFeedback,
+      getReviewMemos, addReviewMemo, deleteReviewMemo,
       getNotifications, markNotificationRead, markAllNotificationsRead,
       startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
     }}>

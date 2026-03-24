@@ -1461,6 +1461,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     { key: 'daimon', icon: '\u{1F4C4}', title: '大問分割CSV登録', desc: '大問ごとに分割して登録' },
     { key: 'assigned', icon: '\u{1F4CC}', title: '割当済み', desc: '割当済みタスクの確認・解除' },
     { key: 'results', icon: '\u{1F4CA}', title: '実績', desc: '完了タスクの実績レポート' },
+    { key: 'overview-list', icon: '\u{1F4CB}', title: '作成必要試験種一覧', desc: '科目・作業内容別の試験種一覧' },
   ];
 
   return (
@@ -2458,12 +2459,192 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
         );
       })()}
 
+      {/* ===== Section: 作成必要試験種一覧 ===== */}
+      {activeSection === 'overview-list' && (() => {
+        const olSubjects = [...new Set(tasks.map(t => t.subject).filter(Boolean))].sort();
+        const olWorkTypes = [...new Set(tasks.map(t => t.workType).filter(Boolean))].sort();
+
+        // Use component-level state via a mini inner component to avoid hooks-in-callback issues
+        return <OverviewListSection tasks={tasks} assignments={assignments} correctors={correctors} statusConfig={statusConfig} olSubjects={olSubjects} olWorkTypes={olWorkTypes} />;
+      })()}
+
         </div>
       )}
     </div>
   );
 };
 
+// ---- Overview List Section (作成必要試験種一覧) ----
+const OverviewListSection = ({ tasks, assignments, correctors, statusConfig, olSubjects, olWorkTypes }) => {
+  const [olSubjectFilter, setOlSubjectFilter] = useState('all');
+  const [olWorkTypeFilter, setOlWorkTypeFilter] = useState('all');
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  const filtered = tasks.filter(t => {
+    if (olSubjectFilter !== 'all' && t.subject !== olSubjectFilter) return false;
+    if (olWorkTypeFilter !== 'all' && t.workType !== olWorkTypeFilter) return false;
+    return true;
+  });
+
+  // Group by subject -> workType
+  const grouped = {};
+  filtered.forEach(t => {
+    const subj = t.subject || '未設定';
+    const wt = t.workType || '未設定';
+    if (!grouped[subj]) grouped[subj] = {};
+    if (!grouped[subj][wt]) grouped[subj][wt] = [];
+    grouped[subj][wt].push(t);
+  });
+
+  const toggleGroup = (key) => {
+    setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const getAssignedCorrectorName = (taskId) => {
+    const a = assignments.find(x => x.taskId === taskId);
+    if (!a) return null;
+    const c = correctors.find(c => c.id === a.userId);
+    return c?.name || '不明';
+  };
+
+  const sortedSubjects = Object.keys(grouped).sort();
+  const totalCount = filtered.length;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700">作成必要試験種一覧</h3>
+          <p className="text-xs text-gray-400 mt-0.5">科目・作業内容別のタスク一覧（{totalCount}件）</p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <div>
+          <label className="block text-xs text-gray-500 mb-0.5">科目</label>
+          <select value={olSubjectFilter} onChange={e => setOlSubjectFilter(e.target.value)}
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <option value="all">すべて</option>
+            {olSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-0.5">作業内容</label>
+          <select value={olWorkTypeFilter} onChange={e => setOlWorkTypeFilter(e.target.value)}
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <option value="all">すべて</option>
+            {olWorkTypes.map(w => <option key={w} value={w}>{w}</option>)}
+          </select>
+        </div>
+        {(olSubjectFilter !== 'all' || olWorkTypeFilter !== 'all') && (
+          <div className="flex items-end">
+            <button onClick={() => { setOlSubjectFilter('all'); setOlWorkTypeFilter('all'); }}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition">
+              フィルタ解除
+            </button>
+          </div>
+        )}
+      </div>
+
+      {totalCount === 0 ? (
+        <p className="text-gray-400 text-sm text-center py-6">該当する試験種はありません</p>
+      ) : (
+        <div className="space-y-4">
+          {sortedSubjects.map(subj => {
+            const workTypes = grouped[subj];
+            const sortedWTs = Object.keys(workTypes).sort();
+            const subjectCount = sortedWTs.reduce((s, wt) => s + workTypes[wt].length, 0);
+
+            return (
+              <div key={subj} className="border border-gray-200 rounded-xl overflow-hidden">
+                {/* Subject header */}
+                <button
+                  onClick={() => toggleGroup(subj)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition text-left"
+                >
+                  <span className="text-sm font-semibold text-gray-800">{subj}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{subjectCount}件</span>
+                    <span className="text-gray-400 text-xs">{collapsedGroups[subj] ? '▶' : '▼'}</span>
+                  </span>
+                </button>
+
+                {!collapsedGroups[subj] && (
+                  <div className="divide-y divide-gray-100">
+                    {sortedWTs.map(wt => {
+                      const wtTasks = workTypes[wt];
+                      const groupKey = `${subj}__${wt}`;
+
+                      return (
+                        <div key={wt}>
+                          {/* WorkType sub-header */}
+                          <button
+                            onClick={() => toggleGroup(groupKey)}
+                            className="w-full flex items-center justify-between px-4 py-2 bg-white hover:bg-gray-50 transition text-left border-b border-gray-50"
+                          >
+                            <span className="text-xs font-medium text-gray-600 pl-2">{wt}</span>
+                            <span className="flex items-center gap-2">
+                              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{wtTasks.length}件</span>
+                              <span className="text-gray-400 text-xs">{collapsedGroups[groupKey] ? '▶' : '▼'}</span>
+                            </span>
+                          </button>
+
+                          {!collapsedGroups[groupKey] && (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="border-b border-gray-100 bg-gray-50/50">
+                                    <th className="text-left py-2 px-4 text-gray-500 font-medium">試験種名</th>
+                                    <th className="text-left py-2 px-3 text-gray-500 font-medium">ステータス</th>
+                                    <th className="text-left py-2 px-3 text-gray-500 font-medium">期限</th>
+                                    <th className="text-left py-2 px-3 text-gray-500 font-medium">担当者</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                  {[...wtTasks].sort((a, b) => (a.deadline || '').localeCompare(b.deadline || '')).map(task => {
+                                    const st = statusConfig[task.status] || { text: task.status, cls: 'bg-gray-100 text-gray-600' };
+                                    const correctorName = getAssignedCorrectorName(task.id);
+                                    return (
+                                      <tr key={task.id} className="hover:bg-gray-50 transition">
+                                        <td className="py-2 px-4 text-gray-800 font-medium">
+                                          <div className="flex items-center gap-1">
+                                            {task.name}
+                                            {task.sheetsUrl && (
+                                              <a href={task.sheetsUrl} target="_blank" rel="noopener noreferrer"
+                                                className="text-green-500 hover:text-green-700 shrink-0">🔗</a>
+                                            )}
+                                          </div>
+                                        </td>
+                                        <td className="py-2 px-3">
+                                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.text}</span>
+                                        </td>
+                                        <td className="py-2 px-3 text-gray-600">
+                                          {task.deadline ? new Date(task.deadline).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' }) : '—'}
+                                        </td>
+                                        <td className="py-2 px-3 text-gray-700">
+                                          {correctorName || <span className="text-gray-300">未割当</span>}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ---- Exam Processing Tab (試験種処理) ----
 const _fmtSec = (s) => {

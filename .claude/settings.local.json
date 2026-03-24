@@ -99,7 +99,10 @@
       "Bash(git remote:*)",
       "Bash(printf \"protocol=https\\\\nhost=github.com\\\\n\")",
       "Bash(git credential:*)",
-      "Bash(env)"
+      "Bash(env)",
+      "Bash(source ~/.zprofile)",
+      "Bash(mdfind \"kMDItemDisplayName == ''''node'''' && kMDItemContentType == ''''public.unix-executable''''\")",
+      "Bash(eval '$\\(fnm env\\)')"
     ]
   }
 }

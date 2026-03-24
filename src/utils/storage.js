@@ -360,6 +360,7 @@ export const INITIAL_DATA = {
     { id: 'ev12', userId: 'u5', criteriaId: 'ec3', score: 2, note: '2年目', updatedAt: '2026-01-15T00:00:00.000Z', subject: null, autoScore: null, isOverridden: false },
   ],
   notifications: [],
+  reviewMemos: [],
   recruitments: [],
   applications: [],
   timeLogs: [
@@ -828,6 +829,7 @@ export const initStorage = () => {
       updated = true;
     }
     if (!data.manuals) { data.manuals = []; updated = true; }
+    if (!data.reviewMemos) { data.reviewMemos = []; updated = true; }
     if (updated) localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 };

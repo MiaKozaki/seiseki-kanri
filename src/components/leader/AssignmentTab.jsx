@@ -8,6 +8,7 @@ const AssignmentTab = ({ activeSubjects }) => {
   const {
     getTasks, getAssignments, getCorrectors, getCapacities,
     getAllData, applyAutoAssignResult, getWorkTypes,
+    addReviewMemo,
   } = useData();
   const workTypesList = getWorkTypes().map(wt => wt.name);
   const { user } = useAuth();
@@ -30,6 +31,9 @@ const AssignmentTab = ({ activeSubjects }) => {
   const [manualSelect, setManualSelect] = useState({});
   const [previewData, setPreviewData] = useState(null);
   const [editedProposals, setEditedProposals] = useState([]);
+
+  // Memo state for assignment
+  const [assignMemo, setAssignMemo] = useState({});
 
   // VIKING state
   const [showClaimedViking, setShowClaimedViking] = useState(false);
@@ -71,7 +75,22 @@ const AssignmentTab = ({ activeSubjects }) => {
     if (!userId) return;
     const result = manualAssign(taskId, userId, getAllData());
     applyAutoAssignResult(result);
+    // Save assignment memo if provided
+    const memoContent = (assignMemo[taskId] || '').trim();
+    if (memoContent && addReviewMemo) {
+      const newAssignment = result.assignments.find(a => a.taskId === taskId && a.userId === userId);
+      addReviewMemo({
+        assignmentId: newAssignment?.id || '',
+        taskId,
+        userId,
+        authorId: user?.id,
+        content: memoContent,
+        shared: false,
+        type: 'assignment',
+      });
+    }
     setManualSelect(prev => ({ ...prev, [taskId]: '' }));
+    setAssignMemo(prev => ({ ...prev, [taskId]: '' }));
     setMessage('手動振り分けしました');
     setTimeout(() => setMessage(''), 3000);
   };
@@ -416,6 +435,15 @@ const AssignmentTab = ({ activeSubjects }) => {
                         割り当て
                       </button>
                     </div>
+                  )}
+                  {eligible.length > 0 && (
+                    <textarea
+                      value={assignMemo[task.id] || ''}
+                      onChange={e => setAssignMemo(prev => ({ ...prev, [task.id]: e.target.value }))}
+                      placeholder="振り分けメモ（任意）"
+                      rows={1}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-3 py-1.5 mt-1.5 placeholder-gray-400"
+                    />
                   )}
                 </div>
               );
