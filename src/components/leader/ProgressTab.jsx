@@ -290,33 +290,38 @@ const ProgressTab = ({ activeSubjects }) => {
 
   const totalFiltered = Object.values(statusCounts).reduce((a, b) => a + b, 0);
 
-  // ---- Subject progress (responds to filters) ----
+  // ---- Subject progress (responds to filters, uses workflow statuses) ----
   const subjectProgress = useMemo(() => {
     return SUBJECTS_LIST.filter(s => activeSubjects.includes(s)).map(subject => {
-      const st = filteredPairs.filter(({ task }) => task.subject === subject).map(p => p.task);
-      const total = st.length;
+      const pairs = filteredPairs.filter(({ task }) => task.subject === subject);
+      const total = pairs.length;
       if (total === 0) return null;
-      const pending = st.filter(t => t.status === 'pending').length;
-      const assigned = st.filter(t => t.status === 'assigned').length;
-      const inProgress = st.filter(t => t.status === 'in_progress').length;
-      const submitted = st.filter(t => t.status === 'submitted').length;
-      const completed = st.filter(t => isFinished(t.status)).length;
-      const completionRate = Math.round((completed / total) * 100);
-      const totalHours = st.reduce((s, t) => s + (t.requiredHours || 0), 0);
-      const completedHours = st.filter(t => isFinished(t.status)).reduce((s, t) => s + (t.requiredHours || 0), 0);
+      const pending = pairs.filter(({ wfStatus }) => wfStatus === 'pending').length;
+      const inProgress = pairs.filter(({ wfStatus }) => wfStatus === 'in_progress').length;
+      const verificationWaiting = pairs.filter(({ wfStatus }) => wfStatus === 'verification_waiting').length;
+      const verificationReviewing = pairs.filter(({ wfStatus }) => wfStatus === 'verification_reviewing').length;
+      const verificationCompleted = pairs.filter(({ wfStatus }) => wfStatus === 'verification_completed').length;
+      const macroPending = pairs.filter(({ wfStatus }) => wfStatus === 'macro_pending').length;
+      const macroCompleted = pairs.filter(({ wfStatus }) => wfStatus === 'macro_completed').length;
+      const completedCount = verificationCompleted + macroCompleted;
+      const completionRate = Math.round((completedCount / total) * 100);
+      const totalHours = pairs.reduce((s, { task }) => s + (task.requiredHours || 0), 0);
+      const completedHours = pairs.filter(({ wfStatus }) => wfStatus === 'verification_completed' || wfStatus === 'macro_completed').reduce((s, { task }) => s + (task.requiredHours || 0), 0);
       const hoursRate = totalHours > 0 ? Math.round((completedHours / totalHours) * 100) : 0;
-      return { subject, total, pending, assigned, inProgress, submitted, completed, completionRate, totalHours, completedHours, hoursRate };
+      return { subject, total, pending, inProgress, verificationWaiting, verificationReviewing, verificationCompleted, macroPending, macroCompleted, completedCount, completionRate, totalHours, completedHours, hoursRate };
     }).filter(Boolean);
   }, [filteredPairs, activeSubjects]);
 
-  // ---- Pie chart data ----
+  // ---- Pie chart data (workflow statuses) ----
   const pieData = useMemo(() => {
     return [
-      { name: '未割当', value: filteredPairs.filter(({ task }) => task.status === 'pending').length, color: '#f59e0b' },
-      { name: '割当済', value: filteredPairs.filter(({ task }) => task.status === 'assigned').length, color: '#3b82f6' },
-      { name: '作業中', value: filteredPairs.filter(({ task }) => task.status === 'in_progress').length, color: '#0ea5e9' },
-      { name: '提出済', value: filteredPairs.filter(({ task }) => task.status === 'submitted').length, color: '#8b5cf6' },
-      { name: '完了', value: filteredPairs.filter(({ task }) => isFinished(task.status)).length, color: '#10b981' },
+      { name: '未振り分け', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'pending').length, color: '#f59e0b' },
+      { name: '作業中', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'in_progress').length, color: '#0ea5e9' },
+      { name: '検証待ち', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'verification_waiting').length, color: '#f97316' },
+      { name: '検証中', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'verification_reviewing').length, color: '#eab308' },
+      { name: '検証完了', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'verification_completed').length, color: '#10b981' },
+      { name: 'マクロ未作成', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'macro_pending').length, color: '#ef4444' },
+      { name: '作成完了', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'macro_completed').length, color: '#22c55e' },
     ].filter(d => d.value > 0);
   }, [filteredPairs]);
 
@@ -542,51 +547,67 @@ const ProgressTab = ({ activeSubjects }) => {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-gray-800">{sp.subject}</span>
                   <span className="text-xs text-gray-500">
-                    {sp.completed}/{sp.total}件 完了
+                    {sp.completedCount}/{sp.total}件 完了
                     <span className="ml-2 font-medium text-gray-700">({sp.completionRate}%)</span>
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-4 flex overflow-hidden">
-                  {sp.completed > 0 && (
-                    <div className="bg-green-500 h-full transition-all" style={{ width: `${(sp.completed / sp.total) * 100}%` }} />
+                  {sp.macroCompleted > 0 && (
+                    <div className="h-full transition-all" style={{ width: `${(sp.macroCompleted / sp.total) * 100}%`, backgroundColor: '#22c55e' }} />
                   )}
-                  {sp.submitted > 0 && (
-                    <div className="bg-purple-500 h-full transition-all" style={{ width: `${(sp.submitted / sp.total) * 100}%` }} />
+                  {sp.macroPending > 0 && (
+                    <div className="h-full transition-all" style={{ width: `${(sp.macroPending / sp.total) * 100}%`, backgroundColor: '#ef4444' }} />
+                  )}
+                  {sp.verificationCompleted > 0 && (
+                    <div className="h-full transition-all" style={{ width: `${(sp.verificationCompleted / sp.total) * 100}%`, backgroundColor: '#10b981' }} />
+                  )}
+                  {sp.verificationReviewing > 0 && (
+                    <div className="h-full transition-all" style={{ width: `${(sp.verificationReviewing / sp.total) * 100}%`, backgroundColor: '#eab308' }} />
+                  )}
+                  {sp.verificationWaiting > 0 && (
+                    <div className="h-full transition-all" style={{ width: `${(sp.verificationWaiting / sp.total) * 100}%`, backgroundColor: '#f97316' }} />
                   )}
                   {sp.inProgress > 0 && (
-                    <div className="bg-sky-500 h-full transition-all" style={{ width: `${(sp.inProgress / sp.total) * 100}%` }} />
-                  )}
-                  {sp.assigned > 0 && (
-                    <div className="bg-blue-500 h-full transition-all" style={{ width: `${(sp.assigned / sp.total) * 100}%` }} />
+                    <div className="h-full transition-all" style={{ width: `${(sp.inProgress / sp.total) * 100}%`, backgroundColor: '#0ea5e9' }} />
                   )}
                   {sp.pending > 0 && (
-                    <div className="bg-amber-400 h-full transition-all" style={{ width: `${(sp.pending / sp.total) * 100}%` }} />
+                    <div className="h-full transition-all" style={{ width: `${(sp.pending / sp.total) * 100}%`, backgroundColor: '#f59e0b' }} />
                   )}
                 </div>
                 <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
-                  {sp.completed > 0 && (
+                  {sp.macroCompleted > 0 && (
                     <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>完了 {sp.completed}
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#22c55e' }}></span>作成完了 {sp.macroCompleted}
                     </span>
                   )}
-                  {sp.submitted > 0 && (
+                  {sp.macroPending > 0 && (
                     <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>提出済 {sp.submitted}
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ef4444' }}></span>マクロ未作成 {sp.macroPending}
+                    </span>
+                  )}
+                  {sp.verificationCompleted > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#10b981' }}></span>検証完了 {sp.verificationCompleted}
+                    </span>
+                  )}
+                  {sp.verificationReviewing > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#eab308' }}></span>検証中 {sp.verificationReviewing}
+                    </span>
+                  )}
+                  {sp.verificationWaiting > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f97316' }}></span>検証待ち {sp.verificationWaiting}
                     </span>
                   )}
                   {sp.inProgress > 0 && (
                     <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>作業中 {sp.inProgress}
-                    </span>
-                  )}
-                  {sp.assigned > 0 && (
-                    <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>割当済 {sp.assigned}
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#0ea5e9' }}></span>作業中 {sp.inProgress}
                     </span>
                   )}
                   {sp.pending > 0 && (
                     <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>未割当 {sp.pending}
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f59e0b' }}></span>未振り分け {sp.pending}
                     </span>
                   )}
                   <span className="ml-auto text-gray-400">
@@ -725,13 +746,13 @@ const ProgressTab = ({ activeSubjects }) => {
 
                     {/* Storage status badge */}
                     {assignment?.storageStatus === 'pending_storage' && (
-                      <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                      <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
                         格納待ち
                       </span>
                     )}
                     {assignment?.storageStatus === 'stored' && (
                       <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
-                        格納済み
+                        格納済み → マクロタスク放出済み
                       </span>
                     )}
 
@@ -887,26 +908,30 @@ const ProgressTab = ({ activeSubjects }) => {
                               </button>
                             )}
 
-                            {/* 格納確認 (新年度試験種 承認後) */}
+                            {/* 過去問PJへの格納確認 (検証完了後) */}
                             {assignment.status === 'approved' && assignment.storageStatus === 'pending_storage' && (
-                              <button
-                                onClick={() => {
-                                  if (window.confirm('格納確認を行います。takos作成タスクが自動生成されます。よろしいですか？')) {
-                                    confirmStorage(assignment.id);
-                                    setMessage('格納確認完了 - takos作成タスクを生成しました');
-                                    setTimeout(() => setMessage(''), 3000);
-                                  }
-                                }}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition text-sm font-medium"
-                              >
-                                格納確認
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-amber-600 font-medium">過去問PJへの格納確認：</span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">格納待ち</span>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm('過去問PJへの格納を確認します。格納済みにするとVIKING用のマクロタスク（takos作成）が自動生成されます。よろしいですか？')) {
+                                      confirmStorage(assignment.id);
+                                      setMessage('格納確認完了 → マクロタスク（takos作成）を自動放出しました');
+                                      setTimeout(() => setMessage(''), 4000);
+                                    }
+                                  }}
+                                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition text-sm font-medium"
+                                >
+                                  格納済み
+                                </button>
+                              </div>
                             )}
 
-                            {/* 格納済みバッジ */}
+                            {/* 格納済み → マクロタスク放出済みバッジ */}
                             {assignment.storageStatus === 'stored' && (
                               <span className="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-xl text-sm font-medium">
-                                格納済み
+                                格納済み → マクロタスク放出済み
                               </span>
                             )}
 

@@ -1043,8 +1043,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const correctors = getCorrectors();
   const capacities = getCapacities();
 
-  // Sub-tab navigation
-  const [section, setSection] = useState(0);
+  // Sub-tab navigation (null = menu, string = active section)
+  const [activeSection, setActiveSection] = useState(null);
 
   // Task form state
   const [form, setForm] = useState({ name: '', subject: '', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
@@ -1148,7 +1148,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const handleEdit = (task) => {
     setEditId(task.id);
     setForm({ name: task.name, subject: task.subject ?? '', workType: task.workType ?? '', requiredHours: task.requiredHours, deadline: task.deadline, sheetsUrl: task.sheetsUrl ?? '', viking: !!task.viking });
-    setSection(0);
+    setActiveSection('add');
   };
 
   const statusConfig = {
@@ -1455,26 +1455,46 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     downloadCSV(csv, `振り分け結果_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
+  const taskSections = [
+    { key: 'list', icon: '\u{1F4CB}', title: '試験種一覧', desc: 'タスクの検索・フィルタ・管理' },
+    { key: 'add', icon: '\u{2795}', title: '新規追加', desc: '試験種を個別に追加' },
+    { key: 'csv', icon: '\u{1F4C4}', title: 'CSV一括登録', desc: 'CSVファイルで一括登録' },
+    { key: 'daimon', icon: '\u{1F4C4}', title: '大問分割CSV登録', desc: '大問ごとに分割して登録' },
+    { key: 'assigned', icon: '\u{1F4CC}', title: '割当済み', desc: '割当済みタスクの確認・解除' },
+    { key: 'results', icon: '\u{1F4CA}', title: '実績', desc: '完了タスクの実績レポート' },
+  ];
+
   return (
     <div className="space-y-4">
-      {/* Sub-tab navigation */}
-      <div className="flex gap-1 mb-4 flex-wrap">
-        {['タスク登録', 'タスク一覧', '割当済み', '実績'].map((label, i) => (
-          <button key={i} onClick={() => setSection(i)}
-            className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${section === i ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-
       {message && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
           {message}
         </div>
       )}
 
-      {/* ===== Section 0: タスク登録 ===== */}
-      {section === 0 && (
+      {/* Button menu */}
+      {!activeSection && (
+        <div className="grid grid-cols-2 gap-3 p-4">
+          {taskSections.map(s => (
+            <button key={s.key} onClick={() => setActiveSection(s.key)}
+              className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition text-left">
+              <span className="text-2xl">{s.icon}</span>
+              <p className="font-medium text-gray-800 mt-1">{s.title}</p>
+              <p className="text-xs text-gray-500">{s.desc}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Back button + active section */}
+      {activeSection && (
+        <div>
+          <button onClick={() => setActiveSection(null)} className="mb-3 text-sm text-gray-500 hover:text-gray-700">
+            ← 戻る
+          </button>
+
+      {/* ===== Section: 新規追加 ===== */}
+      {activeSection === 'add' && (
         <div className="bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">{editId ? '試験種を編集' : '新しい試験種を追加'}</h3>
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -1660,27 +1680,23 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
               )}
             </div>
           </form>
+        </div>
+      )}
 
-          {/* CSV一括登録セクション */}
-          <div className="mt-6 border-t border-gray-200 pt-5">
-            <div className="flex items-center gap-2 mb-3">
-              <button
-                type="button"
-                onClick={() => { setShowBulkImport(v => !v); setBulkImportDone(null); }}
-                className={`text-sm font-medium px-4 py-2 rounded-lg transition ${showBulkImport ? 'bg-orange-600 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100'}`}
-              >
-                {showBulkImport ? '▲ CSV一括登録を閉じる' : '📄 CSV一括登録'}
-              </button>
-              <button
-                type="button"
-                onClick={handleDownloadTaskTemplate}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition font-medium"
-              >
-                テンプレートDL
-              </button>
-            </div>
-
-            {showBulkImport && (
+      {/* ===== Section: CSV一括登録 ===== */}
+      {activeSection === 'csv' && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">CSV一括登録</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              type="button"
+              onClick={handleDownloadTaskTemplate}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition font-medium"
+            >
+              テンプレートDL
+            </button>
+          </div>
+          {true && (
               <div className="space-y-3 bg-orange-50/50 border border-orange-200 rounded-lg p-4">
                 <p className="text-xs text-gray-500">
                   CSVまたはTSV形式で試験種を一括登録できます。ヘッダ行: 学校名,科目,作業内容,工数,期限（従来形式のタスク名ヘッダにも対応）
@@ -1809,28 +1825,23 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 )}
               </div>
             )}
+        </div>
+      )}
+
+      {/* ===== Section: 大問分割CSV登録 ===== */}
+      {activeSection === 'daimon' && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">大問分割CSV一括登録</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              type="button"
+              onClick={handleDownloadDaimonTemplate}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition font-medium"
+            >
+              テンプレートDL
+            </button>
           </div>
-
-          {/* 大問分割CSV一括登録セクション */}
-          <div className="mt-4 border-t border-gray-200 pt-5">
-            <div className="flex items-center gap-2 mb-3">
-              <button
-                type="button"
-                onClick={() => { setShowDaimonCsv(v => !v); setDaimonCsvImportDone(null); }}
-                className={`text-sm font-medium px-4 py-2 rounded-lg transition ${showDaimonCsv ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'}`}
-              >
-                {showDaimonCsv ? '▲ 大問分割CSV一括登録を閉じる' : '📄 大問分割CSV一括登録'}
-              </button>
-              <button
-                type="button"
-                onClick={handleDownloadDaimonTemplate}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition font-medium"
-              >
-                テンプレートDL
-              </button>
-            </div>
-
-            {showDaimonCsv && (
+          {true && (
               <div className="space-y-3 bg-purple-50/50 border border-purple-200 rounded-lg p-4">
                 <p className="text-xs text-gray-500">
                   大問ごとに分野付きタスクを一括登録します。同じ学校+科目+期限の行は1つのグループとして登録されます。
@@ -1933,12 +1944,11 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 )}
               </div>
             )}
-          </div>
         </div>
       )}
 
-      {/* ===== Section 1: タスク一覧 ===== */}
-      {section === 1 && (
+      {/* ===== Section: タスク一覧 ===== */}
+      {activeSection === 'list' && (
         <div className="bg-white rounded-xl shadow-sm p-5">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <h3 className="text-sm font-semibold text-gray-700">試験種一覧（{filteredTasks.length}件）</h3>
@@ -2269,8 +2279,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
         </div>
       )}
 
-      {/* ===== Section 2: 割当済み ===== */}
-      {section === 2 && (
+      {/* ===== Section: 割当済み ===== */}
+      {activeSection === 'assigned' && (
         <div className="bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">割当済みタスク（{assignedTasks.length}件）</h3>
           {assignedTasks.length === 0 ? (
@@ -2356,8 +2366,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
         </div>
       )}
 
-      {/* ===== Section 3: 実績 ===== */}
-      {section === 3 && (() => {
+      {/* ===== Section: 実績 ===== */}
+      {activeSection === 'results' && (() => {
         const completedAssignments = assignments.filter(a => a.status === 'completed');
         if (completedAssignments.length === 0) {
           return (
@@ -2448,6 +2458,9 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
           </div>
         );
       })()}
+
+        </div>
+      )}
     </div>
   );
 };
@@ -3079,6 +3092,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   const allTimeLogs = getTimeLogs();
 
   // --- Shared state ---
+  const [activeEvalSection, setActiveEvalSection] = useState(null);
   const [evalSection, setEvalSection] = useState(0);
   const [selectedUser, setSelectedUser] = useState(correctors[0]?.id ?? '');
   const [critForm, setCritForm] = useState({ name: '', description: '', maxScore: 5, subject: null, autoMetric: null });
@@ -3312,11 +3326,39 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
     return tasks.find(t => t.id === taskId)?.subject || '-';
   };
 
+  const evalSections = [
+    { key: 'eval', icon: '\u2B50', title: '\u8A55\u4FA1\u7BA1\u7406', desc: '\u8A55\u4FA1\u57FA\u6E96\u30FB\u6DFB\u524A\u8005\u8A55\u4FA1\u30FB\u4F5C\u696D\u6642\u9593' },
+    { key: 'fb', icon: '\u{1F4CB}', title: 'FB\u96C6\u7D04\u30FB\u5206\u6790', desc: '\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\u306E\u96C6\u7D04\u30FB\u30AB\u30C6\u30B4\u30EA\u5206\u6790' },
+  ];
+
   return (
     <div className="space-y-4">
+      {/* Button menu */}
+      {!activeEvalSection && (
+        <div className="grid grid-cols-2 gap-3 p-4">
+          {evalSections.map(s => (
+            <button key={s.key} onClick={() => setActiveEvalSection(s.key)}
+              className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition text-left">
+              <span className="text-2xl">{s.icon}</span>
+              <p className="font-medium text-gray-800 mt-1">{s.title}</p>
+              <p className="text-xs text-gray-500">{s.desc}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeEvalSection && (
+        <div>
+          <button onClick={() => setActiveEvalSection(null)} className="mb-3 text-sm text-gray-500 hover:text-gray-700">
+            ← 戻る
+          </button>
+
+      {/* ===== Section: 評価管理 ===== */}
+      {activeEvalSection === 'eval' && (
+        <div className="space-y-4">
       {/* Sub-tab navigation */}
       <div className="flex gap-1 mb-4 flex-wrap">
-        {['評価基準', '添削者評価', '作業時間一覧', '個人別時間', '科目・大問別'].map((label, i) => (
+        {['\u8A55\u4FA1\u57FA\u6E96', '\u6DFB\u524A\u8005\u8A55\u4FA1', '\u4F5C\u696D\u6642\u9593\u4E00\u89A7', '\u500B\u4EBA\u5225\u6642\u9593', '\u79D1\u76EE\u30FB\u5927\u554F\u5225'].map((label, i) => (
           <button key={i} onClick={() => setEvalSection(i)}
             className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${evalSection === i ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
             {label}
@@ -3835,17 +3877,17 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
         </div>
       )}
 
-      {/* ======== FB集約・分析セクション ======== */}
-      <div className="mt-6 border border-amber-200 rounded-xl overflow-hidden">
-        <button
-          onClick={() => setFbSectionOpen(prev => !prev)}
-          className="w-full flex items-center justify-between px-5 py-3 bg-amber-50 hover:bg-amber-100 transition text-left"
-        >
-          <span className="text-sm font-semibold text-amber-800">📋 FB集約・分析</span>
-          <span className="text-amber-600 text-xs">{fbSectionOpen ? '▲ 閉じる' : '▼ 開く'}</span>
-        </button>
+        </div>
+      )}
 
-        {fbSectionOpen && (() => {
+      {/* ===== Section: FB集約・分析 ===== */}
+      {activeEvalSection === 'fb' && (
+      <div className="border border-amber-200 rounded-xl overflow-hidden">
+        <div className="w-full flex items-center justify-between px-5 py-3 bg-amber-50">
+          <span className="text-sm font-semibold text-amber-800">FB集約・分析</span>
+        </div>
+
+        {(() => {
           const allFeedbacks = getFeedbacks();
           const getTaskName = (tid) => tasks.find(t => t.id === tid)?.name || '不明';
 
@@ -4015,6 +4057,10 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
           );
         })()}
       </div>
+      )}
+
+        </div>
+      )}
     </div>
   );
 };
@@ -4025,6 +4071,7 @@ const UserManagementTab = ({ activeSubjects }) => {
   const { getUsers, getCorrectors, addUser, updateUser, deleteUser, resetUserPassword, getFields, getUserFields, bulkImportUserFields, bulkSetUserFields, addUserField, removeUserField } = useData();
   const correctors = getCorrectors();
 
+  const [activeUserSection, setActiveUserSection] = useState(null);
   const [form, setForm] = useState({ name: '', email: '', loginId: '', employeeId: '', subjects: [] });
   const [editId, setEditId] = useState(null);
   const [editSubjectsId, setEditSubjectsId] = useState(null);
@@ -4137,10 +4184,39 @@ const UserManagementTab = ({ activeSubjects }) => {
   // Subject badge colors
   const subjectColor = { '国語': 'bg-rose-50 text-rose-700', '算数': 'bg-blue-50 text-blue-700', '理科': 'bg-green-50 text-green-700', '社会': 'bg-amber-50 text-amber-700' };
 
+  const userSections = [
+    { key: 'list', icon: '\u{1F465}', title: '\u4F5C\u696D\u8005\u4E00\u89A7', desc: '\u767B\u9332\u6E08\u307F\u4F5C\u696D\u8005\u306E\u78BA\u8A8D\u30FB\u7DE8\u96C6' },
+    { key: 'add', icon: '\u2795', title: '\u4F5C\u696D\u8005\u8FFD\u52A0', desc: '\u65B0\u3057\u3044\u4F5C\u696D\u8005\u3092\u500B\u5225\u306B\u8FFD\u52A0' },
+    { key: 'csv', icon: '\u{1F4C4}', title: 'CSV\u4E00\u62EC\u767B\u9332', desc: 'CSV\u30D5\u30A1\u30A4\u30EB\u3067\u4E00\u62EC\u767B\u9332' },
+    { key: 'field', icon: '\u{1F52C}', title: '\u5206\u91CE\u7814\u4FEE\u30AF\u30EA\u30A2\u7BA1\u7406', desc: '\u5206\u91CE\u7814\u4FEE\u30AF\u30EA\u30A2\u72B6\u6CC1\u306E\u7BA1\u7406' },
+  ];
+
   return (
     <div className="space-y-4">
+      {/* Button menu */}
+      {!activeUserSection && (
+        <div className="grid grid-cols-2 gap-3 p-4">
+          {userSections.map(s => (
+            <button key={s.key} onClick={() => setActiveUserSection(s.key)}
+              className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition text-left">
+              <span className="text-2xl">{s.icon}</span>
+              <p className="font-medium text-gray-800 mt-1">{s.title}</p>
+              <p className="text-xs text-gray-500">{s.desc}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeUserSection && (
+        <div>
+          <button onClick={() => setActiveUserSection(null)} className="mb-3 text-sm text-gray-500 hover:text-gray-700">
+            ← 戻る
+          </button>
+
+      {/* ===== Section: 作業者追加 ===== */}
+      {activeUserSection === 'add' && (
       <div className="bg-white rounded-xl shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">{editId ? '添削者を編集' : '添削者を追加'}</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">{editId ? '\u6DFB\u524A\u8005\u3092\u7DE8\u96C6' : '\u6DFB\u524A\u8005\u3092\u8FFD\u52A0'}</h3>
         <form onSubmit={handleSubmit} className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <input
@@ -4198,6 +4274,41 @@ const UserManagementTab = ({ activeSubjects }) => {
             )}
           </div>
         </form>
+        {!editId && <p className="text-xs text-gray-400 mt-2">* パスワードは自動生成されます。追加後に表示されるパスワードを作業者に共有してください。</p>}
+        {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+
+        {/* 生成されたパスワード表示 */}
+        {generatedPw && (
+          <div className="mt-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold text-amber-800">
+                  {generatedPwUser}{generatedPwLoginId ? ` (${generatedPwLoginId})` : ''} の初期パスワード
+                </p>
+                <p className="text-lg font-mono font-bold text-amber-900 mt-1 select-all">{generatedPw}</p>
+                <p className="text-xs text-amber-600 mt-1">
+                  このパスワードを作業者に共有してください。初回ログイン時にパスワード変更が求められます。
+                </p>
+              </div>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(generatedPw); }}
+                className="text-xs bg-amber-200 hover:bg-amber-300 text-amber-800 px-3 py-1.5 rounded-lg transition shrink-0 ml-3"
+              >
+                コピー
+              </button>
+            </div>
+            <button onClick={() => setGeneratedPw(null)} className="text-xs text-amber-500 hover:text-amber-700 mt-2">
+              閉じる
+            </button>
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* ===== Section: CSV一括登録 ===== */}
+      {activeUserSection === 'csv' && (
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">CSV一括登録</h3>
         <div className="flex gap-2 mt-3">
           <button onClick={handleExportCSV}
             className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg transition">
@@ -4209,8 +4320,8 @@ const UserManagementTab = ({ activeSubjects }) => {
           </button>
           <button onClick={() => {
             const templateData = [
-              { name: '山田 太郎', employeeId: 'N00000001', loginId: 'T001', email: 'yamada@test.com', role: '添削者', subjects: '国語；算数' },
-              { name: '鈴木 花子', employeeId: 'N00000002', loginId: '', email: 'suzuki@test.com', role: '添削者', subjects: '理科' },
+              { name: '\u5C71\u7530 \u592A\u90CE', employeeId: 'N00000001', loginId: 'T001', email: 'yamada@test.com', role: '\u6DFB\u524A\u8005', subjects: '\u56FD\u8A9E\uFF1B\u7B97\u6570' },
+              { name: '\u9234\u6728 \u82B1\u5B50', employeeId: 'N00000002', loginId: '', email: 'suzuki@test.com', role: '\u6DFB\u524A\u8005', subjects: '\u7406\u79D1' },
             ];
             const csv = toCSV(templateData, USER_CSV_COLUMNS);
             downloadCSV(csv, '作業者一括登録テンプレート.csv');
@@ -4219,10 +4330,8 @@ const UserManagementTab = ({ activeSubjects }) => {
             📄 テンプレートCSVダウンロード
           </button>
         </div>
-        {!editId && <p className="text-xs text-gray-400 mt-2">* パスワードは自動生成されます。追加後に表示されるパスワードを作業者に共有してください。</p>}
-        {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
 
-        {/* 生成されたパスワード表示 */}
+        {/* 生成されたパスワード表示（CSV登録時） */}
         {generatedPw && (
           <div className="mt-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
             <div className="flex items-start justify-between">
@@ -4277,10 +4386,12 @@ const UserManagementTab = ({ activeSubjects }) => {
           </div>
         )}
       </div>
+      )}
 
-      {/* 分野研修クリア CSV インポート */}
+      {/* ===== Section: 分野研修クリア管理 ===== */}
+      {activeUserSection === 'field' && (
       <div className="bg-white rounded-xl shadow-sm border p-5">
-        <h4 className="text-sm font-semibold text-gray-700 mb-3">📚 分野研修クリア管理</h4>
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">🔬 分野研修クリア管理</h4>
         <button
           onClick={async () => {
             try {
@@ -4335,7 +4446,10 @@ const UserManagementTab = ({ activeSubjects }) => {
           </div>
         )}
       </div>
+      )}
 
+      {/* ===== Section: 作業者一覧 ===== */}
+      {activeUserSection === 'list' && (
       <div className="bg-white rounded-xl shadow-sm p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">添削者一覧（{correctors.length}人）</h3>
         {correctors.length === 0 ? (
@@ -4445,6 +4559,10 @@ const UserManagementTab = ({ activeSubjects }) => {
           </div>
         )}
       </div>
+      )}
+
+        </div>
+      )}
     </div>
   );
 };
@@ -4731,13 +4849,8 @@ const RecruitmentTab = ({ activeSubjects }) => {
 
 // ---- Master Data Tab ----
 const MasterDataTab = ({ activeSubjects }) => {
-  const { getSchools, addSchool, deleteSchool, getExamTypes, addExamType, deleteExamType, getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType } = useData();
-  const schools = getSchools();
+  const { getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType } = useData();
   const workTypesList = getWorkTypes().map(wt => wt.name);
-  const examTypes = getExamTypes();
-  const [schoolName, setSchoolName] = useState('');
-  const [etSchool, setEtSchool] = useState('');
-  const [etSubject, setEtSubject] = useState('');
   const [catForm, setCatForm] = useState({ name: '', description: '', subject: null, workType: null });
   const [sevForm, setSevForm] = useState({ name: '', level: 1, description: '', color: '#f59e0b' });
   const [editCatId, setEditCatId] = useState(null);
@@ -4751,6 +4864,7 @@ const MasterDataTab = ({ activeSubjects }) => {
   const [bulkFieldSubject, setBulkFieldSubject] = useState('理科');
   const [bulkFieldCategory, setBulkFieldCategory] = useState(null);
   const [bulkFieldResult, setBulkFieldResult] = useState(null);
+  const [activeMasterSection, setActiveMasterSection] = useState(null);
   const [wtForm, setWtForm] = useState({ name: '', sortOrder: 1 });
 
   // CSV一括登録（分野）
@@ -4811,69 +4925,38 @@ const MasterDataTab = ({ activeSubjects }) => {
     downloadCSV(csv, '分野一括登録テンプレート.csv');
   };
 
-  const examTypeName = (et) => {
-    const s = schools.find(s => s.id === et.schoolId);
-    return `${s?.name} / ${et.subject}`;
-  };
+  const masterSections = [
+    { key: 'rejection', icon: '\u{1F504}', title: '\u5DEE\u3057\u623B\u3057\u30AB\u30C6\u30B4\u30EA', desc: '\u5DEE\u3057\u623B\u3057\u9805\u76EE\u306E\u7BA1\u7406' },
+    { key: 'severity', icon: '\u26A0\uFE0F', title: '\u5DEE\u3057\u623B\u3057\u91CD\u5927\u5EA6', desc: '\u91CD\u5927\u5EA6\u30EC\u30D9\u30EB\u306E\u7BA1\u7406' },
+    { key: 'checklist', icon: '\u2705', title: '\u30C1\u30A7\u30C3\u30AF\u30EA\u30B9\u30C8', desc: '\u63D0\u51FA\u524D\u30FB\u691C\u8A3C\u30C1\u30A7\u30C3\u30AF\u9805\u76EE' },
+    { key: 'field', icon: '\u{1F4DA}', title: '\u5206\u91CE\u30DE\u30B9\u30BF', desc: '\u7406\u79D1\u30FB\u7B97\u6570\u306E\u5206\u91CE\u7BA1\u7406' },
+    { key: 'worktype', icon: '\u{1F527}', title: '\u4F5C\u696D\u7A2E\u30DE\u30B9\u30BF', desc: '\u4F5C\u696D\u7A2E\uFF08\u4F5C\u696D\u5185\u5BB9\uFF09\u306E\u7BA1\u7406' },
+  ];
 
   return (
     <div className="space-y-4">
-
-      <div className="bg-white rounded-xl shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">学校の管理</h3>
-        <form onSubmit={(e) => { e.preventDefault(); if (schoolName) { addSchool(schoolName); setSchoolName(''); } }} className="flex gap-2 mb-3">
-          <input
-            type="text" placeholder="学校名" value={schoolName}
-            onChange={e => setSchoolName(e.target.value)}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            required
-          />
-          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">追加</button>
-        </form>
-        <div className="flex flex-wrap gap-2">
-          {schools.map(s => (
-            <div key={s.id} className="flex items-center gap-1.5 bg-gray-100 px-3 py-1.5 rounded-lg">
-              <span className="text-sm text-gray-700">{s.name}</span>
-              <button onClick={() => { if (confirm(`「${s.name}」を削除しますか？関連する試験種も削除されます。`)) deleteSchool(s.id); }}
-                className="text-red-400 hover:text-red-600 text-xs ml-1">×</button>
-            </div>
+      {/* Button menu */}
+      {!activeMasterSection && (
+        <div className="grid grid-cols-2 gap-3 p-4">
+          {masterSections.map(s => (
+            <button key={s.key} onClick={() => setActiveMasterSection(s.key)}
+              className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition text-left">
+              <span className="text-2xl">{s.icon}</span>
+              <p className="font-medium text-gray-800 mt-1">{s.title}</p>
+              <p className="text-xs text-gray-500">{s.desc}</p>
+            </button>
           ))}
         </div>
-      </div>
+      )}
 
-      <div className="bg-white rounded-xl shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">試験種の管理（学校 × 科目）</h3>
-        <form onSubmit={(e) => { e.preventDefault(); if (etSchool && etSubject) { addExamType(etSchool, etSubject); setEtSchool(''); setEtSubject(''); } }} className="flex flex-wrap gap-2 mb-3">
-          <select
-            value={etSchool} onChange={e => setEtSchool(e.target.value)}
-            className="flex-1 min-w-36 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            required
-          >
-            <option value="">学校を選択</option>
-            {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <select
-            value={etSubject} onChange={e => setEtSubject(e.target.value)}
-            className="flex-1 min-w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            required
-          >
-            <option value="">科目を選択</option>
-            {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">追加</button>
-        </form>
-        <div className="flex flex-wrap gap-2">
-          {examTypes.map(et => (
-            <div key={et.id} className="flex items-center gap-1.5 bg-indigo-50 px-3 py-1.5 rounded-lg">
-              <span className="text-sm text-indigo-700">{examTypeName(et)}</span>
-              <button onClick={() => deleteExamType(et.id)}
-                className="text-red-400 hover:text-red-600 text-xs ml-1">×</button>
-            </div>
-          ))}
-        </div>
-      </div>
+      {activeMasterSection && (
+        <div>
+          <button onClick={() => setActiveMasterSection(null)} className="mb-3 text-sm text-gray-500 hover:text-gray-700">
+            ← 戻る
+          </button>
 
-      {/* 差し戻し項目の管理 */}
+      {/* ===== Section: 差し戻しカテゴリ ===== */}
+      {activeMasterSection === 'rejection' && (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h4 className="text-sm font-semibold text-gray-700 mb-3">🔄 差し戻し項目の管理</h4>
         <p className="text-xs text-gray-500 mb-3">科目・作業内容ごとに差し戻し項目を設定できます。</p>
@@ -4985,8 +5068,10 @@ const MasterDataTab = ({ activeSubjects }) => {
           });
         })()}
       </div>
+      )}
 
-      {/* 差し戻し重大度の管理 */}
+      {/* ===== Section: 差し戻し重大度 ===== */}
+      {activeMasterSection === 'severity' && (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h4 className="text-sm font-semibold text-gray-700 mb-3">⚠️ 差し戻し重大度の管理</h4>
         <div className="flex flex-wrap gap-2 mb-3">
@@ -5039,8 +5124,10 @@ const MasterDataTab = ({ activeSubjects }) => {
           ))}
         </div>
       </div>
+      )}
 
-      {/* 分野マスタの管理 */}
+      {/* ===== Section: 分野マスタ ===== */}
+      {activeMasterSection === 'field' && (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h4 className="text-sm font-semibold text-gray-700 mb-3">📚 分野マスタの管理</h4>
         <p className="text-xs text-gray-500 mb-3">理科・算数の分野を管理します。VIKINGタスクの分野制限に使用します。</p>
@@ -5330,8 +5417,10 @@ const MasterDataTab = ({ activeSubjects }) => {
           });
         })()}
       </div>
+      )}
 
-      {/* 作業種マスタの管理 */}
+      {/* ===== Section: 作業種マスタ ===== */}
+      {activeMasterSection === 'worktype' && (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h4 className="text-sm font-semibold text-gray-700 mb-3">🔧 作業種マスタの管理</h4>
         <p className="text-xs text-gray-500 mb-3">タスクの作業種（作業内容）を管理します。差し戻し項目やチェックリストの絞り込みに使用します。</p>
@@ -5368,8 +5457,10 @@ const MasterDataTab = ({ activeSubjects }) => {
           )}
         </div>
       </div>
+      )}
 
-      {/* チェックリストの管理 */}
+      {/* ===== Section: チェックリスト ===== */}
+      {activeMasterSection === 'checklist' && (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h4 className="text-sm font-semibold text-gray-700 mb-3">✅ チェックリストの管理</h4>
         <p className="text-xs text-gray-500 mb-3">提出前チェック（作業者用）と検証チェック（リーダー用）の項目を管理します。科目・作業内容ごとに設定できます。</p>
@@ -5532,6 +5623,10 @@ const MasterDataTab = ({ activeSubjects }) => {
           });
         })()}
       </div>
+      )}
+
+        </div>
+      )}
     </div>
   );
 };
@@ -5699,7 +5794,7 @@ const LeaderManualTab = () => {
     { key: 'recruit', icon: '📢', title: '業務募集', desc: 'VIKING形式タスク' },
     { key: 'eval', icon: '⭐', title: '作業者評価', desc: 'スター評価' },
     { key: 'merge', icon: '📁', title: 'ファイル統合', desc: 'Excel統合' },
-    { key: 'master', icon: '⚙️', title: 'マスタ', desc: '学校・試験種・分野等の管理' },
+    { key: 'master', icon: '⚙️', title: 'マスタ', desc: '差し戻し・分野・チェックリスト等の管理' },
   ];
 
   const sectionContent = {
@@ -5805,8 +5900,6 @@ const LeaderManualTab = () => {
       <div className="text-sm text-gray-600 space-y-2">
         <p>マスタデータ（基本設定）を管理します。</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>学校マスタ</strong>：学校名の追加・削除</li>
-          <li><strong>試験種マスタ</strong>：学校と科目の組み合わせを登録</li>
           <li><strong>差し戻しカテゴリ</strong>：差し戻し理由のカテゴリ管理</li>
           <li><strong>重大度</strong>：差し戻しの重大度レベル管理</li>
           <li><strong>チェックリスト</strong>：検証・提出前チェック項目の管理</li>
@@ -5860,7 +5953,7 @@ const LeaderManualTab = () => {
         <div className="text-sm text-gray-700 space-y-2">
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">1</span>
-            <p><strong>マスタ設定</strong>：学校・試験種・分野・チェックリストを登録</p>
+            <p><strong>マスタ設定</strong>：差し戻し項目・分野・チェックリストを登録</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">2</span>
