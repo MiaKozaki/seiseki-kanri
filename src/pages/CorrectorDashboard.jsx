@@ -7,6 +7,41 @@ import { downloadExamExcel } from '../utils/excelExport.js';
 import { generateId, SUBJECTS_LIST } from '../utils/storage.js';
 import { saveAttachment, deleteAttachmentsByAssignment, validateFile, MAX_FILES_PER_SUBMISSION } from '../utils/fileStorage.js';
 
+// Helper to parse structured FB message into parts
+const parseFbMessage = (message) => {
+  if (!message) return null;
+  const contentMatch = message.match(/【FB内容】\n([\s\S]*?)(?:\n\n【詳細】|$)/);
+  const detailMatch = message.match(/【詳細】\n([\s\S]*)$/);
+  if (!contentMatch) return null;
+  const items = contentMatch[1].split('\n').filter(s => s.trim());
+  const detail = detailMatch ? detailMatch[1].trim() : '';
+  return { items, detail };
+};
+
+// Component to render structured FB message
+const StructuredFbDisplay = ({ message }) => {
+  const parsed = parseFbMessage(message);
+  if (!parsed) {
+    return <p className="text-gray-700">{message}</p>;
+  }
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] font-semibold text-amber-700">FB内容：</p>
+      <ul className="list-disc list-inside space-y-0.5">
+        {parsed.items.map((item, i) => (
+          <li key={i} className="text-gray-700 text-xs leading-relaxed">{item.replace(/^・/, '')}</li>
+        ))}
+      </ul>
+      {parsed.detail && (
+        <>
+          <p className="text-[10px] font-semibold text-amber-700 mt-1.5">詳細：</p>
+          <p className="text-gray-700 whitespace-pre-wrap">{parsed.detail}</p>
+        </>
+      )}
+    </div>
+  );
+};
+
 const TABS = [
   { label: '工数登録', icon: '⏱️' },
   { label: '担当業務', icon: '📋' },
@@ -1589,7 +1624,7 @@ export default function CorrectorDashboard() {
                                     <div className="space-y-1">
                                       {fbs.map(fb => (
                                         <div key={fb.id} className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs">
-                                          <p className="text-gray-700">{fb.message}</p>
+                                          <StructuredFbDisplay message={fb.message} />
                                           <p className="text-[10px] text-gray-400 mt-0.5">{new Date(fb.createdAt).toLocaleString('ja-JP')}</p>
                                         </div>
                                       ))}

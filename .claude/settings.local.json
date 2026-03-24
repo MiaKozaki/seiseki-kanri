@@ -81,7 +81,10 @@
       "Bash(PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin:./node_modules/.bin\" npm run build)",
       "Bash(/Users/mia/.volta/bin/npx vite:*)",
       "Bash(export PATH=/usr/local/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/*/bin:$PATH)",
-      "Bash(ls /opt/homebrew/bin/npm /usr/local/bin/npm ~/.nvm/versions/node/*/bin/npm)"
+      "Bash(ls /opt/homebrew/bin/npm /usr/local/bin/npm ~/.nvm/versions/node/*/bin/npm)",
+      "Bash(PATH=\"/usr/local/bin:/opt/homebrew/bin:$PATH\")",
+      "Read(//usr/**)",
+      "Read(//Users/mia/Desktop/seiseki-kanri/**)"
     ]
   }
 }

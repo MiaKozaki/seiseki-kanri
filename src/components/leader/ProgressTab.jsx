@@ -28,6 +28,58 @@ const PREDICTION_BADGE = {
   unassigned: { text: '未割当', cls: 'bg-amber-100 text-amber-700' },
 };
 
+const FB_CATEGORIES = [
+  { id: 'fb1a', label: '1-a. 字数指定以外で、短答問題以外を対応している' },
+  { id: 'fb1b', label: '1-b. A〜D列の記入にミスがある' },
+  { id: 'fb1c', label: '1-c. E・J列か、「構成」シートに記入がされている' },
+  { id: 'fb1d', label: '1-d. 中問分割試験種の作業をしている（作業対象外試験種の報告ができていない）' },
+  { id: 'fb2a', label: '2-a. スプレッドシートの「内容」のシートのF列に完答・順不同を記載できていない' },
+  { id: 'fb3a', label: '3-a. スプレッドシートの「内容」のシートのH列に別解が記載できていない' },
+  { id: 'fb3b', label: '3-b. 解答がマニュアルに記載された6パターンの場合、別解を指定の通りに記載できていない' },
+  { id: 'fb4a', label: '4-a. 解答がマニュアルに記載された6パターン以外の場合、別解を別解リストを参照しながら正しく記載できていない' },
+  { id: 'fb5a', label: '5-a. 条件指定をスプレッドシートの「内容」のシートのG列に記載できていない' },
+  { id: 'fb6a', label: '6-a. 不可解答がある場合、スプレッドシートの「内容」のシートのI列に記載できていない' },
+  { id: 'fb7a', label: '7-a. 別解と条件指定両方が存在する場合、条件指定を優先できていない' },
+  { id: 'fb8a', label: '8-a. 英数字に関して、1桁の場合は全角、2桁以上の場合や（1）（A）のように（）内に英数字を入れる場合は半角にできていない' },
+  { id: 'fb8b', label: '8-b. かっこが全角にできていない' },
+  { id: 'fb8c', label: '8-c. 読点や別解が複数ある場合、全角のカンマ（，）で区切ることができていない' },
+];
+
+// Helper to parse structured FB message into parts
+const parseFbMessage = (message) => {
+  if (!message) return null;
+  const contentMatch = message.match(/【FB内容】\n([\s\S]*?)(?:\n\n【詳細】|$)/);
+  const detailMatch = message.match(/【詳細】\n([\s\S]*)$/);
+  if (!contentMatch) return null;
+  const items = contentMatch[1].split('\n').filter(s => s.trim());
+  const detail = detailMatch ? detailMatch[1].trim() : '';
+  return { items, detail };
+};
+
+// Component to render structured FB message
+const StructuredFbDisplay = ({ message }) => {
+  const parsed = parseFbMessage(message);
+  if (!parsed) {
+    return <p className="text-gray-700">{message}</p>;
+  }
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] font-semibold text-amber-700">FB内容：</p>
+      <ul className="list-disc list-inside space-y-0.5">
+        {parsed.items.map((item, i) => (
+          <li key={i} className="text-gray-700 text-xs leading-relaxed">{item.replace(/^・/, '')}</li>
+        ))}
+      </ul>
+      {parsed.detail && (
+        <>
+          <p className="text-[10px] font-semibold text-amber-700 mt-1.5">詳細：</p>
+          <p className="text-gray-700 whitespace-pre-wrap">{parsed.detail}</p>
+        </>
+      )}
+    </div>
+  );
+};
+
 const STATUS_COLOR_PRESETS = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
   '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
@@ -157,7 +209,8 @@ const ProgressTab = ({ activeSubjects }) => {
   const [message, setMessage] = useState('');
   const [openChecklistId, setOpenChecklistId] = useState(null);
   const [feedbackAssignmentId, setFeedbackAssignmentId] = useState(null);
-  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackChecks, setFeedbackChecks] = useState({});
+  const [feedbackDetail, setFeedbackDetail] = useState('');
   const [showTaskDetail, setShowTaskDetail] = useState(false);
   const [showStatusConfig, setShowStatusConfig] = useState(false);
 
@@ -1126,34 +1179,79 @@ const ProgressTab = ({ activeSubjects }) => {
                           {task.subject === '社会' && (assignment.status === 'submitted' || assignment.status === 'approved') && (
                             <div className="mt-2">
                               {feedbackAssignmentId === assignment.id ? (
-                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
                                   <p className="text-xs font-semibold text-amber-700">フィードバックを送信</p>
-                                  <textarea
-                                    value={feedbackText}
-                                    onChange={e => setFeedbackText(e.target.value)}
-                                    placeholder="フィードバック内容を入力..."
-                                    rows={3}
-                                    className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2"
-                                  />
+
+                                  {/* FB対象作業者 */}
+                                  <div>
+                                    <p className="text-[10px] text-gray-500 mb-0.5">FB対象作業者</p>
+                                    <p className="text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-1.5">{corrector?.name || '不明'}</p>
+                                  </div>
+
+                                  {/* 試験種名 */}
+                                  <div>
+                                    <p className="text-[10px] text-gray-500 mb-0.5">試験種名</p>
+                                    <p className="text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-1.5">{task.name || '不明'}</p>
+                                  </div>
+
+                                  {/* FB内容チェックリスト */}
+                                  <div>
+                                    <p className="text-[10px] text-gray-500 mb-1">FB内容チェックリスト（複数選択可）</p>
+                                    <div className="space-y-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg p-2">
+                                      {FB_CATEGORIES.map(cat => (
+                                        <label key={cat.id} className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 rounded p-1">
+                                          <input
+                                            type="checkbox"
+                                            checked={!!feedbackChecks[cat.id]}
+                                            onChange={e => setFeedbackChecks(prev => ({ ...prev, [cat.id]: e.target.checked }))}
+                                            className="mt-0.5 shrink-0 accent-amber-600"
+                                          />
+                                          <span className="text-xs text-gray-700 leading-relaxed">{cat.label}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* 具体的な内容・指摘箇所 */}
+                                  <div>
+                                    <p className="text-[10px] text-gray-500 mb-0.5">具体的な内容・指摘箇所（自由記述）</p>
+                                    <textarea
+                                      value={feedbackDetail}
+                                      onChange={e => setFeedbackDetail(e.target.value)}
+                                      placeholder="FBの具体的な内容、指摘箇所などを記載してください。1つの項目に複数該当箇所がある場合などは、特に具体的に記載してください。"
+                                      rows={3}
+                                      className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2"
+                                    />
+                                  </div>
+
                                   <div className="flex gap-2 justify-end">
-                                    <button onClick={() => { setFeedbackAssignmentId(null); setFeedbackText(''); }}
+                                    <button onClick={() => { setFeedbackAssignmentId(null); setFeedbackChecks({}); setFeedbackDetail(''); }}
                                       className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">キャンセル</button>
                                     <button onClick={() => {
-                                      if (!feedbackText.trim()) return;
+                                      const checkedItems = FB_CATEGORIES.filter(cat => feedbackChecks[cat.id]);
+                                      if (checkedItems.length === 0) return;
+                                      const messageParts = ['【FB内容】'];
+                                      checkedItems.forEach(cat => messageParts.push('・' + cat.label));
+                                      if (feedbackDetail.trim()) {
+                                        messageParts.push('');
+                                        messageParts.push('【詳細】');
+                                        messageParts.push(feedbackDetail.trim());
+                                      }
                                       addFeedback({
                                         assignmentId: assignment.id,
                                         taskId: task.id,
                                         fromUserId: user?.id,
                                         toUserId: assignment.userId,
                                         subject: task.subject,
-                                        message: feedbackText.trim(),
+                                        message: messageParts.join('\n'),
                                       });
                                       setFeedbackAssignmentId(null);
-                                      setFeedbackText('');
+                                      setFeedbackChecks({});
+                                      setFeedbackDetail('');
                                       setMessage('FBを送信しました');
                                       setTimeout(() => setMessage(''), 3000);
                                     }}
-                                      disabled={!feedbackText.trim()}
+                                      disabled={FB_CATEGORIES.filter(cat => feedbackChecks[cat.id]).length === 0}
                                       className="text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg transition">
                                       送信
                                     </button>
@@ -1174,7 +1272,7 @@ const ProgressTab = ({ activeSubjects }) => {
                                     <p className="text-[10px] text-gray-500">送信済みFB（{fbs.length}件）</p>
                                     {fbs.map(fb => (
                                       <div key={fb.id} className="p-2 bg-amber-50 border border-amber-100 rounded-lg text-xs">
-                                        <p className="text-gray-700">{fb.message}</p>
+                                        <StructuredFbDisplay message={fb.message} />
                                         <p className="text-[10px] text-gray-400 mt-0.5">{new Date(fb.createdAt).toLocaleString('ja-JP')}</p>
                                       </div>
                                     ))}
