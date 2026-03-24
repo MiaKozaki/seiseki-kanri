@@ -3007,6 +3007,45 @@ const ExamProcessingTab = ({ activeSubjects }) => {
 };
 
 
+// ---- FB Categories (shared with ProgressTab) ----
+const FB_CATEGORIES = [
+  { id: 'fb1a', label: '1-a. 字数指定以外で、短答問題以外を対応している' },
+  { id: 'fb1b', label: '1-b. A〜D列の記入にミスがある' },
+  { id: 'fb1c', label: '1-c. E・J列か、「構成」シートに記入がされている' },
+  { id: 'fb1d', label: '1-d. 中問分割試験種の作業をしている（作業対象外試験種の報告ができていない）' },
+  { id: 'fb2a', label: '2-a. スプレッドシートの「内容」のシートのF列に完答・順不同を記載できていない' },
+  { id: 'fb3a', label: '3-a. スプレッドシートの「内容」のシートのH列に別解が記載できていない' },
+  { id: 'fb3b', label: '3-b. 解答がマニュアルに記載された6パターンの場合、別解を指定の通りに記載できていない' },
+  { id: 'fb4a', label: '4-a. 解答がマニュアルに記載された6パターン以外の場合、別解を別解リストを参照しながら正しく記載できていない' },
+  { id: 'fb5a', label: '5-a. 条件指定をスプレッドシートの「内容」のシートのG列に記載できていない' },
+  { id: 'fb6a', label: '6-a. 不可解答がある場合、スプレッドシートの「内容」のシートのI列に記載できていない' },
+  { id: 'fb7a', label: '7-a. 別解と条件指定両方が存在する場合、条件指定を優先できていない' },
+  { id: 'fb8a', label: '8-a. 英数字に関して、1桁の場合は全角、2桁以上の場合や（1）（A）のように（）内に英数字を入れる場合は半角にできていない' },
+  { id: 'fb8b', label: '8-b. かっこが全角にできていない' },
+  { id: 'fb8c', label: '8-c. 読点や別解が複数ある場合、全角のカンマ（，）で区切ることができていない' },
+];
+
+// Helper: parse FB message to extract categories and detail
+const _parseFBMessage = (message) => {
+  if (!message) return { categories: [], detail: '' };
+  const categories = [];
+  let detail = '';
+  const lines = message.split('\n');
+  let inFB = false;
+  let inDetail = false;
+  for (const line of lines) {
+    if (line.includes('【FB内容】')) { inFB = true; inDetail = false; continue; }
+    if (line.includes('【詳細】')) { inDetail = true; inFB = false; continue; }
+    if (inFB && line.startsWith('・')) {
+      categories.push(line.slice(1).trim());
+    }
+    if (inDetail) {
+      detail += (detail ? '\n' : '') + line;
+    }
+  }
+  return { categories, detail: detail.trim() };
+};
+
 // ---- Corrector Evaluation Tab (作業者評価) ----
 const _fmtSecEval = (sec) => {
   if (!sec || sec <= 0) return '0秒';
@@ -3028,6 +3067,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
     getUsers, getRejections, getRejectionCategories, getRejectionSeverities,
     getTimeLogs, getTaskTotalTime, getDaimonTotalTime,
     getTasks, getAssignments, getAllData,
+    getFeedbacks,
   } = useData();
 
   const correctors = getCorrectors();
@@ -3057,6 +3097,11 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   // --- Sub-tab 4 state ---
   const [subjectDetailSubject, setSubjectDetailSubject] = useState('');
   const [daimonFilterUser, setDaimonFilterUser] = useState('');
+
+  // --- FB集約 state ---
+  const [fbSectionOpen, setFbSectionOpen] = useState(false);
+  const [fbView, setFbView] = useState('byUser'); // 'byUser' | 'byCategory'
+  const [fbFilterUser, setFbFilterUser] = useState('');
 
   // ---- Evaluation helpers ----
   const userEvals = allEvals.filter(e => e.userId === selectedUser);
@@ -3788,6 +3833,187 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
           </div>
         </div>
       )}
+
+      {/* ======== FB集約・分析セクション ======== */}
+      <div className="mt-6 border border-amber-200 rounded-xl overflow-hidden">
+        <button
+          onClick={() => setFbSectionOpen(prev => !prev)}
+          className="w-full flex items-center justify-between px-5 py-3 bg-amber-50 hover:bg-amber-100 transition text-left"
+        >
+          <span className="text-sm font-semibold text-amber-800">📋 FB集約・分析</span>
+          <span className="text-amber-600 text-xs">{fbSectionOpen ? '▲ 閉じる' : '▼ 開く'}</span>
+        </button>
+
+        {fbSectionOpen && (() => {
+          const allFeedbacks = getFeedbacks();
+          const getTaskName = (tid) => tasks.find(t => t.id === tid)?.name || '不明';
+
+          // Parse all feedbacks
+          const parsed = allFeedbacks.map(fb => ({
+            ...fb,
+            ..._parseFBMessage(fb.message),
+            taskName: getTaskName(fb.taskId),
+            toUserName: getUserName(fb.toUserId),
+          })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+          // Category aggregation
+          const categoryStats = {};
+          FB_CATEGORIES.forEach(cat => {
+            categoryStats[cat.label] = { label: cat.label, count: 0, users: new Set() };
+          });
+          parsed.forEach(fb => {
+            fb.categories.forEach(catText => {
+              const matched = FB_CATEGORIES.find(c => catText.includes(c.label.split('. ')[0]));
+              const key = matched ? matched.label : catText;
+              if (!categoryStats[key]) categoryStats[key] = { label: key, count: 0, users: new Set() };
+              categoryStats[key].count++;
+              categoryStats[key].users.add(fb.toUserName);
+            });
+          });
+          const categorySorted = Object.values(categoryStats)
+            .filter(c => c.count > 0)
+            .sort((a, b) => b.count - a.count);
+
+          // User-filtered feedbacks
+          const userFeedbacks = fbFilterUser
+            ? parsed.filter(fb => fb.toUserId === fbFilterUser)
+            : parsed;
+
+          // Most common category for selected user
+          const userCatCount = {};
+          userFeedbacks.forEach(fb => {
+            fb.categories.forEach(cat => {
+              userCatCount[cat] = (userCatCount[cat] || 0) + 1;
+            });
+          });
+          const mostCommonCats = Object.entries(userCatCount)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3);
+
+          return (
+            <div className="p-5 bg-white space-y-4">
+              {/* View toggle */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFbView('byUser')}
+                  className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${fbView === 'byUser' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'}`}
+                >
+                  作業者別
+                </button>
+                <button
+                  onClick={() => setFbView('byCategory')}
+                  className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${fbView === 'byCategory' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'}`}
+                >
+                  カテゴリ別
+                </button>
+              </div>
+
+              {/* View 1: 作業者別FB一覧 */}
+              {fbView === 'byUser' && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <select
+                      value={fbFilterUser}
+                      onChange={e => setFbFilterUser(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+                    >
+                      <option value="">全作業者</option>
+                      {correctors.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-gray-500">
+                      {userFeedbacks.length}件のFB
+                    </span>
+                  </div>
+
+                  {/* Summary */}
+                  {fbFilterUser && mostCommonCats.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-amber-800 mb-1">よく指摘されるカテゴリ</p>
+                      <ul className="text-xs text-amber-700 space-y-0.5">
+                        {mostCommonCats.map(([cat, cnt]) => (
+                          <li key={cat}>・{cat}（{cnt}件）</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* FB list */}
+                  {userFeedbacks.length > 0 ? (
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                      {userFeedbacks.map(fb => (
+                        <div key={fb.id} className="border border-amber-100 rounded-lg p-3 bg-amber-50/30 hover:bg-amber-50 transition">
+                          <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-medium text-gray-500">
+                                {fb.createdAt ? new Date(fb.createdAt).toLocaleDateString('ja-JP') : '-'}
+                              </span>
+                              <span className="text-xs font-semibold text-gray-700">{fb.taskName}</span>
+                            </div>
+                            <span className="text-xs text-amber-700 font-medium">{fb.toUserName}</span>
+                          </div>
+                          {fb.categories.length > 0 && (
+                            <ul className="text-xs text-gray-600 mb-1 space-y-0.5 ml-2">
+                              {fb.categories.map((cat, i) => (
+                                <li key={i} className="flex items-start gap-1">
+                                  <span className="text-amber-500 mt-0.5">●</span>
+                                  <span>{cat}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {fb.detail && (
+                            <p className="text-xs text-gray-500 mt-1 pl-2 border-l-2 border-amber-200">{fb.detail}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center py-8 text-gray-400 text-sm">FBデータがありません</p>
+                  )}
+                </div>
+              )}
+
+              {/* View 2: カテゴリ別集計 */}
+              {fbView === 'byCategory' && (
+                <div>
+                  {categorySorted.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-amber-200">
+                            <th className="text-left py-2 px-2 text-xs font-semibold text-amber-700">カテゴリ</th>
+                            <th className="text-right py-2 px-2 text-xs font-semibold text-amber-700 w-20">件数</th>
+                            <th className="text-left py-2 px-2 text-xs font-semibold text-amber-700">該当作業者</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {categorySorted.map(row => (
+                            <tr key={row.label} className="border-b border-amber-50 hover:bg-amber-50 transition">
+                              <td className="py-2 px-2 text-xs text-gray-700">{row.label}</td>
+                              <td className="py-2 px-2 text-right">
+                                <span className="inline-block bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-xs font-semibold">
+                                  {row.count}
+                                </span>
+                              </td>
+                              <td className="py-2 px-2 text-xs text-gray-600">
+                                {[...row.users].join('、')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-center py-8 text-gray-400 text-sm">FBデータがありません</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
 };
