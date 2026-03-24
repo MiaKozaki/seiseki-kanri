@@ -1040,6 +1040,25 @@ export const DataProvider = ({ children }) => {
     if (!assignment) return 'pending';
     const s = assignment.status;
     const vs = assignment.verificationStatus;
+
+    // マクロ（takos）ステータス: 格納済みタスクの場合
+    if (assignment.storageStatus === 'stored') {
+      // linkedTaskIdを持つtakosタスクが完了しているか確認
+      const allTasks = d('tasks');
+      const allAssignments = d('assignments');
+      const takosTask = allTasks.find(t => t.linkedTaskId === task.id && t.macroTask);
+      if (takosTask) {
+        const takosAssignment = allAssignments.find(a => a.taskId === takosTask.id);
+        if (takosTask.status === 'completed' || (takosAssignment && takosAssignment.status === 'approved')) {
+          return 'macro_completed';
+        }
+      }
+      return 'macro_pending';
+    }
+
+    // 格納待ち（承認済みだが未格納）
+    if (assignment.storageStatus === 'pending_storage') return 'verification_completed';
+
     if (s === 'approved' || task.status === 'completed') return 'verification_completed';
     if (s === 'submitted' || task.status === 'submitted') {
       if (vs === 'reviewing') return 'verification_reviewing';
@@ -1047,7 +1066,7 @@ export const DataProvider = ({ children }) => {
       return 'verification_waiting';
     }
     if (s === 'in_progress') return 'in_progress';
-    if (s === 'assigned' || s === 'rejected') return 'assigned';
+    if (s === 'assigned' || s === 'rejected') return 'in_progress';
     return 'pending';
   };
 

@@ -5,7 +5,7 @@ export const INITIAL_DATA = {
   users: [
     {
       id: 'u1', name: 'リーダー田中', email: 'leader@test.com', loginId: 'L001',
-      password: 'cGFzc3dvcmQ=', role: 'leader', subjects: ['算数', 'マクロ'],
+      password: 'cGFzc3dvcmQ=', role: 'leader', subjects: [],
       createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
@@ -471,12 +471,12 @@ export const INITIAL_DATA = {
   verificationResults: [],
   workflowStatuses: [
     { id: 'ws1', subject: null, workType: null, name: 'pending', label: '未振り分け', color: '#f59e0b', sortOrder: 0, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'ws2', subject: null, workType: null, name: 'assigned', label: '振り分け済み', color: '#3b82f6', sortOrder: 1, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'ws3', subject: null, workType: null, name: 'in_progress', label: '作業中', color: '#0ea5e9', sortOrder: 2, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'ws4', subject: null, workType: null, name: 'submitted', label: '提出済み', color: '#8b5cf6', sortOrder: 3, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'ws5', subject: null, workType: null, name: 'verification_waiting', label: '検証待ち', color: '#f97316', sortOrder: 4, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'ws6', subject: null, workType: null, name: 'verification_reviewing', label: '検証中', color: '#eab308', sortOrder: 5, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
-    { id: 'ws7', subject: null, workType: null, name: 'verification_completed', label: '検証完了', color: '#10b981', sortOrder: 6, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'ws3', subject: null, workType: null, name: 'in_progress', label: '作業中', color: '#0ea5e9', sortOrder: 1, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'ws5', subject: null, workType: null, name: 'verification_waiting', label: '検証待ち', color: '#f97316', sortOrder: 2, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'ws6', subject: null, workType: null, name: 'verification_reviewing', label: '検証中', color: '#eab308', sortOrder: 3, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'ws7', subject: null, workType: null, name: 'verification_completed', label: '検証完了', color: '#10b981', sortOrder: 4, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'ws8', subject: null, workType: null, name: 'macro_pending', label: 'マクロ未作成', color: '#ef4444', sortOrder: 5, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'ws9', subject: null, workType: null, name: 'macro_completed', label: '作成完了', color: '#22c55e', sortOrder: 6, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
   ],
   workTypes: [
     { id: 'wt1', name: '新年度試験種', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' },
@@ -487,7 +487,7 @@ export const INITIAL_DATA = {
   ],
 };
 
-export const SUBJECTS_LIST = ['国語', '算数', '理科', '社会', 'マクロ'];
+export const SUBJECTS_LIST = ['国語', '算数', '理科', '社会'];
 
 export const WORK_TYPES_LIST = ['新年度試験種', 'タグ付け', '解答出し', '部分点', 'tensakitインポート', 'takos作成'];
 
@@ -622,6 +622,23 @@ export const initStorage = () => {
       updated = true;
     }
     if (!data.workflowStatuses) { data.workflowStatuses = INITIAL_DATA.workflowStatuses || []; updated = true; }
+    // マクロステータス追加マイグレーション
+    if (data.workflowStatuses && !data.workflowStatuses.find(ws => ws.name === 'macro_pending')) {
+      // 不要なステータスを削除（assigned, submitted）
+      data.workflowStatuses = data.workflowStatuses.filter(ws => !['assigned', 'submitted'].includes(ws.name));
+      // マクロステータスを追加
+      data.workflowStatuses.push(
+        { id: 'ws8', subject: null, workType: null, name: 'macro_pending', label: 'マクロ未作成', color: '#ef4444', sortOrder: 5, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'ws9', subject: null, workType: null, name: 'macro_completed', label: '作成完了', color: '#22c55e', sortOrder: 6, isDefault: true, createdAt: '2026-01-01T00:00:00.000Z' }
+      );
+      // sortOrderを再調整
+      const desiredOrder = ['pending', 'in_progress', 'verification_waiting', 'verification_reviewing', 'verification_completed', 'macro_pending', 'macro_completed'];
+      data.workflowStatuses.forEach(ws => {
+        const idx = desiredOrder.indexOf(ws.name);
+        if (idx >= 0) ws.sortOrder = idx;
+      });
+      updated = true;
+    }
     if (!data.workTypes) { data.workTypes = INITIAL_DATA.workTypes || []; updated = true; }
     if (!data._demoVerificationV1) {
       const demoItems = INITIAL_DATA.verificationItems || [];
