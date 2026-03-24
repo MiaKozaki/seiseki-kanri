@@ -1047,7 +1047,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const [section, setSection] = useState(0);
 
   // Task form state
-  const [form, setForm] = useState({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
+  const [form, setForm] = useState({ name: '', subject: '', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState('');
 
@@ -1134,7 +1134,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
           requiredHours: Number(daimon.requiredHours) || 0,
           deadline: form.deadline,
           sheetsUrl: form.sheetsUrl,
-          viking: true,
+          viking: form.subject === '理科',
           fieldId: daimon.fieldId || null,
           parentTaskGroup,
         });
@@ -1142,7 +1142,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     } else {
       addTask({ ...form, requiredHours: Number(form.requiredHours), viking: !!form.viking });
     }
-    setForm({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
+    setForm({ name: '', subject: '', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
   };
 
   const handleEdit = (task) => {
@@ -1519,13 +1519,14 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
             </div>
             {!form.splitByDaimon && (
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">必要工数（時間）</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">必要工数（時間）<span className="text-gray-400 font-normal ml-1">（任意）</span></label>
               <input
                 type="number"
                 value={form.requiredHours}
                 onChange={e => setForm({ ...form, requiredHours: e.target.value })}
-                min="1" max="500"
+                min="0" max="500"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="未入力可"
               />
             </div>
             )}
@@ -1652,7 +1653,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 {editId ? '更新' : '追加'}
               </button>
               {editId && (
-                <button type="button" onClick={() => { setEditId(null); setForm({ name: '', subject: '', workType: '', requiredHours: 8, deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] }); }}
+                <button type="button" onClick={() => { setEditId(null); setForm({ name: '', subject: '', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] }); }}
                   className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg transition">
                   キャンセル
                 </button>
@@ -4528,14 +4529,14 @@ const RecruitmentTab = ({ activeSubjects }) => {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">必要工数（時間）</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">必要工数（時間）<span className="text-gray-400 font-normal ml-1">（任意）</span></label>
               <input
                 type="number"
                 value={form.requiredHours}
                 onChange={e => setForm({ ...form, requiredHours: e.target.value })}
-                min="1"
+                min="0"
                 className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none"
-                placeholder="例: 10"
+                placeholder="未入力可"
               />
             </div>
           </div>

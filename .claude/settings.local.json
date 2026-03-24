@@ -87,7 +87,13 @@
       "Read(//Users/mia/Desktop/seiseki-kanri/**)",
       "Bash(/Users/mia/.nvm/versions/node/v20.19.0/bin/npx vite:*)",
       "Bash(/Users/mia/.nvm/versions/node/v22.14.0/bin/npx vite:*)",
-      "Bash(source ~/.nvm/nvm.sh)"
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(sed '72,939d' src/pages/CorrectorDashboard.jsx)",
+      "Bash(mv /tmp/corrector_temp.jsx src/pages/CorrectorDashboard.jsx)",
+      "Bash(ls /usr/local/bin/n*)",
+      "Bash(ls /opt/homebrew/bin/n*)",
+      "Bash(PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/*/bin\")",
+      "Bash(mdfind \"kMDItemFSName == ''''node'''' && kMDItemKind == ''''Unix Executable File''''\")"
     ]
   }
 }

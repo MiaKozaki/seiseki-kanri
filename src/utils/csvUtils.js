@@ -303,9 +303,9 @@ export const validateTaskCSV = (rows, context) => {
     }
 
     const hoursStr = (row['工数(h)'] || row['工数'] || '').trim();
-    const requiredHours = parseFloat(hoursStr);
-    if (!hoursStr || isNaN(requiredHours) || requiredHours <= 0) {
-      rowErrors.push('工数は正の数値で入力してください');
+    const requiredHours = hoursStr ? parseFloat(hoursStr) : 0;
+    if (hoursStr && (isNaN(requiredHours) || requiredHours < 0)) {
+      rowErrors.push('工数は0以上の数値で入力してください');
     }
 
     const deadline = (row['期限'] || '').trim();
@@ -448,9 +448,9 @@ export const validateExamTaskCSV = (rows, context) => {
     }
 
     const hoursStr = (row['工数'] || row['工数(h)'] || '').trim();
-    const requiredHours = parseFloat(hoursStr);
-    if (!hoursStr || isNaN(requiredHours) || requiredHours <= 0) {
-      rowErrors.push('工数は正の数値で入力してください');
+    const requiredHours = hoursStr ? parseFloat(hoursStr) : 0;
+    if (hoursStr && (isNaN(requiredHours) || requiredHours < 0)) {
+      rowErrors.push('工数は0以上の数値で入力してください');
     }
 
     const deadline = (row['期限'] || '').trim();
@@ -595,9 +595,9 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
     }
 
     const hoursStr = (row['工数'] || row['工数(h)'] || '').trim();
-    const hours = parseFloat(hoursStr);
-    if (!hoursStr || isNaN(hours) || hours <= 0) {
-      rowErrors.push('工数は正の数値で入力してください');
+    const hours = hoursStr ? parseFloat(hoursStr) : 0;
+    if (hoursStr && (isNaN(hours) || hours < 0)) {
+      rowErrors.push('工数は0以上の数値で入力してください');
     }
 
     const deadline = (row['期限'] || '').trim();
