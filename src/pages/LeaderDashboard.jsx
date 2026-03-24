@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
 import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, validateDaimonTaskCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, DAIMON_TASK_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
-import { SUBJECTS_LIST, generateId } from '../utils/storage.js';
+import { SUBJECTS_LIST, WORK_TYPES_LIST, generateId } from '../utils/storage.js';
 import { useSheetsSync } from '../contexts/SheetsContext.jsx';
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
 import { downloadAttachment } from '../utils/fileStorage.js';
@@ -886,16 +886,21 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
           )}
         </div>
 
-      {/* ===== マクロ/takos インセンティブ（月間作業工数） ===== */}
+      {/* ===== 月間工数履歴 ===== */}
       <MacroIncentiveSection tasks={allTasks} assignments={assignments} users={allUsers} />
     </div>
   );
 };
 
-// ---- マクロ/takos インセンティブセクション ----
+// ---- 月間工数履歴セクション ----
 const MacroIncentiveSection = ({ tasks, assignments, users }) => {
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  const [filterSubject, setFilterSubject] = useState('');
+  const [filterWorkType, setFilterWorkType] = useState('');
+  const [filterUserId, setFilterUserId] = useState('');
+
+  const correctors = useMemo(() => users.filter(u => u.role === 'corrector'), [users]);
 
   const monthOptions = useMemo(() => {
     const months = [];
@@ -911,20 +916,25 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
     const startOfMonth = new Date(year, month - 1, 1).toISOString();
     const endOfMonth = new Date(year, month, 0, 23, 59, 59).toISOString();
 
-    // takos/マクロ完了タスクのassignmentを抽出
-    const takosTaskIds = new Set(
-      tasks.filter(t => t.macroTask || t.workType === 'takos作成').map(t => t.id)
-    );
+    // Build a task lookup map with subject/workType filters applied
+    const taskMap = {};
+    tasks.forEach(t => {
+      if (filterSubject && t.subject !== filterSubject) return;
+      if (filterWorkType && t.workType !== filterWorkType) return;
+      taskMap[t.id] = t;
+    });
 
+    // All completed assignments within the selected month matching task filters
     const completedAssignments = assignments.filter(a => {
-      if (!takosTaskIds.has(a.taskId)) return false;
+      if (!taskMap[a.taskId]) return false;
       if (!isFinished(a.status)) return false;
+      if (filterUserId && a.userId !== filterUserId) return false;
       const dateField = a.reviewedAt || a.submittedAt || a.storedAt;
       if (!dateField) return false;
       return dateField >= startOfMonth && dateField <= endOfMonth;
     });
 
-    // ユーザーごとに集計
+    // Aggregate per user
     const userMap = {};
     completedAssignments.forEach(a => {
       if (!userMap[a.userId]) {
@@ -936,22 +946,24 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
     });
 
     return Object.values(userMap).sort((a, b) => b.totalHours - a.totalHours);
-  }, [selectedMonth, tasks, assignments, users]);
+  }, [selectedMonth, tasks, assignments, users, filterSubject, filterWorkType, filterUserId]);
 
   const totalTasks = incentiveData.reduce((s, d) => s + d.taskCount, 0);
   const totalHours = incentiveData.reduce((s, d) => s + d.totalHours, 0);
+
+  const selectClass = "text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 outline-none";
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-5">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-700">マクロ/takos作成 月間実績（インセンティブ）</h3>
-          <p className="text-xs text-gray-400 mt-0.5">takos作成タスクの月別完了実績</p>
+          <h3 className="text-sm font-semibold text-gray-700">月間工数履歴</h3>
+          <p className="text-xs text-gray-400 mt-0.5">完了タスクの月別実績集計</p>
         </div>
         <select
           value={selectedMonth}
           onChange={e => setSelectedMonth(e.target.value)}
-          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 outline-none"
+          className={selectClass}
         >
           {monthOptions.map(m => (
             <option key={m} value={m}>{m.replace('-', '年')}月</option>
@@ -959,15 +971,31 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
         </select>
       </div>
 
+      {/* Filter dropdowns */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} className={selectClass}>
+          <option value="">全科目</option>
+          {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={filterWorkType} onChange={e => setFilterWorkType(e.target.value)} className={selectClass}>
+          <option value="">全作業内容</option>
+          {WORK_TYPES_LIST.map(w => <option key={w} value={w}>{w}</option>)}
+        </select>
+        <select value={filterUserId} onChange={e => setFilterUserId(e.target.value)} className={selectClass}>
+          <option value="">全作業者</option>
+          {correctors.map(c => <option key={c.id} value={c.id}>{c.name}（{c.loginId}）</option>)}
+        </select>
+      </div>
+
       {incentiveData.length === 0 ? (
-        <p className="text-gray-400 text-sm text-center py-8">選択月のtakos作成完了実績はありません</p>
+        <p className="text-gray-400 text-sm text-center py-8">選択条件に一致する完了実績はありません</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-2 px-2 text-gray-500 font-medium">作業者名</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium">ID</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium">ログインID</th>
                 <th className="text-right py-2 px-2 text-gray-500 font-medium">完了タスク数</th>
                 <th className="text-right py-2 px-2 text-gray-500 font-medium">合計工数(h)</th>
               </tr>
