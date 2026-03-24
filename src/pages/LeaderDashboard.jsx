@@ -6,7 +6,7 @@ import {
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
-import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, TASK_IMPORT_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
+import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
 import { SUBJECTS_LIST, generateId } from '../utils/storage.js';
 import { useSheetsSync } from '../contexts/SheetsContext.jsx';
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
@@ -1195,6 +1195,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   };
 
   // --- Bulk CSV import helpers ---
+  const schools = getSchools();
+
   const handleBulkCsvParse = (text) => {
     setBulkCsvText(text);
     setBulkImportDone(null);
@@ -1208,14 +1210,24 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
         return trimmed;
       }).join(',')).join('\n');
     }
-    const { rows } = parseCSV(csvText);
+    const { headers, rows } = parseCSV(csvText);
     if (rows.length === 0) { setBulkParsed({ valid: [], errors: [{ line: 0, message: 'データ行がありません', row: {} }] }); return; }
-    const result = validateTaskCSV(rows, {
-      subjects: SUBJECTS_LIST,
-      workTypes: workTypesList,
-      getFieldsFn: getFields,
-    });
-    setBulkParsed(result);
+    // Auto-detect format: if headers contain 学校名, use exam task format; otherwise use legacy task format
+    if (headers.includes('学校名')) {
+      const result = validateExamTaskCSV(rows, {
+        schools,
+        subjects: SUBJECTS_LIST,
+        workTypes: workTypesList,
+      });
+      setBulkParsed({ ...result, format: 'exam' });
+    } else {
+      const result = validateTaskCSV(rows, {
+        subjects: SUBJECTS_LIST,
+        workTypes: workTypesList,
+        getFieldsFn: getFields,
+      });
+      setBulkParsed({ ...result, format: 'task' });
+    }
   };
 
   const handleBulkCsvFile = async () => {
@@ -1234,16 +1246,29 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     if (!bulkParsed || bulkParsed.valid.length === 0) return;
     let count = 0;
     bulkParsed.valid.forEach(row => {
-      addTask({
-        name: row.name,
-        subject: row.subject,
-        workType: row.workType,
-        requiredHours: row.requiredHours,
-        deadline: row.deadline,
-        viking: row.viking,
-        sheetsUrl: row.sheetsUrl || '',
-        fieldId: row.fieldId || null,
-      });
+      if (bulkParsed.format === 'exam') {
+        addTask({
+          name: row.taskName,
+          subject: row.subject,
+          workType: row.workType,
+          requiredHours: row.requiredHours,
+          deadline: row.deadline,
+          viking: false,
+          sheetsUrl: '',
+          fieldId: null,
+        });
+      } else {
+        addTask({
+          name: row.name,
+          subject: row.subject,
+          workType: row.workType,
+          requiredHours: row.requiredHours,
+          deadline: row.deadline,
+          viking: row.viking,
+          sheetsUrl: row.sheetsUrl || '',
+          fieldId: row.fieldId || null,
+        });
+      }
       count++;
     });
     setBulkImportDone(`${count}件のタスクを登録しました`);
@@ -1255,11 +1280,11 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadTaskTemplate = () => {
     const templateData = [
-      { name: '○○中学 算数 第1回 大問1', subject: '算数', workType: workTypesList[0] || '新年度試験種', requiredHours: 2, deadline: '2026-04-30', viking: 'TRUE', sheetsUrl: '', fieldName: '' },
-      { name: '○○中学 理科 第1回 大問1', subject: '理科', workType: workTypesList[0] || '新年度試験種', requiredHours: 1.5, deadline: '2026-04-30', viking: 'FALSE', sheetsUrl: '', fieldName: '' },
+      { schoolName: schools[0]?.name || '開成中学', subject: '算数', workType: workTypesList[0] || '新年度試験種', requiredHours: 5, deadline: '2026-04-01' },
+      { schoolName: schools[1]?.name || '麻布中学', subject: '理科', workType: workTypesList[0] || 'タグ付け', requiredHours: 3, deadline: '2026-04-15' },
     ];
-    const csv = toCSV(templateData, TASK_IMPORT_CSV_COLUMNS);
-    downloadCSV(csv, 'タスク一括登録テンプレート.csv');
+    const csv = toCSV(templateData, EXAM_TASK_CSV_COLUMNS);
+    downloadCSV(csv, '試験種一括登録テンプレート.csv');
   };
 
   const clearTaskFilters = () => {
@@ -1530,7 +1555,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
             {showBulkImport && (
               <div className="space-y-3 bg-orange-50/50 border border-orange-200 rounded-lg p-4">
                 <p className="text-xs text-gray-500">
-                  CSVまたはTSV形式でタスクを一括登録できます。ヘッダ行: タスク名,科目,作業内容,工数(h),期限,VIKING,スプレッドシートURL,分野名
+                  CSVまたはTSV形式で試験種を一括登録できます。ヘッダ行: 学校名,科目,作業内容,工数,期限（従来形式のタスク名ヘッダにも対応）
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -1547,7 +1572,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                   onChange={e => handleBulkCsvParse(e.target.value)}
                   rows={6}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-orange-500 outline-none"
-                  placeholder={`タスク名,科目,作業内容,工数(h),期限,VIKING,スプレッドシートURL,分野名\n○○中学 算数 第1回,算数,新年度試験種,2,2026-04-30,TRUE,,`}
+                  placeholder={`学校名,科目,作業内容,工数,期限\n開成中学,算数,新年度試験種,5,2026-04-01\n麻布中学,理科,タグ付け,3,2026-04-15`}
                 />
 
                 {bulkParsed && (
@@ -1574,26 +1599,52 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                           <thead>
                             <tr className="bg-gray-100">
                               <th className="px-2 py-1 text-left border border-gray-200">行</th>
-                              <th className="px-2 py-1 text-left border border-gray-200">タスク名</th>
-                              <th className="px-2 py-1 text-left border border-gray-200">科目</th>
-                              <th className="px-2 py-1 text-left border border-gray-200">作業内容</th>
-                              <th className="px-2 py-1 text-right border border-gray-200">工数</th>
-                              <th className="px-2 py-1 text-left border border-gray-200">期限</th>
-                              <th className="px-2 py-1 text-center border border-gray-200">VIKING</th>
-                              <th className="px-2 py-1 text-left border border-gray-200">分野</th>
+                              {bulkParsed.format === 'exam' ? (
+                                <>
+                                  <th className="px-2 py-1 text-left border border-gray-200">学校名</th>
+                                  <th className="px-2 py-1 text-left border border-gray-200">科目</th>
+                                  <th className="px-2 py-1 text-left border border-gray-200">作業内容</th>
+                                  <th className="px-2 py-1 text-right border border-gray-200">工数</th>
+                                  <th className="px-2 py-1 text-left border border-gray-200">期限</th>
+                                  <th className="px-2 py-1 text-left border border-gray-200">タスク名（自動生成）</th>
+                                </>
+                              ) : (
+                                <>
+                                  <th className="px-2 py-1 text-left border border-gray-200">タスク名</th>
+                                  <th className="px-2 py-1 text-left border border-gray-200">科目</th>
+                                  <th className="px-2 py-1 text-left border border-gray-200">作業内容</th>
+                                  <th className="px-2 py-1 text-right border border-gray-200">工数</th>
+                                  <th className="px-2 py-1 text-left border border-gray-200">期限</th>
+                                  <th className="px-2 py-1 text-center border border-gray-200">VIKING</th>
+                                  <th className="px-2 py-1 text-left border border-gray-200">分野</th>
+                                </>
+                              )}
                             </tr>
                           </thead>
                           <tbody>
                             {bulkParsed.valid.map((row, i) => (
                               <tr key={i} className="bg-green-50/50 hover:bg-green-100/50">
                                 <td className="px-2 py-1 border border-gray-200 text-gray-400">{row._line}</td>
-                                <td className="px-2 py-1 border border-gray-200">{row.name}</td>
-                                <td className="px-2 py-1 border border-gray-200">{row.subject}</td>
-                                <td className="px-2 py-1 border border-gray-200">{row.workType}</td>
-                                <td className="px-2 py-1 border border-gray-200 text-right">{row.requiredHours}h</td>
-                                <td className="px-2 py-1 border border-gray-200">{row.deadline}</td>
-                                <td className="px-2 py-1 border border-gray-200 text-center">{row.viking ? '○' : ''}</td>
-                                <td className="px-2 py-1 border border-gray-200 text-gray-500">{row.fieldId ? getFields(row.subject).find(f => f.id === row.fieldId)?.name || '' : ''}</td>
+                                {bulkParsed.format === 'exam' ? (
+                                  <>
+                                    <td className="px-2 py-1 border border-gray-200">{row.schoolName}</td>
+                                    <td className="px-2 py-1 border border-gray-200">{row.subject}</td>
+                                    <td className="px-2 py-1 border border-gray-200">{row.workType}</td>
+                                    <td className="px-2 py-1 border border-gray-200 text-right">{row.requiredHours}h</td>
+                                    <td className="px-2 py-1 border border-gray-200">{row.deadline}</td>
+                                    <td className="px-2 py-1 border border-gray-200 text-gray-500">{row.taskName}</td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td className="px-2 py-1 border border-gray-200">{row.name}</td>
+                                    <td className="px-2 py-1 border border-gray-200">{row.subject}</td>
+                                    <td className="px-2 py-1 border border-gray-200">{row.workType}</td>
+                                    <td className="px-2 py-1 border border-gray-200 text-right">{row.requiredHours}h</td>
+                                    <td className="px-2 py-1 border border-gray-200">{row.deadline}</td>
+                                    <td className="px-2 py-1 border border-gray-200 text-center">{row.viking ? '○' : ''}</td>
+                                    <td className="px-2 py-1 border border-gray-200 text-gray-500">{row.fieldId ? getFields(row.subject).find(f => f.id === row.fieldId)?.name || '' : ''}</td>
+                                  </>
+                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -4179,6 +4230,64 @@ const MasterDataTab = ({ activeSubjects }) => {
   const [bulkFieldResult, setBulkFieldResult] = useState(null);
   const [wtForm, setWtForm] = useState({ name: '', sortOrder: 1 });
 
+  // CSV一括登録（分野）
+  const [showFieldCsvImport, setShowFieldCsvImport] = useState(false);
+  const [fieldCsvText, setFieldCsvText] = useState('');
+  const [fieldCsvParsed, setFieldCsvParsed] = useState(null);
+  const [fieldCsvImportDone, setFieldCsvImportDone] = useState(null);
+
+  const handleFieldCsvParse = (text) => {
+    setFieldCsvText(text);
+    setFieldCsvImportDone(null);
+    if (!text.trim()) { setFieldCsvParsed(null); return; }
+    let csvText = text;
+    if (!text.includes(',') && text.includes('\t')) {
+      csvText = text.split('\n').map(line => line.split('\t').map(cell => {
+        const trimmed = cell.trim();
+        if (trimmed.includes(',') || trimmed.includes('"') || trimmed.includes('\n')) return '"' + trimmed.replace(/"/g, '""') + '"';
+        return trimmed;
+      }).join(',')).join('\n');
+    }
+    const { rows } = parseCSV(csvText);
+    if (rows.length === 0) { setFieldCsvParsed({ valid: [], errors: [{ line: 0, message: 'データ行がありません', row: {} }] }); return; }
+    const result = validateFieldMasterCSV(rows, { subjects: ['理科', '算数'] });
+    setFieldCsvParsed(result);
+  };
+
+  const handleFieldCsvFile = async () => {
+    try {
+      const { headers, rows } = await importCSVFile();
+      const csvText = [headers.join(','), ...rows.map(r => headers.map(h => r[h] ?? '').join(','))].join('\n');
+      setFieldCsvText(csvText);
+      handleFieldCsvParse(csvText);
+    } catch (err) {
+      // user cancelled or error
+    }
+  };
+
+  const handleFieldCsvImportConfirm = () => {
+    if (!fieldCsvParsed || fieldCsvParsed.valid.length === 0) return;
+    let count = 0;
+    fieldCsvParsed.valid.forEach((row, idx) => {
+      const existingFields = getFields(row.subject) || [];
+      const maxOrder = existingFields.length > 0 ? Math.max(...existingFields.map(f => f.sortOrder || 0)) : 0;
+      addField({ name: row.name, subject: row.subject, category: row.category, sortOrder: maxOrder + idx + 1 });
+      count++;
+    });
+    setFieldCsvImportDone(`${count}件の分野を登録しました`);
+    setFieldCsvParsed(null);
+    setFieldCsvText('');
+  };
+
+  const handleDownloadFieldTemplate = () => {
+    const templateData = [
+      { name: '中和', subject: '理科', category: '化学' },
+      { name: '割合の線分図', subject: '算数', category: '' },
+    ];
+    const csv = toCSV(templateData, FIELD_MASTER_CSV_COLUMNS);
+    downloadCSV(csv, '分野一括登録テンプレート.csv');
+  };
+
   // Google Sheets 設定フォームの一時状態
   const [draftClientId, setDraftClientId] = useState(sheets.settings.clientId);
   const [draftSheetId, setDraftSheetId] = useState(sheets.settings.spreadsheetId);
@@ -4584,6 +4693,10 @@ const MasterDataTab = ({ activeSubjects }) => {
             className={`text-sm px-3 py-2 rounded-lg transition border ${showBulkFieldForm ? 'bg-orange-50 text-orange-700 border-orange-200' : 'text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
             一括登録
           </button>
+          <button onClick={() => { setShowFieldCsvImport(!showFieldCsvImport); setFieldCsvImportDone(null); }}
+            className={`text-sm px-3 py-2 rounded-lg transition border ${showFieldCsvImport ? 'bg-green-600 text-white border-green-600' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'}`}>
+            {showFieldCsvImport ? '▲ CSV一括登録を閉じる' : 'CSV一括登録'}
+          </button>
         </div>
 
         {showBulkFieldForm && (
@@ -4636,6 +4749,106 @@ const MasterDataTab = ({ activeSubjects }) => {
                 <span className="text-sm text-green-600 font-medium">{bulkFieldResult}件 追加しました</span>
               )}
             </div>
+          </div>
+        )}
+
+        {showFieldCsvImport && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-3">
+            <h5 className="text-sm font-semibold text-green-700 mb-2">CSV一括登録</h5>
+            <p className="text-xs text-gray-500 mb-2">
+              CSV形式で分野を一括登録できます。ヘッダ行: 分野名,科目,カテゴリ
+            </p>
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={handleFieldCsvFile}
+                className="text-sm px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition font-medium"
+              >
+                CSVファイルを選択
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadFieldTemplate}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition font-medium"
+              >
+                テンプレートDL
+              </button>
+              <span className="text-xs text-gray-400 self-center">または下のテキストエリアに貼り付け</span>
+            </div>
+            <textarea
+              value={fieldCsvText}
+              onChange={e => handleFieldCsvParse(e.target.value)}
+              rows={5}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-green-400 outline-none mb-2"
+              placeholder={`分野名,科目,カテゴリ\n中和,理科,化学\n割合の線分図,算数,`}
+            />
+
+            {fieldCsvParsed && (
+              <div className="space-y-2">
+                <div className="flex gap-3 text-xs font-medium">
+                  <span className="text-green-700">有効: {fieldCsvParsed.valid.length}件</span>
+                  <span className="text-red-600">エラー: {fieldCsvParsed.errors.length}件</span>
+                </div>
+
+                {fieldCsvParsed.errors.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                    {fieldCsvParsed.errors.map((err, i) => (
+                      <p key={i} className="text-xs text-red-600">{err.line}行目: {err.message}</p>
+                    ))}
+                  </div>
+                )}
+
+                {fieldCsvParsed.valid.length > 0 && (
+                  <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="px-2 py-1 text-left border border-gray-200">行</th>
+                          <th className="px-2 py-1 text-left border border-gray-200">分野名</th>
+                          <th className="px-2 py-1 text-left border border-gray-200">科目</th>
+                          <th className="px-2 py-1 text-left border border-gray-200">カテゴリ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fieldCsvParsed.valid.map((row, i) => (
+                          <tr key={i} className="bg-green-50/50 hover:bg-green-100/50">
+                            <td className="px-2 py-1 border border-gray-200 text-gray-400">{row._line}</td>
+                            <td className="px-2 py-1 border border-gray-200">{row.name}</td>
+                            <td className="px-2 py-1 border border-gray-200">{row.subject}</td>
+                            <td className="px-2 py-1 border border-gray-200 text-gray-500">{row.category || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {fieldCsvParsed.valid.length > 0 && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleFieldCsvImportConfirm}
+                      className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+                    >
+                      一括登録（{fieldCsvParsed.valid.length}件）
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFieldCsvParsed(null); setFieldCsvText(''); }}
+                      className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg transition"
+                    >
+                      クリア
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {fieldCsvImportDone && (
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm font-medium mt-2">
+                {fieldCsvImportDone}
+              </div>
+            )}
           </div>
         )}
 

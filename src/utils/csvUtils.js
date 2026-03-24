@@ -398,3 +398,139 @@ export const EVALUATION_CSV_COLUMNS = [
   { key: 'maxScore', header: '最大スコア' },
   { key: 'note', header: '備考' },
 ];
+
+/**
+ * 試験種タスクCSV（学校名ベース）のバリデーション
+ * CSVフォーマット: 学校名,科目,作業内容,工数,期限
+ *
+ * @param {Object[]} rows - parseCSVで得られたオブジェクト配列
+ * @param {Object} context - { schools, subjects, workTypes }
+ * @returns {{ valid: Object[], errors: {line: number, message: string, row: Object}[] }}
+ */
+export const validateExamTaskCSV = (rows, context) => {
+  const { schools, subjects, workTypes } = context;
+  const valid = [];
+  const errors = [];
+
+  rows.forEach((row, i) => {
+    const lineNum = i + 2;
+    const rowErrors = [];
+
+    const schoolName = (row['学校名'] || '').trim();
+    if (!schoolName) {
+      rowErrors.push('学校名が空です');
+    }
+    const school = schools.find(s => s.name === schoolName);
+    if (schoolName && !school) {
+      rowErrors.push(`学校「${schoolName}」が見つかりません`);
+    }
+
+    const subject = (row['科目'] || '').trim();
+    if (!subject) {
+      rowErrors.push('科目が空です');
+    } else if (!subjects.includes(subject)) {
+      rowErrors.push(`科目「${subject}」は無効です（${subjects.join('/')}）`);
+    }
+
+    const workType = (row['作業内容'] || '').trim();
+    if (!workType) {
+      rowErrors.push('作業内容が空です');
+    } else if (!workTypes.includes(workType)) {
+      rowErrors.push(`作業内容「${workType}」は無効です（${workTypes.join('/')}）`);
+    }
+
+    const hoursStr = (row['工数'] || row['工数(h)'] || '').trim();
+    const requiredHours = parseFloat(hoursStr);
+    if (!hoursStr || isNaN(requiredHours) || requiredHours <= 0) {
+      rowErrors.push('工数は正の数値で入力してください');
+    }
+
+    const deadline = (row['期限'] || '').trim();
+    if (!deadline) {
+      rowErrors.push('期限が空です');
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
+      rowErrors.push('期限はYYYY-MM-DD形式で入力してください');
+    }
+
+    if (rowErrors.length > 0) {
+      errors.push({ line: lineNum, message: rowErrors.join('；'), row });
+    } else {
+      valid.push({
+        schoolName,
+        subject,
+        workType,
+        requiredHours,
+        deadline,
+        taskName: `${schoolName} ${subject} ${workType}`,
+        _line: lineNum,
+      });
+    }
+  });
+
+  return { valid, errors };
+};
+
+export const EXAM_TASK_CSV_COLUMNS = [
+  { key: 'schoolName', header: '学校名' },
+  { key: 'subject', header: '科目' },
+  { key: 'workType', header: '作業内容' },
+  { key: 'requiredHours', header: '工数' },
+  { key: 'deadline', header: '期限' },
+];
+
+/**
+ * 分野マスタCSVのバリデーション
+ * CSVフォーマット: 分野名,科目,カテゴリ
+ *
+ * @param {Object[]} rows - parseCSVで得られたオブジェクト配列
+ * @param {Object} context - { subjects: string[] } (理科・算数のみ)
+ * @returns {{ valid: Object[], errors: {line: number, message: string, row: Object}[] }}
+ */
+export const validateFieldMasterCSV = (rows, context) => {
+  const { subjects } = context;
+  const validSubjects = subjects || ['理科', '算数'];
+  const validCategories = ['化学', '物理', '生物', '地学'];
+  const valid = [];
+  const errors = [];
+
+  rows.forEach((row, i) => {
+    const lineNum = i + 2;
+    const rowErrors = [];
+
+    const name = (row['分野名'] || '').trim();
+    if (!name) {
+      rowErrors.push('分野名が空です');
+    }
+
+    const subject = (row['科目'] || '').trim();
+    if (!subject) {
+      rowErrors.push('科目が空です');
+    } else if (!validSubjects.includes(subject)) {
+      rowErrors.push(`科目「${subject}」は無効です（${validSubjects.join('/')}）`);
+    }
+
+    const category = (row['カテゴリ'] || '').trim() || null;
+    if (category && subject === '理科' && !validCategories.includes(category)) {
+      rowErrors.push(`カテゴリ「${category}」は無効です（${validCategories.join('/')}）`);
+    }
+
+    if (rowErrors.length > 0) {
+      errors.push({ line: lineNum, message: rowErrors.join('；'), row });
+    } else {
+      valid.push({
+        name,
+        subject,
+        category: subject === '理科' ? category : null,
+        _line: lineNum,
+      });
+    }
+  });
+
+  return { valid, errors };
+};
+
+export const FIELD_MASTER_CSV_COLUMNS = [
+  { key: 'name', header: '分野名' },
+  { key: 'subject', header: '科目' },
+  { key: 'category', header: 'カテゴリ' },
+];

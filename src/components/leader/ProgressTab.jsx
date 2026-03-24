@@ -829,7 +829,7 @@ const ProgressTab = ({ activeSubjects }) => {
                           </div>
 
                           {/* Verification checklist panel + file preview */}
-                          {openChecklistId === assignment.id && (assignment.verificationStatus === 'reviewing' || assignment.verificationStatus === undefined) && (() => {
+                          {openChecklistId === assignment.id && (() => {
                             const results = getVerificationResults(assignment.id) || [];
                             const allItems = getVerificationItems(task.subject, 'verification', task.workType) || [];
                             const checkedCount = results.filter(r => r.checked).length;
