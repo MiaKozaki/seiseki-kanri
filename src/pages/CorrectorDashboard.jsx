@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { downloadExamExcel } from '../utils/excelExport.js';
 // storage.js no longer needed in CorrectorDashboard
-import { saveAttachment, deleteAttachmentsByAssignment, validateFile, MAX_FILES_PER_SUBMISSION, downloadAttachment } from '../utils/fileStorage.js';
+import { saveAttachment, deleteAttachmentsByAssignment, validateFile, MAX_FILES_PER_SUBMISSION, downloadAttachment, getTaskAttachments } from '../utils/fileStorage.js';
 
 // Helper to parse structured FB message into parts
 const parseFbMessage = (message) => {
@@ -37,6 +37,41 @@ const StructuredFbDisplay = ({ message, hideDetail = true }) => {
           <p className="text-gray-700 whitespace-pre-wrap">{parsed.detail}</p>
         </>
       )}
+    </div>
+  );
+};
+
+// Component to show task attachment download buttons
+const TaskAttachmentDownloads = ({ attachments }) => {
+  const [loading, setLoading] = useState(null);
+  const handleDownload = async (att) => {
+    setLoading(att.id);
+    try {
+      await downloadAttachment(att.id, att.fileName);
+    } catch (err) {
+      console.error('Download error:', err);
+    }
+    setLoading(null);
+  };
+  return (
+    <div className="mt-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+      <p className="text-[10px] text-blue-600 font-semibold mb-1.5">{'\uD83D\uDCC4'} 問題ファイル</p>
+      <div className="space-y-1">
+        {attachments.map(att => (
+          <button
+            key={att.id}
+            onClick={() => handleDownload(att)}
+            disabled={loading === att.id}
+            className="flex items-center gap-2 text-xs w-full text-left px-2 py-1.5 bg-white border border-blue-100 rounded-lg hover:bg-blue-50 transition disabled:opacity-50"
+          >
+            <span className="text-blue-500">{att.fileName?.endsWith('.pdf') ? '\uD83D\uDCC4' : '\uD83D\uDCCE'}</span>
+            <span className="text-blue-700 truncate flex-1">{att.fileName}</span>
+            <span className="text-blue-400 text-[10px] shrink-0">
+              {loading === att.id ? '...' : `${(att.fileSize / 1024).toFixed(0)}KB`}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 };
@@ -665,6 +700,10 @@ export default function CorrectorDashboard() {
                                 振り分け: {new Date(assignment.assignedAt).toLocaleDateString('ja-JP')}
                                 {!isSubmitting && assignment.note && ` (${assignment.note})`}
                               </p>
+                              {/* 問題ファイル */}
+                              {task.taskAttachments && task.taskAttachments.length > 0 && (
+                                <TaskAttachmentDownloads attachments={task.taskAttachments} />
+                              )}
                               {/* 完了/承認済み: 実績表示 */}
                               {isDone && assignment.actualHours != null && (
                                 <p className="text-xs text-green-700 mt-1 font-medium">

@@ -9,7 +9,7 @@ import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '
 import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, validateDaimonTaskCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, DAIMON_TASK_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
 import { SUBJECTS_LIST, WORK_TYPES_LIST, generateId } from '../utils/storage.js';
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
-import { downloadAttachment, saveAttachment, deleteAttachment } from '../utils/fileStorage.js';
+import { downloadAttachment, saveAttachment, deleteAttachment, saveTaskAttachment, getTaskAttachments, deleteTaskAttachments, validateTaskFile } from '../utils/fileStorage.js';
 import { downloadHistoryExcel } from '../utils/excelExport.js';
 import { parseAndGroupFiles, downloadMergedExcel } from '../utils/excelMerge.js';
 import { calcAllMetrics, normalizeMetricToScore, formatDuration } from '../utils/evaluationMetrics';
@@ -1049,6 +1049,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const [form, setForm] = useState({ name: '', subject: '', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState('');
+  const [taskFiles, setTaskFiles] = useState([]);
+  const [taskFileError, setTaskFileError] = useState('');
 
   // Task list state
   const [sortKey, setSortKey] = useState('deadline');
@@ -1115,18 +1117,47 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     return sortAsc ? cmp : -cmp;
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     if (!form.subject) { setError('科目を選択してください'); return; }
     if (!form.workType) { setError('作業内容を選択してください'); return; }
+
+    // Helper to save task files and return attachment metadata
+    const saveFilesForTask = async (taskId) => {
+      if (taskFiles.length === 0) return [];
+      const saved = [];
+      for (const file of taskFiles) {
+        try {
+          const meta = await saveTaskAttachment({
+            taskId,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            blob: file,
+          });
+          saved.push(meta);
+        } catch (err) {
+          console.error('Failed to save task attachment:', err);
+        }
+      }
+      return saved;
+    };
+
     if (editId) {
       updateTask(editId, { ...form, requiredHours: Number(form.requiredHours) });
+      if (taskFiles.length > 0) {
+        const attachments = await saveFilesForTask(editId);
+        // Merge with existing attachments
+        const existing = getTasks().find(t => t.id === editId)?.taskAttachments || [];
+        updateTask(editId, { taskAttachments: [...existing, ...attachments] });
+      }
       setEditId(null);
     } else if (form.splitByDaimon && form.daimons.length > 0) {
       const parentTaskGroup = generateId();
+      const createdIds = [];
       form.daimons.forEach(daimon => {
-        addTask({
+        const newTask = addTask({
           name: `${form.name} ${daimon.name}`,
           subject: form.subject,
           workType: form.workType,
@@ -1137,11 +1168,25 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
           fieldId: daimon.fieldId || null,
           parentTaskGroup,
         });
+        if (newTask?.id) createdIds.push(newTask.id);
       });
+      // Attach files to all split tasks
+      if (taskFiles.length > 0) {
+        for (const taskId of createdIds) {
+          const attachments = await saveFilesForTask(taskId);
+          updateTask(taskId, { taskAttachments: attachments });
+        }
+      }
     } else {
-      addTask({ ...form, requiredHours: Number(form.requiredHours), viking: !!form.viking });
+      const newTask = addTask({ ...form, requiredHours: Number(form.requiredHours), viking: !!form.viking });
+      if (taskFiles.length > 0 && newTask?.id) {
+        const attachments = await saveFilesForTask(newTask.id);
+        updateTask(newTask.id, { taskAttachments: attachments });
+      }
     }
     setForm({ name: '', subject: '', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
+    setTaskFiles([]);
+    setTaskFileError('');
   };
 
   const handleEdit = (task) => {
@@ -1667,13 +1712,61 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 )}
               </div>
             )}
+            {/* 問題ファイル添付 */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                問題ファイル添付（PDF等）
+                <span className="ml-1 text-gray-400 font-normal">（任意）添削者に共有するファイル</span>
+              </label>
+              <input
+                type="file"
+                accept=".pdf,.xlsx,.xls,.docx,.doc,.jpg,.jpeg,.png"
+                multiple
+                onChange={(e) => {
+                  const files = Array.from(e.target.files);
+                  if (files.length === 0) return;
+                  const errors = [];
+                  const validFiles = [];
+                  files.forEach(f => {
+                    const fileErrors = validateTaskFile(f);
+                    if (fileErrors.length > 0) errors.push(...fileErrors);
+                    else validFiles.push(f);
+                  });
+                  if (errors.length > 0) setTaskFileError(errors.join('\n'));
+                  else setTaskFileError('');
+                  setTaskFiles(prev => [...prev, ...validFiles]);
+                  e.target.value = '';
+                }}
+                className="w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-gray-300 file:text-sm file:font-medium file:bg-white file:text-gray-700 hover:file:bg-gray-50 file:cursor-pointer file:transition"
+              />
+              {taskFileError && <p className="text-red-500 text-xs mt-1 whitespace-pre-line">{taskFileError}</p>}
+              {taskFiles.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {taskFiles.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 rounded-lg px-3 py-1.5">
+                      <span className="text-gray-500">{f.name.endsWith('.pdf') ? '\uD83D\uDCC4' : '\uD83D\uDCCE'}</span>
+                      <span className="text-gray-700 truncate flex-1">{f.name}</span>
+                      <span className="text-gray-400">({(f.size / 1024).toFixed(0)}KB)</span>
+                      <button
+                        type="button"
+                        onClick={() => setTaskFiles(prev => prev.filter((_, idx) => idx !== i))}
+                        className="text-red-400 hover:text-red-600 font-medium"
+                      >
+                        x
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {error && <p className="text-red-500 text-xs">{error}</p>}
             <div className="flex gap-2">
               <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
                 {editId ? '更新' : '追加'}
               </button>
               {editId && (
-                <button type="button" onClick={() => { setEditId(null); setForm({ name: '', subject: '', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] }); }}
+                <button type="button" onClick={() => { setEditId(null); setForm({ name: '', subject: '', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] }); setTaskFiles([]); setTaskFileError(''); }}
                   className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg transition">
                   キャンセル
                 </button>

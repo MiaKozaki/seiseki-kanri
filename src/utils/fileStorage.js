@@ -11,6 +11,7 @@ import { generateId } from './storage.js';
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 export const MAX_FILES_PER_SUBMISSION = 10;
 export const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.docx', '.doc'];
+export const TASK_ALLOWED_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.docx', '.doc', '.jpg', '.jpeg', '.png'];
 
 const DB_NAME = 'seiseki_kanri_files';
 const DB_VERSION = 1;
@@ -52,6 +53,19 @@ export const validateFile = (file) => {
   const ext = '.' + file.name.split('.').pop().toLowerCase();
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
     errors.push(`${file.name}: Excel（.xlsx, .xls）またはWord（.docx, .doc）ファイルのみ添付可能です`);
+  }
+  return errors;
+};
+
+// ---- タスク添付バリデーション ----
+export const validateTaskFile = (file) => {
+  const errors = [];
+  if (file.size > MAX_FILE_SIZE) {
+    errors.push(`${file.name}: ファイルサイズが5MBを超えています（${(file.size / 1024 / 1024).toFixed(1)}MB）`);
+  }
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+  if (!TASK_ALLOWED_EXTENSIONS.includes(ext)) {
+    errors.push(`${file.name}: 対応していないファイル形式です（PDF, Excel, Word, 画像のみ）`);
   }
   return errors;
 };
@@ -129,6 +143,71 @@ export const deleteAttachmentsByAssignment = async (assignmentId) => {
     for (const rec of records) {
       store.delete(rec.id);
     }
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+};
+
+// ---- タスク添付ファイル CRUD ----
+
+/** タスク添付ファイルをIndexedDBに保存し、メタデータを返す */
+export const saveTaskAttachment = async ({ taskId, fileName, fileSize, fileType, blob }) => {
+  const id = generateId();
+  const record = {
+    id,
+    taskId,
+    fileName,
+    fileSize,
+    fileType,
+    blob,
+    createdAt: new Date().toISOString(),
+  };
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put(record);
+    tx.oncomplete = () => resolve({
+      id,
+      fileName,
+      fileSize,
+      fileType,
+      createdAt: record.createdAt,
+    });
+    tx.onerror = (e) => reject(e.target.error);
+  });
+};
+
+/** taskIdでタスク添付ファイルのメタデータ一覧を取得（blob除外） */
+export const getTaskAttachments = async (taskId) => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      resolve(
+        request.result
+          .filter(r => r.taskId === taskId)
+          .map(({ blob, ...meta }) => meta)
+      );
+    };
+    request.onerror = (e) => reject(e.target.error);
+  });
+};
+
+/** タスク配下の全添付ファイルを削除 */
+export const deleteTaskAttachments = async (taskId) => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const getReq = store.getAll();
+    getReq.onsuccess = () => {
+      const toDelete = getReq.result.filter(r => r.taskId === taskId);
+      for (const rec of toDelete) {
+        store.delete(rec.id);
+      }
+    };
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject(e.target.error);
   });
