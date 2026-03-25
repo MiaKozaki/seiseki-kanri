@@ -635,3 +635,78 @@ export const DAIMON_TASK_CSV_COLUMNS = [
   { key: 'hours', header: '工数' },
   { key: 'deadline', header: '期限' },
 ];
+
+/**
+ * 新年度試験種 一括登録CSVのバリデーション
+ * CSVフォーマット: 学校名,科目,年度,工数,期限
+ *
+ * @param {Object[]} rows - parseCSVで得られたオブジェクト配列
+ * @returns {{ valid: Object[], errors: {line: number, message: string, row: Object}[] }}
+ */
+export const validateNewYearTaskCSV = (rows) => {
+  const REQUIRED_HEADERS = ['学校名', '科目', '年度'];
+  const valid = [];
+  const errors = [];
+
+  if (rows.length === 0) {
+    errors.push({ line: 0, message: 'データがありません', row: {} });
+    return { valid, errors };
+  }
+
+  const headers = Object.keys(rows[0]);
+  for (const h of REQUIRED_HEADERS) {
+    if (!headers.includes(h)) {
+      errors.push({ line: 1, message: `必須列「${h}」がありません`, row: {} });
+    }
+  }
+  if (errors.length > 0) return { valid, errors };
+
+  rows.forEach((row, i) => {
+    const lineNum = i + 2;
+    const rowErrors = [];
+
+    const schoolName = (row['学校名'] || '').trim();
+    if (!schoolName) rowErrors.push('学校名が空です');
+
+    const subject = (row['科目'] || '').trim();
+    if (!subject) rowErrors.push('科目が空です');
+
+    const year = (row['年度'] || '').trim();
+    if (!year) rowErrors.push('年度が空です');
+
+    const hoursStr = (row['工数'] || row['工数(h)'] || '').trim();
+    const requiredHours = hoursStr ? parseFloat(hoursStr) : 0;
+    if (hoursStr && (isNaN(requiredHours) || requiredHours < 0)) {
+      rowErrors.push('工数は0以上の数値で入力してください');
+    }
+
+    const deadline = (row['期限'] || '').trim() || null;
+    if (deadline && !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
+      rowErrors.push('期限はYYYY-MM-DD形式で入力してください');
+    }
+
+    if (rowErrors.length > 0) {
+      errors.push({ line: lineNum, message: rowErrors.join('；'), row });
+    } else {
+      valid.push({
+        schoolName,
+        subject,
+        year,
+        requiredHours,
+        deadline,
+        matchKey: `${schoolName}_${subject}_${year}`,
+        _line: lineNum,
+      });
+    }
+  });
+
+  return { valid, errors };
+};
+
+export const NEW_YEAR_TASK_CSV_COLUMNS = [
+  { key: 'schoolName', header: '学校名' },
+  { key: 'subject', header: '科目' },
+  { key: 'year', header: '年度' },
+  { key: 'requiredHours', header: '工数' },
+  { key: 'deadline', header: '期限' },
+];

@@ -6,7 +6,7 @@ import {
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
-import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, validateDaimonTaskCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, DAIMON_TASK_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
+import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, validateDaimonTaskCSV, validateNewYearTaskCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, DAIMON_TASK_CSV_COLUMNS, NEW_YEAR_TASK_CSV_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
 import { SUBJECTS_LIST, WORK_TYPES_LIST, generateId } from '../utils/storage.js';
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
 import { downloadAttachment, saveAttachment, deleteAttachment, saveTaskAttachment, getTaskAttachments, deleteTaskAttachments, validateTaskFile } from '../utils/fileStorage.js';
@@ -1083,6 +1083,14 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const [daimonCsvParsed, setDaimonCsvParsed] = useState(null);
   const [daimonCsvImportDone, setDaimonCsvImportDone] = useState(null);
 
+  // 新年度試験種 一括登録 state
+  const [shinnendoCsvText, setShinnendoCsvText] = useState('');
+  const [shinnendoParsed, setShinnendoParsed] = useState(null);
+  const [shinnendoPdfFiles, setShinnendoPdfFiles] = useState([]);
+  const [shinnendoMatches, setShinnendoMatches] = useState({});
+  const [shinnendoRegistering, setShinnendoRegistering] = useState(false);
+  const [shinnendoResult, setShinnendoResult] = useState(null);
+
   // Assignment state
   const [message, setMessage] = useState('');
   const [manualSelect, setManualSelect] = useState({});
@@ -1458,6 +1466,124 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     downloadCSV(csv, '大問分割タスク一括登録テンプレート.csv');
   };
 
+  // --- 新年度試験種 一括登録 helpers ---
+  const handleShinnendoCsvParse = (text) => {
+    setShinnendoCsvText(text);
+    setShinnendoResult(null);
+    setShinnendoPdfFiles([]);
+    setShinnendoMatches({});
+    if (!text.trim()) { setShinnendoParsed(null); return; }
+    let csvText = text;
+    if (!text.includes(',') && text.includes('\t')) {
+      csvText = text.split('\n').map(line => line.split('\t').map(cell => {
+        const trimmed = cell.trim();
+        if (trimmed.includes(',') || trimmed.includes('"') || trimmed.includes('\n')) return '"' + trimmed.replace(/"/g, '""') + '"';
+        return trimmed;
+      }).join(',')).join('\n');
+    }
+    const { rows } = parseCSV(csvText);
+    const result = validateNewYearTaskCSV(rows);
+    setShinnendoParsed(result);
+  };
+
+  const handleShinnendoCsvFile = async () => {
+    try {
+      const { headers, rows } = await importCSVFile();
+      const csvText = [headers.join(','), ...rows.map(r => headers.map(h => r[h] ?? '').join(','))].join('\n');
+      setShinnendoCsvText(csvText);
+      handleShinnendoCsvParse(csvText);
+    } catch (err) {
+      // user cancelled
+    }
+  };
+
+  const handleShinnendoPdfUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    setShinnendoPdfFiles(files);
+    if (!shinnendoParsed || shinnendoParsed.valid.length === 0) return;
+
+    // Auto-match: filename pattern 学校名_科目_年度.pdf
+    const matches = {};
+    files.forEach((file, fileIdx) => {
+      const nameWithoutExt = file.name.replace(/\.[^.]+$/, '');
+      const parts = nameWithoutExt.split('_');
+      if (parts.length >= 3) {
+        const key = `${parts[0]}_${parts[1]}_${parts[2]}`;
+        // Find matching CSV row
+        const rowIdx = shinnendoParsed.valid.findIndex(r => r.matchKey === key);
+        if (rowIdx >= 0) {
+          matches[key] = fileIdx;
+        }
+      }
+    });
+    setShinnendoMatches(matches);
+  };
+
+  const handleShinnendoRegister = async () => {
+    if (!shinnendoParsed || shinnendoParsed.valid.length === 0) return;
+    setShinnendoRegistering(true);
+    let taskCount = 0;
+    let fileCount = 0;
+
+    try {
+      for (const row of shinnendoParsed.valid) {
+        const taskName = `${row.schoolName} ${row.subject} ${row.year} 新年度試験種`;
+        const newTask = addTask({
+          name: taskName,
+          subject: row.subject,
+          workType: '新年度試験種',
+          requiredHours: row.requiredHours,
+          deadline: row.deadline || '',
+          viking: row.subject === '理科',
+          sheetsUrl: '',
+          fieldId: null,
+          year: row.year,
+          schoolName: row.schoolName,
+        });
+        taskCount++;
+
+        // Attach matched PDF
+        if (newTask?.id && shinnendoMatches[row.matchKey] !== undefined) {
+          const file = shinnendoPdfFiles[shinnendoMatches[row.matchKey]];
+          if (file) {
+            try {
+              const meta = await saveTaskAttachment({
+                taskId: newTask.id,
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: file.type,
+                blob: file,
+              });
+              updateTask(newTask.id, { taskAttachments: [meta] });
+              fileCount++;
+            } catch (err) {
+              console.error('Failed to save task attachment:', err);
+            }
+          }
+        }
+      }
+
+      setShinnendoResult(`${taskCount}件登録完了、${fileCount}件ファイル紐付け`);
+      setShinnendoParsed(null);
+      setShinnendoCsvText('');
+      setShinnendoPdfFiles([]);
+      setShinnendoMatches({});
+      setMessage(`新年度試験種 一括登録: ${taskCount}件追加、${fileCount}件PDF紐付け`);
+      setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setShinnendoRegistering(false);
+    }
+  };
+
+  const handleDownloadShinnendoTemplate = () => {
+    const templateData = [
+      { schoolName: schools[0]?.name || '開成中学', subject: '理科', year: '2026', requiredHours: 3, deadline: '2026-04-01' },
+      { schoolName: schools[0]?.name || '開成中学', subject: '算数', year: '2026', requiredHours: 2, deadline: '2026-04-01' },
+    ];
+    const csv = toCSV(templateData, NEW_YEAR_TASK_CSV_COLUMNS);
+    downloadCSV(csv, '新年度試験種一括登録テンプレート.csv');
+  };
+
   const clearTaskFilters = () => {
     setSearchText('');
     setStatusFilter('all');
@@ -1504,6 +1630,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     { key: 'add', icon: '\u{2795}', title: '新規追加', desc: '試験種を個別に追加' },
     { key: 'csv', icon: '\u{1F4C4}', title: 'CSV一括登録', desc: 'CSVファイルで一括登録' },
     { key: 'daimon', icon: '\u{1F4C4}', title: '大問分割CSV登録', desc: '大問ごとに分割して登録' },
+    { key: 'shinnendo', icon: '\u{1F4C5}', title: '新年度試験種 一括登録', desc: 'CSV+PDF一括登録' },
     { key: 'assigned', icon: '\u{1F4CC}', title: '割当済み', desc: '割当済みタスクの確認・解除' },
     { key: 'results', icon: '\u{1F4CA}', title: '実績', desc: '完了タスクの実績レポート' },
     { key: 'overview-list', icon: '\u{1F4CB}', title: '作成必要試験種一覧', desc: '科目・作業内容別の試験種一覧' },
@@ -2037,6 +2164,165 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 )}
               </div>
             )}
+        </div>
+      )}
+
+      {/* ===== Section: 新年度試験種 一括登録 ===== */}
+      {activeSection === 'shinnendo' && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">新年度試験種 一括登録</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              type="button"
+              onClick={handleDownloadShinnendoTemplate}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition font-medium"
+            >
+              テンプレートCSVダウンロード
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {/* Step 1: CSV Import */}
+            <div className="bg-blue-50/50 border border-blue-200 rounded-lg p-4 space-y-3">
+              <p className="text-xs font-semibold text-blue-700">Step 1: CSV読み込み</p>
+              <p className="text-xs text-gray-500">
+                ヘッダ行: 学校名,科目,年度,工数,期限 （工数・期限はオプション）
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleShinnendoCsvFile}
+                  className="text-sm px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition font-medium"
+                >
+                  CSVファイルを選択
+                </button>
+                <span className="text-xs text-gray-400 self-center">または下のテキストエリアに貼り付け</span>
+              </div>
+              <textarea
+                value={shinnendoCsvText}
+                onChange={e => handleShinnendoCsvParse(e.target.value)}
+                rows={5}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder={`学校名,科目,年度,工数,期限\n開成中学,理科,2026,3,2026-04-01\n開成中学,算数,2026,2,2026-04-01`}
+              />
+
+              {shinnendoParsed && (
+                <div className="space-y-2">
+                  <div className="flex gap-3 text-xs font-medium">
+                    <span className="text-green-700">有効: {shinnendoParsed.valid.length}件</span>
+                    <span className="text-red-600">エラー: {shinnendoParsed.errors.length}件</span>
+                  </div>
+
+                  {shinnendoParsed.errors.length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                      {shinnendoParsed.errors.map((err, i) => (
+                        <p key={i} className="text-xs text-red-600">{err.line}行目: {err.message}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {shinnendoParsed.valid.length > 0 && (
+                    <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="px-2 py-1 text-left border border-gray-200">行</th>
+                            <th className="px-2 py-1 text-left border border-gray-200">学校名</th>
+                            <th className="px-2 py-1 text-left border border-gray-200">科目</th>
+                            <th className="px-2 py-1 text-left border border-gray-200">年度</th>
+                            <th className="px-2 py-1 text-right border border-gray-200">工数</th>
+                            <th className="px-2 py-1 text-left border border-gray-200">期限</th>
+                            <th className="px-2 py-1 text-left border border-gray-200">PDF</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {shinnendoParsed.valid.map((row, i) => (
+                            <tr key={i} className="bg-green-50/50 hover:bg-green-100/50">
+                              <td className="px-2 py-1 border border-gray-200 text-gray-400">{row._line}</td>
+                              <td className="px-2 py-1 border border-gray-200">{row.schoolName}</td>
+                              <td className="px-2 py-1 border border-gray-200">{row.subject}</td>
+                              <td className="px-2 py-1 border border-gray-200">{row.year}</td>
+                              <td className="px-2 py-1 border border-gray-200 text-right">{row.requiredHours}h</td>
+                              <td className="px-2 py-1 border border-gray-200">{row.deadline || '-'}</td>
+                              <td className="px-2 py-1 border border-gray-200 text-center">
+                                {shinnendoMatches[row.matchKey] !== undefined
+                                  ? <span className="text-green-600 font-medium">{shinnendoPdfFiles[shinnendoMatches[row.matchKey]]?.name}</span>
+                                  : <span className="text-gray-400">-</span>
+                                }
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: PDF Upload (only shown after CSV loaded) */}
+            {shinnendoParsed && shinnendoParsed.valid.length > 0 && (
+              <div className="bg-green-50/50 border border-green-200 rounded-lg p-4 space-y-3">
+                <p className="text-xs font-semibold text-green-700">Step 2: 問題PDF一括アップロード（オプション）</p>
+                <p className="text-xs text-gray-500">
+                  ファイル名パターン: <code className="bg-gray-100 px-1 rounded">学校名_科目_年度.pdf</code>（例: 開成中学_理科_2026.pdf）
+                </p>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  multiple
+                  onChange={handleShinnendoPdfUpload}
+                  className="block text-sm text-gray-600 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-gray-300 file:text-sm file:font-medium file:bg-white file:text-gray-700 hover:file:bg-gray-50"
+                />
+                {shinnendoPdfFiles.length > 0 && (
+                  <div className="text-xs space-y-1">
+                    <p className="font-medium text-gray-700">{shinnendoPdfFiles.length}件のPDFファイル選択済み</p>
+                    <p className="text-green-600">マッチ: {Object.keys(shinnendoMatches).length}件</p>
+                    {shinnendoPdfFiles.length - Object.keys(shinnendoMatches).length > 0 && (
+                      <div className="text-amber-600">
+                        <p>未マッチ: {shinnendoPdfFiles.length - Object.keys(shinnendoMatches).length}件</p>
+                        <ul className="list-disc list-inside ml-2 text-gray-500">
+                          {shinnendoPdfFiles
+                            .filter((_, idx) => !Object.values(shinnendoMatches).includes(idx))
+                            .map((f, i) => (
+                              <li key={i}>{f.name}</li>
+                            ))
+                          }
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Step 3: Register */}
+            {shinnendoParsed && shinnendoParsed.valid.length > 0 && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleShinnendoRegister}
+                  disabled={shinnendoRegistering}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+                >
+                  {shinnendoRegistering ? '登録中...' : `一括登録（${shinnendoParsed.valid.length}件）`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShinnendoParsed(null); setShinnendoCsvText(''); setShinnendoPdfFiles([]); setShinnendoMatches({}); setShinnendoResult(null); }}
+                  className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg transition"
+                >
+                  クリア
+                </button>
+              </div>
+            )}
+
+            {shinnendoResult && (
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm font-medium">
+                {shinnendoResult}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

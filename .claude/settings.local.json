@@ -102,7 +102,11 @@
       "Bash(env)",
       "Bash(source ~/.zprofile)",
       "Bash(mdfind \"kMDItemDisplayName == ''''node'''' && kMDItemContentType == ''''public.unix-executable''''\")",
-      "Bash(eval '$\\(fnm env\\)')"
+      "Bash(eval '$\\(fnm env\\)')",
+      "Bash(/opt/homebrew/bin/npx vite:*)",
+      "Bash(export PATH=\"/Users/mia/.nvm/versions/node/v22.14.0/bin:/usr/local/bin:/opt/homebrew/bin:$PATH\")",
+      "Bash(PATH=\"$HOME/.nvm/versions/node/v22.14.0/bin:$PATH\" node node_modules/.bin/vite build)",
+      "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/**)"
     ]
   }
 }
