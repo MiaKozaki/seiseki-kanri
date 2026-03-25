@@ -110,7 +110,8 @@
       "Bash(sed -n 61,936p)",
       "Read(//tmp/**)",
       "Bash(npx -y acorn --ecma2020 --module --jsx src/pages/CorrectorDashboard.jsx)",
-      "Bash(ls /Users/mia/.nvm/versions/node/*/bin/node)"
+      "Bash(ls /Users/mia/.nvm/versions/node/*/bin/node)",
+      "Bash(node ./node_modules/.bin/vite build)"
     ]
   }
 }

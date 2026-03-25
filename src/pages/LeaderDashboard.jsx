@@ -27,6 +27,7 @@ const TABS = [
   { label: '作業者評価', icon: '⭐' },
   { label: 'ファイル統合', icon: '📎' },
   { label: 'マスタ', icon: '⚙️' },
+  { label: '質問管理', icon: '❓' },
   { label: '使い方', icon: '📖' },
 ];
 
@@ -6890,6 +6891,213 @@ const FileMergeTab = () => {
   );
 };
 
+// ---- Question Management Tab ----
+const QuestionManagementTab = ({ activeSubjects }) => {
+  const { getQuestions, answerQuestion, getQuestionSettings, updateQuestionSetting, getUsers, getCorrectors } = useData();
+  const { user } = useAuth();
+  const [activeSection, setActiveSection] = useState(null);
+  const [filterSubject, setFilterSubject] = useState('');
+  const [filterWorkType, setFilterWorkType] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [answerTexts, setAnswerTexts] = useState({});
+
+  const allUsers = getUsers();
+  const userNameMap = useMemo(() => {
+    const map = {};
+    allUsers.forEach(u => { map[u.id] = u.name; });
+    return map;
+  }, [allUsers]);
+
+  const questions = useMemo(() => {
+    let items = getQuestions();
+    // Filter by activeSubjects
+    items = items.filter(q => activeSubjects.includes(q.subject));
+    if (filterSubject) items = items.filter(q => q.subject === filterSubject);
+    if (filterWorkType) items = items.filter(q => q.workType === filterWorkType);
+    if (filterStatus === 'unanswered') items = items.filter(q => !q.answer);
+    if (filterStatus === 'answered') items = items.filter(q => !!q.answer);
+    return items;
+  }, [getQuestions, activeSubjects, filterSubject, filterWorkType, filterStatus]);
+
+  const questionSettings = getQuestionSettings();
+
+  const isSettingEnabled = (subject, workType) => {
+    const setting = questionSettings.find(s => s.subject === subject && s.workType === workType);
+    return setting ? setting.enabled : true; // default enabled
+  };
+
+  const handleAnswer = (questionId) => {
+    const text = answerTexts[questionId];
+    if (!text?.trim()) return;
+    answerQuestion(questionId, text.trim(), user.id);
+    setAnswerTexts(prev => ({ ...prev, [questionId]: '' }));
+  };
+
+  const sections = [
+    { key: 'list', icon: '💬', title: '質問一覧', desc: '添削者からの質問を確認・回答' },
+    { key: 'settings', icon: '⚙️', title: '受付設定', desc: '科目×作業内容ごとの質問受付ON/OFF' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Section selector */}
+      {!activeSection && (
+        <div className="grid grid-cols-2 gap-3 p-4">
+          {sections.map(s => (
+            <button key={s.key} onClick={() => setActiveSection(s.key)}
+              className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition text-left">
+              <span className="text-2xl">{s.icon}</span>
+              <p className="font-medium text-gray-800 mt-1">{s.title}</p>
+              <p className="text-xs text-gray-500">{s.desc}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeSection && (
+        <div>
+          <button onClick={() => setActiveSection(null)} className="mb-3 text-sm text-gray-500 hover:text-gray-700">
+            ← 戻る
+          </button>
+
+          {/* ===== Section: 質問一覧 ===== */}
+          {activeSection === 'list' && (
+            <div className="space-y-4">
+              {/* Filters */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">科目</label>
+                    <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)}
+                      className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none">
+                      <option value="">すべて</option>
+                      {SUBJECTS_LIST.filter(s => activeSubjects.includes(s)).map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">作業内容</label>
+                    <select value={filterWorkType} onChange={e => setFilterWorkType(e.target.value)}
+                      className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none">
+                      <option value="">すべて</option>
+                      {WORK_TYPES_LIST.map(w => (
+                        <option key={w} value={w}>{w}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">ステータス</label>
+                    <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+                      className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none">
+                      <option value="all">全て</option>
+                      <option value="unanswered">未回答</option>
+                      <option value="answered">回答済</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Question count */}
+              <p className="text-xs text-gray-500 px-1">{questions.length}件の質問</p>
+
+              {/* Question cards */}
+              {questions.length === 0 ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center text-gray-400 text-sm">
+                  質問はありません
+                </div>
+              ) : (
+                questions.map(q => (
+                  <div key={q.id} className={`rounded-2xl shadow-sm border p-5 ${q.answer ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <span className="font-medium text-gray-800 text-sm">{userNameMap[q.fromUserId] || '不明'}</span>
+                        <div className="flex gap-1 mt-1">
+                          <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">{q.subject}</span>
+                          {q.workType && (
+                            <span className="inline-block px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">{q.workType}</span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs text-gray-400">{new Date(q.createdAt).toLocaleString('ja-JP')}</span>
+                    </div>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap mb-3">{q.message}</p>
+
+                    {q.answer ? (
+                      <div className="bg-white bg-opacity-60 rounded-xl p-3 border border-green-200">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium text-green-700">回答</span>
+                          <span className="text-xs text-gray-500">by {userNameMap[q.answeredBy] || '不明'}</span>
+                          <span className="text-xs text-gray-400">{new Date(q.answeredAt).toLocaleString('ja-JP')}</span>
+                        </div>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{q.answer}</p>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <textarea
+                          value={answerTexts[q.id] || ''}
+                          onChange={e => setAnswerTexts(prev => ({ ...prev, [q.id]: e.target.value }))}
+                          placeholder="回答を入力..."
+                          className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none resize-none"
+                          rows={2}
+                        />
+                        <button
+                          onClick={() => handleAnswer(q.id)}
+                          disabled={!answerTexts[q.id]?.trim()}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed self-end"
+                        >
+                          送信
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ===== Section: 受付設定 ===== */}
+          {activeSection === 'settings' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">質問受付設定（科目 × 作業内容）</h3>
+              <p className="text-xs text-gray-500 mb-4">チェックを外すと、その組み合わせでの質問送信が無効になります。</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">科目 ＼ 作業内容</th>
+                      {WORK_TYPES_LIST.map(w => (
+                        <th key={w} className="text-center py-2 px-2 text-xs font-medium text-gray-500">{w}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {SUBJECTS_LIST.filter(s => activeSubjects.includes(s)).map(subject => (
+                      <tr key={subject} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-3 font-medium text-gray-700">{subject}</td>
+                        {WORK_TYPES_LIST.map(workType => (
+                          <td key={workType} className="text-center py-2 px-2">
+                            <input
+                              type="checkbox"
+                              checked={isSettingEnabled(subject, workType)}
+                              onChange={e => updateQuestionSetting(subject, workType, e.target.checked)}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const LeaderManualTab = () => {
   const [openSections, setOpenSections] = useState({});
   const toggle = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -7145,6 +7353,7 @@ export default function LeaderDashboard() {
     CorrectorEvaluationTab,
     FileMergeTab,
     MasterDataTab,
+    QuestionManagementTab,
     LeaderManualTab,
   ];
   const ActiveComponent = TAB_COMPONENTS[activeTab];
