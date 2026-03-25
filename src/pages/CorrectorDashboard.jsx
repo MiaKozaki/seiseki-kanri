@@ -1481,47 +1481,50 @@ export default function CorrectorDashboard() {
                     const dow = idx % 7;
                     const isPast = dateStr < todayStr;
 
+                    const saveHours = (newVal) => {
+                      const h = Number(newVal);
+                      if (isNaN(h)) return;
+                      const capsToDelete = myCapacities.filter(cap => dateStr >= cap.startDate && dateStr <= cap.endDate);
+                      capsToDelete.forEach(cap => {
+                        deleteCapacity(cap.id);
+                        if (cap.startDate < dateStr) {
+                          const prevDay = new Date(new Date(dateStr).getTime() - 86400000).toISOString().slice(0, 10);
+                          addCapacity({ userId: user.id, startDate: cap.startDate, endDate: prevDay, hoursPerDay: cap.hoursPerDay, note: cap.note });
+                        }
+                        if (cap.endDate > dateStr) {
+                          const nextDay = new Date(new Date(dateStr).getTime() + 86400000).toISOString().slice(0, 10);
+                          addCapacity({ userId: user.id, startDate: nextDay, endDate: cap.endDate, hoursPerDay: cap.hoursPerDay, note: cap.note });
+                        }
+                      });
+                      if (h > 0) addCapacity({ userId: user.id, startDate: dateStr, endDate: dateStr, hoursPerDay: h });
+                    };
+
                     return (
                       <div
                         key={day}
-                        className={`h-16 border rounded-lg p-1 flex flex-col items-center justify-between transition cursor-pointer hover:border-blue-400
+                        className={`h-16 border rounded-lg p-1 flex flex-col items-center transition
                           ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}
                           ${hours > 0 && !isPast ? 'bg-green-50' : ''}
                           ${isPast ? 'opacity-60' : ''}`}
-                        onClick={() => {
-                          if (isPast) return;
-                          const newHours = prompt(`${calMonth + 1}/${day} の作業可能時間（h）を入力\n（0で削除、空欄でキャンセル）`, String(hours || ''));
-                          if (newHours === null || newHours === '') return;
-                          const h = Number(newHours);
-                          // 既存のその日を含むcapacityを削除して、新しい1日分のcapacityを追加
-                          const capsToDelete = myCapacities.filter(cap => dateStr >= cap.startDate && dateStr <= cap.endDate);
-                          // 簡易実装: 1日単位のcapacityとして追加
-                          capsToDelete.forEach(cap => {
-                            // 既存を分割（前半・後半に分ける）
-                            deleteCapacity(cap.id);
-                            const capStart = cap.startDate;
-                            const capEnd = cap.endDate;
-                            // dateStrの前の部分を再登録
-                            if (capStart < dateStr) {
-                              const prevDay = new Date(new Date(dateStr).getTime() - 86400000).toISOString().slice(0, 10);
-                              addCapacity({ userId: user.id, startDate: capStart, endDate: prevDay, hoursPerDay: cap.hoursPerDay, note: cap.note });
-                            }
-                            // dateStrの後の部分を再登録
-                            if (capEnd > dateStr) {
-                              const nextDay = new Date(new Date(dateStr).getTime() + 86400000).toISOString().slice(0, 10);
-                              addCapacity({ userId: user.id, startDate: nextDay, endDate: capEnd, hoursPerDay: cap.hoursPerDay, note: cap.note });
-                            }
-                          });
-                          if (h > 0) {
-                            addCapacity({ userId: user.id, startDate: dateStr, endDate: dateStr, hoursPerDay: h });
-                          }
-                        }}
                       >
-                        <span className={`text-xs ${dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : 'text-gray-600'}`}>{day}</span>
-                        {hours > 0 ? (
-                          <span className="text-sm font-bold text-green-700">{hours}</span>
+                        <span className={`text-[10px] leading-none ${dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : 'text-gray-500'}`}>{calMonth + 1}/{day}</span>
+                        {isPast ? (
+                          <span className="text-sm font-bold text-gray-400 mt-1">{hours > 0 ? hours : '-'}</span>
                         ) : (
-                          <span className="text-xs text-gray-300">-</span>
+                          <input
+                            type="number"
+                            min="0" max="24" step="0.5"
+                            defaultValue={hours || ''}
+                            placeholder="-"
+                            onBlur={e => {
+                              const val = e.target.value;
+                              if (val === '' && hours === 0) return;
+                              if (val === '' || val === '0') { if (hours > 0) saveHours(0); return; }
+                              if (Number(val) !== hours) saveHours(val);
+                            }}
+                            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                            className="w-full text-center text-sm font-bold text-green-700 bg-transparent border-b border-dashed border-gray-300 focus:border-blue-500 outline-none mt-1 py-0.5"
+                          />
                         )}
                       </div>
                     );
