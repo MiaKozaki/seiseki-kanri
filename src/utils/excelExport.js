@@ -62,6 +62,9 @@ const applyRikaTextRules = (value, colName) => {
   // 句読点の正規化
   v = normalizePunctuation(v);
 
+  // 単位スペース除去: 数値と単位の間のスペースを削除（例: "10 cm" → "10cm"）
+  v = v.replace(/(\d)\s+(cm|mm|m|km|g|kg|mg|L|mL|dL|s|min|h|Hz|Pa|hPa|N|J|W|V|A|Ω|℃|°C|°|%|cal|kcal|mol|atm)/g, '$1$2');
+
   return v;
 };
 
