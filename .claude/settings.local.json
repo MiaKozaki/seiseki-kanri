@@ -106,7 +106,11 @@
       "Bash(/opt/homebrew/bin/npx vite:*)",
       "Bash(export PATH=\"/Users/mia/.nvm/versions/node/v22.14.0/bin:/usr/local/bin:/opt/homebrew/bin:$PATH\")",
       "Bash(PATH=\"$HOME/.nvm/versions/node/v22.14.0/bin:$PATH\" node node_modules/.bin/vite build)",
-      "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/**)"
+      "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/**)",
+      "Bash(sed -n 61,936p)",
+      "Read(//tmp/**)",
+      "Bash(npx -y acorn --ecma2020 --module --jsx src/pages/CorrectorDashboard.jsx)",
+      "Bash(ls /Users/mia/.nvm/versions/node/*/bin/node)"
     ]
   }
 }

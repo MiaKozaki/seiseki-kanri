@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { downloadExamExcel } from '../utils/excelExport.js';
-// storage.js no longer needed in CorrectorDashboard
+import { generateId, SUBJECTS_LIST } from '../utils/storage.js';
 import { saveAttachment, deleteAttachmentsByAssignment, validateFile, MAX_FILES_PER_SUBMISSION, downloadAttachment, getTaskAttachments } from '../utils/fileStorage.js';
 
 // Helper to parse structured FB message into parts
@@ -94,8 +94,876 @@ const statusConfig = {
 };
 
 // ===============================================
-// ExamInputForm removed - submission is now inline
+// 入力フォームビュー（構成・内容）
 // ===============================================
+// 枝問（最下層・回答データを持つ）
+const newEdamon = () => ({
+  edaId: generateId(),
+  枝問名: '',
+  模範解答: '',
+  配点: '',
+  完答: false,
+  順不同: false,
+  別解: '',
+  解説: '',
+  解説画像: '',
+  解答画像: '',       // 算数用
+  条件指定: '',       // 社会用
+  条件指定要素: '',   // 理科用
+  不可解答: '',       // 社会用
+  採点基準: [],       // 国語用（項目+付記の多段構造）
+  採点基準テキスト: '', // 理科用（単一テキスト）
+});
+
+const newKijun = () => ({ kijunId: generateId(), 項目: '', 付記: [] });
+
+// 問（枝問を持つ中間層）
+const newMon = (idx = 1) => ({
+  monId: generateId(),
+  小問名: String(idx),
+  枝問リスト: [newEdamon()],
+});
+
+// 大問（問を持つ上位層）
+const newDaimon = (番号) => ({
+  大問番号: 番号,
+  満点: '',
+  文種: '',   // 国語用
+  出典: '',   // 国語用
+  著者: '',   // 国語用
+  テーマ: '', // 理科用
+  問リスト: [],
+});
+
+const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheetsSignedIn, sheets, onDaimonFocus }) => {
+  const { user } = useAuth();
+  const [section, setSection] = useState('structure'); // 'structure' | 'content'
+  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState('');
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 3000);
+  };
+
+  // フォーム状態（旧形式からの自動移行付き）
+  const [form, setForm] = useState(() => {
+    if (existingInput) {
+      // 新形式（問リスト埋め込み）かチェック
+      if (existingInput.大問リスト?.[0]?.問リスト !== undefined) return existingInput;
+      // 旧形式（問題リスト分離型）→ 新形式に移行
+      const oldList = existingInput.問題リスト ?? [];
+      const migratedDaimonList = (existingInput.大問リスト ?? []).map(d => ({
+        ...d,
+        問リスト: oldList
+          .filter(m => m.大問名 === String(d.大問番号))
+          .map(m => ({
+            monId: generateId(),
+            小問名: m.小問名 ?? '',
+            枝問リスト: [{
+              edaId: generateId(),
+              枝問名: m.枝問 ?? '',
+              模範解答: m.模範解答 ?? '',
+              配点: m.配点 ?? '',
+              完答: m.完答 ?? false,
+              順不同: m.順不同 ?? false,
+              別解: m.別解 ?? '',
+              解説: m.解説 ?? '',
+              解説画像: m.解説画像 ?? '',
+              採点基準: m.採点基準 ?? [],
+            }],
+          })),
+      }));
+      return { ...existingInput, 大問リスト: migratedDaimonList };
+    }
+    return {
+      id: generateId(),
+      taskId: task.id,
+      assignmentId: assignment?.id ?? '',
+      年度: new Date().getFullYear(),
+      学校名: '',
+      回数: 1,
+      科目: task.subject ?? '',
+      試験時間: 50,
+      大問リスト: [{
+        大問番号: 1, 満点: '', 文種: '', 出典: '', 著者: '', テーマ: '',
+        問リスト: [newMon(1)],
+      }],
+      status: 'draft',
+      createdAt: new Date().toISOString(),
+    };
+  });
+
+  const isKokugo = form.科目 === '国語';
+  const isSansu = form.科目 === '算数';
+  const isRika = form.科目 === '理科';
+  const isShakai = form.科目 === '社会';
+
+  // ---- 構成ヘルパー ----
+  const setBase = (field, value) => setForm(f => ({ ...f, [field]: value }));
+
+  const updateDaimon = (idx, field, value) =>
+    setForm(f => ({
+      ...f,
+      大問リスト: f.大問リスト.map((d, i) => i === idx ? { ...d, [field]: value } : d),
+    }));
+
+  const addDaimon = () =>
+    setForm(f => ({
+      ...f,
+      大問リスト: [...f.大問リスト, newDaimon(f.大問リスト.length + 1)],
+    }));
+
+  const removeDaimon = (idx) =>
+    setForm(f => ({
+      ...f,
+      大問リスト: f.大問リスト
+        .filter((_, i) => i !== idx)
+        .map((d, i) => ({ ...d, 大問番号: i + 1 })),
+    }));
+
+  // ---- 内容ヘルパー（3段階）----
+  const updateInDaimon = (daimonNum, updater) =>
+    setForm(f => ({
+      ...f,
+      大問リスト: f.大問リスト.map(d => d.大問番号 === daimonNum ? updater(d) : d),
+    }));
+
+  const updateInMon = (daimonNum, monId, updater) =>
+    updateInDaimon(daimonNum, d => ({
+      ...d,
+      問リスト: d.問リスト.map(m => m.monId === monId ? updater(m) : m),
+    }));
+
+  const updateInEda = (daimonNum, monId, edaId, updater) =>
+    updateInMon(daimonNum, monId, m => ({
+      ...m,
+      枝問リスト: m.枝問リスト.map(e => e.edaId === edaId ? updater(e) : e),
+    }));
+
+  // 問レベル
+  const addMon = (daimonNum) =>
+    updateInDaimon(daimonNum, d => ({
+      ...d,
+      問リスト: [...d.問リスト, newMon(d.問リスト.length + 1)],
+    }));
+
+  const removeMon = (daimonNum, monId) =>
+    updateInDaimon(daimonNum, d => ({
+      ...d,
+      問リスト: d.問リスト.filter(m => m.monId !== monId),
+    }));
+
+  const updateMon = (daimonNum, monId, field, value) =>
+    updateInMon(daimonNum, monId, m => ({ ...m, [field]: value }));
+
+  // 枝問レベル
+  const addEda = (daimonNum, monId) =>
+    updateInMon(daimonNum, monId, m => ({
+      ...m,
+      枝問リスト: [...m.枝問リスト, newEdamon()],
+    }));
+
+  const removeEda = (daimonNum, monId, edaId) =>
+    updateInMon(daimonNum, monId, m => ({
+      ...m,
+      枝問リスト: m.枝問リスト.filter(e => e.edaId !== edaId),
+    }));
+
+  const updateEda = (daimonNum, monId, edaId, field, value) =>
+    updateInEda(daimonNum, monId, edaId, e => ({ ...e, [field]: value }));
+
+  // 採点基準（枝問レベル）
+  const addKijun = (daimonNum, monId, edaId) =>
+    updateInEda(daimonNum, monId, edaId, e => ({
+      ...e,
+      採点基準: [...(e.採点基準 ?? []), newKijun()],
+    }));
+
+  const updateKijun = (daimonNum, monId, edaId, kijunId, field, value) =>
+    updateInEda(daimonNum, monId, edaId, e => ({
+      ...e,
+      採点基準: e.採点基準.map(k => k.kijunId === kijunId ? { ...k, [field]: value } : k),
+    }));
+
+  const removeKijun = (daimonNum, monId, edaId, kijunId) =>
+    updateInEda(daimonNum, monId, edaId, e => ({
+      ...e,
+      採点基準: e.採点基準.filter(k => k.kijunId !== kijunId),
+    }));
+
+  const addFuki = (daimonNum, monId, edaId, kijunId) =>
+    updateInEda(daimonNum, monId, edaId, e => ({
+      ...e,
+      採点基準: e.採点基準.map(k =>
+        k.kijunId === kijunId ? { ...k, 付記: [...(k.付記 ?? []), ''] } : k
+      ),
+    }));
+
+  const updateFuki = (daimonNum, monId, edaId, kijunId, fIndex, value) =>
+    updateInEda(daimonNum, monId, edaId, e => ({
+      ...e,
+      採点基準: e.採点基準.map(k =>
+        k.kijunId === kijunId
+          ? { ...k, 付記: k.付記.map((v, i) => i === fIndex ? value : v) }
+          : k
+      ),
+    }));
+
+  const removeFuki = (daimonNum, monId, edaId, kijunId, fIndex) =>
+    updateInEda(daimonNum, monId, edaId, e => ({
+      ...e,
+      採点基準: e.採点基準.map(k =>
+        k.kijunId === kijunId
+          ? { ...k, 付記: k.付記.filter((_, i) => i !== fIndex) }
+          : k
+      ),
+    }));
+
+  // ---- バリデーション ----
+  const validateBeforeSubmit = () => {
+    const errors = [];
+
+    // ===== 全科目共通: 大問の満点と配点合計の一致チェック =====
+    form.大問リスト.forEach(daimon => {
+      const mantenVal = Number(daimon.満点);
+      if (!mantenVal && mantenVal !== 0) return; // 満点未設定はスキップ
+      const totalHaiten = daimon.問リスト.reduce((sum, mon) =>
+        sum + mon.枝問リスト.reduce((s, eda) => s + (Number(eda.配点) || 0), 0), 0);
+      if (totalHaiten !== mantenVal) {
+        errors.push({
+          type: 'haiten',
+          msg: `大問${daimon.大問番号}: 満点（${mantenVal}点）と配点合計（${totalHaiten}点）が一致しません`,
+        });
+      }
+    });
+
+    // ===== 算数: 1桁全角 / 2桁以上半角チェック =====
+    if (task.subject === '算数') {
+      const toFull = (s) => s.replace(/[0-9]/g, c => String.fromCharCode(c.charCodeAt(0) + 0xFEE0));
+      const toHalf = (s) => s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+
+      const checkText = (text, location) => {
+        if (!text || typeof text !== 'string') return;
+        // 半角1桁（前後に半角数字がない孤立した半角数字）
+        const halfSingle = text.match(/(?<![0-9０-９])[0-9](?![0-9０-９])/g);
+        if (halfSingle) {
+          errors.push({
+            type: 'digit',
+            msg: `${location}: 1桁の数字「${halfSingle.join(', ')}」→ 全角「${halfSingle.map(toFull).join(', ')}」に修正してください`,
+          });
+        }
+        // 全角2桁以上の連続
+        const fullMulti = text.match(/[０-９]{2,}/g);
+        if (fullMulti) {
+          errors.push({
+            type: 'digit',
+            msg: `${location}: 2桁以上の数字「${fullMulti.join(', ')}」→ 半角「${fullMulti.map(toHalf).join(', ')}」に修正してください`,
+          });
+        }
+      };
+
+      form.大問リスト.forEach(daimon => {
+        daimon.問リスト.forEach((mon, mIdx) => {
+          mon.枝問リスト.forEach((eda, eIdx) => {
+            const loc = `大問${daimon.大問番号} 問${mIdx + 1}${mon.枝問リスト.length > 1 ? ` 枝${eIdx + 1}` : ''}`;
+            checkText(eda.模範解答, `${loc} 模範解答`);
+            checkText(eda.解説, `${loc} 解説`);
+            checkText(eda.別解, `${loc} 別解`);
+            checkText(eda.枝問名, `${loc} 枝問名`);
+            (eda.採点基準 ?? []).forEach((kijun, ki) => {
+              checkText(kijun.項目, `${loc} 採点基準${ki + 1}`);
+              (kijun.付記 ?? []).forEach((fuki, fi) => {
+                checkText(fuki, `${loc} 採点基準${ki + 1} 付記${fi + 1}`);
+              });
+            });
+          });
+        });
+      });
+    }
+
+    return errors;
+  };
+
+  // リアルタイムバリデーション（フォーム変更のたびに自動再計算）
+  const liveErrors = useMemo(() => validateBeforeSubmit(), [form]);
+
+  // ---- 保存・書き出し ----
+  const handleSave = async () => {
+    setSaving(true);
+    onSave({ ...form, status: 'draft' });
+    showToast('💾 下書きを保存しました');
+    setSaving(false);
+  };
+
+  const handleDownloadExcel = () => {
+    if (liveErrors.length > 0) {
+      showToast('⚠️ エラーを修正してから提出してください');
+      return;
+    }
+    try {
+      downloadExamExcel(form);
+      onSave({ ...form, status: 'submitted' });
+      showToast('✅ Excelをダウンロードしました！');
+    } catch (e) {
+      showToast(`❌ ダウンロードエラー: ${e.message}`);
+    }
+  };
+
+  // handleWriteSheets removed (Google Sheets連携削除)
+
+  return (
+    <div className="space-y-4">
+      {/* ヘッダー */}
+      <div className="bg-white rounded-xl shadow-sm p-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1"
+          >
+            ← 戻る
+          </button>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800 truncate">{task.name}</p>
+            <p className="text-xs text-gray-400">{task.subject}{task.workType ? ` · ${task.workType}` : ''}</p>
+          </div>
+          {form.status === 'submitted' && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">📥 提出済</span>
+          )}
+          {form.status === 'draft' && (
+            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">下書き</span>
+          )}
+        </div>
+      </div>
+
+      {/* セクションタブ */}
+      <div className="bg-white rounded-xl shadow-sm">
+        <div className="flex border-b border-gray-200">
+          {[
+            { key: 'structure', label: '📐 構成', desc: '試験概要・大問' },
+            { key: 'content', label: '📝 内容', desc: `大問${form.大問リスト.length} / 問${form.大問リスト.reduce((s,d)=>s+(d.問リスト?.length??0),0)}` },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setSection(tab.key)}
+              className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 transition ${
+                section === tab.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+              <span className="ml-1.5 text-xs text-gray-400">{tab.desc}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* ===== 構成セクション ===== */}
+        {section === 'structure' && (
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">年度</label>
+                <input type="number" value={form.年度}
+                  onChange={e => setBase('年度', Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">学校名</label>
+                <input type="text" value={form.学校名}
+                  onChange={e => setBase('学校名', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="例：〇〇中学校"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">回数</label>
+                <input type="number" value={form.回数} min="1"
+                  onChange={e => setBase('回数', Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">科目</label>
+                <select value={form.科目}
+                  onChange={e => setBase('科目', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="">選択</option>
+                  {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              {(isSansu || isRika) && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">試験時間（分）</label>
+                  <input type="number" value={form.試験時間} min="1"
+                    onChange={e => setBase('試験時間', Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 大問リスト */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-semibold text-gray-700">大問リスト（{form.大問リスト.length}問）</h4>
+                <button onClick={addDaimon}
+                  className="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition">
+                  + 大問を追加
+                </button>
+              </div>
+              <div className="space-y-2">
+                {form.大問リスト.map((d, idx) => (
+                  <div key={idx} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-semibold text-gray-600 w-8">大問{d.大問番号}</span>
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-0.5">大問ごとの満点</label>
+                          <input type="number" value={d.満点} min="0"
+                            onChange={e => updateDaimon(idx, '満点', Number(e.target.value))}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            placeholder="例：20"
+                          />
+                          {(() => {
+                            const totalHaiten = (d.問リスト || []).reduce((sum, mon) =>
+                              sum + (mon.枝問リスト || []).reduce((s, eda) => s + (Number(eda.配点) || 0), 0), 0);
+                            const manten = Number(d.満点);
+                            if (manten && totalHaiten !== manten) {
+                              return <p className="text-xs text-red-500 mt-1">⚠ 配点合計 {totalHaiten}点 ≠ 満点 {manten}点</p>;
+                            }
+                            return null;
+                          })()}
+                        </div>
+                        {isKokugo && (
+                          <>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">文種</label>
+                              <input type="text" value={d.文種}
+                                onChange={e => updateDaimon(idx, '文種', e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                placeholder="例：物語文"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">出典</label>
+                              <input type="text" value={d.出典}
+                                onChange={e => updateDaimon(idx, '出典', e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                placeholder="例：百年の子"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">著者</label>
+                              <input type="text" value={d.著者}
+                                onChange={e => updateDaimon(idx, '著者', e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                placeholder="例：古内一絵"
+                              />
+                            </div>
+                          </>
+                        )}
+                        {isRika && (
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-0.5">テーマ</label>
+                            <input type="text" value={d.テーマ ?? ''}
+                              onChange={e => updateDaimon(idx, 'テーマ', e.target.value)}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              placeholder="例：連結した箱に水を入れるてこ"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      {form.大問リスト.length > 1 && (
+                        <button onClick={() => removeDaimon(idx)}
+                          className="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded transition shrink-0">×</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== 内容セクション ===== */}
+        {section === 'content' && (
+          <div className="p-4 space-y-4">
+            {form.大問リスト.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">先に「構成」タブで大問を追加してください</p>
+            ) : (
+              form.大問リスト.map((daimon, dIdx) => (
+                <div key={daimon.大問番号} className="border border-blue-200 rounded-xl overflow-hidden">
+                  {/* ── 大問ヘッダー ── */}
+                  <div
+                    className="bg-blue-50 px-4 py-2.5 flex items-center gap-2 flex-wrap border-b border-blue-100"
+                    onClick={() => onDaimonFocus && onDaimonFocus(daimon.大問番号)}
+                  >
+                    <span className="text-sm font-bold text-blue-700">大問 {daimon.大問番号}</span>
+                    {daimon.満点 !== '' && daimon.満点 !== undefined && (
+                      <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">満点 {daimon.満点}点</span>
+                    )}
+                    {isKokugo && daimon.文種 && (
+                      <span className="text-xs text-blue-500">{daimon.文種}{daimon.出典 ? `『${daimon.出典}』` : ''}</span>
+                    )}
+                    <div className="flex items-center gap-2 ml-auto">
+                      <span className="text-xs text-gray-400">{daimon.問リスト.length}問</span>
+                    </div>
+                  </div>
+
+                  {/* ── 問リスト ── */}
+                  <div className="p-3 space-y-3 bg-white"
+                    onFocus={() => onDaimonFocus && onDaimonFocus(daimon.大問番号)}
+                  >
+                    {daimon.問リスト.length === 0 && (
+                      <p className="text-xs text-gray-300 italic py-2 px-1">問がまだありません</p>
+                    )}
+                    {daimon.問リスト.map((mon, mIdx) => (
+                      <div key={mon.monId} className="border border-gray-200 rounded-lg overflow-hidden">
+                        {/* 問ヘッダー */}
+                        <div className="bg-gray-50 px-3 py-2 flex items-center gap-2 border-b border-gray-100">
+                          <span className="text-xs font-bold text-gray-500 shrink-0">問 {mIdx + 1}</span>
+                          <input
+                            type="text" value={mon.小問名}
+                            onChange={e => updateMon(daimon.大問番号, mon.monId, '小問名', e.target.value)}
+                            placeholder="小問番号 (例: 1, (1))"
+                            className="flex-1 text-xs border border-gray-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-400 outline-none min-w-0"
+                          />
+                          <span className="text-xs text-gray-400 shrink-0">{mon.枝問リスト.length}枝問</span>
+                          <button onClick={() => removeMon(daimon.大問番号, mon.monId)}
+                            className="text-xs text-red-400 hover:text-red-600 px-1.5 shrink-0">削除</button>
+                        </div>
+
+                        {/* ── 枝問リスト ── */}
+                        <div className="divide-y divide-gray-100">
+                          {mon.枝問リスト.map((eda, eIdx) => (
+                            <div key={eda.edaId} className="p-3 space-y-3">
+                              {/* 枝問ラベル行 */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-indigo-500 shrink-0 w-10">
+                                  {mon.枝問リスト.length > 1 ? `枝 ${eIdx + 1}` : '枝問'}
+                                </span>
+                                <input
+                                  type="text" value={eda.枝問名}
+                                  onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '枝問名', e.target.value)}
+                                  placeholder="枝問記号（任意 例: ア, (1)）"
+                                  className="text-xs border border-gray-200 rounded-md px-2 py-1 w-36 focus:ring-1 focus:ring-indigo-400 outline-none"
+                                />
+                                {mon.枝問リスト.length > 1 && (
+                                  <button onClick={() => removeEda(daimon.大問番号, mon.monId, eda.edaId)}
+                                    className="text-xs text-red-300 hover:text-red-500 ml-auto px-1.5">削除</button>
+                                )}
+                              </div>
+
+                              {/* 模範解答・配点 */}
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                <div className="sm:col-span-2">
+                                  <label className="block text-xs text-gray-500 mb-0.5">模範解答</label>
+                                  <input type="text" value={eda.模範解答}
+                                    onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '模範解答', e.target.value)}
+                                    placeholder="解答を入力"
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-500 mb-0.5">配点</label>
+                                  <input type="number" value={eda.配点} min="0"
+                                    onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '配点', Number(e.target.value))}
+                                    placeholder="2"
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* ===== 科目別フィールド ===== */}
+
+                              {/* 算数: 解答_画像, 完答+順不同+別解, 解説, 解説_画像 */}
+                              {isSansu && (
+                                <>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解答_画像 URL（任意）</label>
+                                    <input type="url" value={eda.解答画像 ?? ''}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '解答画像', e.target.value)}
+                                      placeholder="https://..."
+                                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解説</label>
+                                    <textarea value={eda.解説}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '解説', e.target.value)}
+                                      rows={2}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                      placeholder="解説文を入力"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解説_画像 URL（任意）</label>
+                                    <input type="url" value={eda.解説画像 ?? ''}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '解説画像', e.target.value)}
+                                      placeholder="https://..."
+                                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                                      <input type="checkbox" checked={eda.完答}
+                                        onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '完答', e.target.checked)}
+                                        className="accent-blue-600" /> 完答
+                                    </label>
+                                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                                      <input type="checkbox" checked={eda.順不同}
+                                        onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '順不同', e.target.checked)}
+                                        className="accent-blue-600" /> 順不同
+                                    </label>
+                                    <div className="flex items-center gap-1.5">
+                                      <label className="text-xs text-gray-500">別解:</label>
+                                      <input type="text" value={eda.別解}
+                                        onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '別解', e.target.value)}
+                                        placeholder="任意"
+                                        className="w-32 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+
+                              {/* 国語: 完答, 解説, 採点基準（項目+付記の多段構造） */}
+                              {isKokugo && (
+                                <>
+                                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                                    <input type="checkbox" checked={eda.完答}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '完答', e.target.checked)}
+                                      className="accent-blue-600" /> 完答
+                                  </label>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解説</label>
+                                    <textarea value={eda.解説}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '解説', e.target.value)}
+                                      rows={2}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                      placeholder="解説文を入力"
+                                    />
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <label className="text-xs font-semibold text-gray-600">採点基準</label>
+                                      <button onClick={() => addKijun(daimon.大問番号, mon.monId, eda.edaId)}
+                                        className="text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 hover:bg-indigo-50 px-2 py-0.5 rounded transition">
+                                        + 採点基準を追加
+                                      </button>
+                                    </div>
+                                    {(eda.採点基準 ?? []).length === 0 && (
+                                      <p className="text-xs text-gray-300 italic">採点基準なし</p>
+                                    )}
+                                    <div className="space-y-2">
+                                      {(eda.採点基準 ?? []).map((kijun, ki) => (
+                                        <div key={kijun.kijunId} className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+                                          <div className="flex items-start gap-2">
+                                            <span className="text-xs font-medium text-indigo-600 shrink-0 mt-1.5">基準{ki + 1}</span>
+                                            <div className="flex-1 space-y-2">
+                                              <div className="flex items-center gap-2">
+                                                <input type="text" value={kijun.項目}
+                                                  onChange={e => updateKijun(daimon.大問番号, mon.monId, eda.edaId, kijun.kijunId, '項目', e.target.value)}
+                                                  placeholder="採点基準の項目"
+                                                  className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                                />
+                                                <button onClick={() => removeKijun(daimon.大問番号, mon.monId, eda.edaId, kijun.kijunId)}
+                                                  className="text-red-400 hover:text-red-600 text-xs px-1.5">×</button>
+                                              </div>
+                                              <div className="space-y-1">
+                                                {(kijun.付記 ?? []).map((fuki, fi) => (
+                                                  <div key={fi} className="flex items-center gap-2 ml-2">
+                                                    <span className="text-xs text-indigo-400 shrink-0">付記{fi + 1}</span>
+                                                    <input type="text" value={fuki}
+                                                      onChange={e => updateFuki(daimon.大問番号, mon.monId, eda.edaId, kijun.kijunId, fi, e.target.value)}
+                                                      placeholder={`付記 ${fi + 1}`}
+                                                      className="flex-1 px-2 py-1 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-400 outline-none bg-white"
+                                                    />
+                                                    <button onClick={() => removeFuki(daimon.大問番号, mon.monId, eda.edaId, kijun.kijunId, fi)}
+                                                      className="text-red-300 hover:text-red-500 text-xs">×</button>
+                                                  </div>
+                                                ))}
+                                                <button onClick={() => addFuki(daimon.大問番号, mon.monId, eda.edaId, kijun.kijunId)}
+                                                  className="text-xs text-gray-400 hover:text-gray-600 ml-2 transition">
+                                                  + 付記を追加
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+
+                              {/* 社会: 完答+順不同, 条件指定, 別解, 不可解答, 解説 */}
+                              {isShakai && (
+                                <>
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                                      <input type="checkbox" checked={eda.完答}
+                                        onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '完答', e.target.checked)}
+                                        className="accent-blue-600" /> 完答
+                                    </label>
+                                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                                      <input type="checkbox" checked={eda.順不同}
+                                        onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '順不同', e.target.checked)}
+                                        className="accent-blue-600" /> 順不同
+                                    </label>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">条件指定</label>
+                                    <input type="text" value={eda.条件指定 ?? ''}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '条件指定', e.target.value)}
+                                      placeholder="条件指定があれば入力"
+                                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">別解</label>
+                                    <input type="text" value={eda.別解}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '別解', e.target.value)}
+                                      placeholder="別解があれば入力"
+                                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">不可解答</label>
+                                    <input type="text" value={eda.不可解答 ?? ''}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '不可解答', e.target.value)}
+                                      placeholder="不可解答があれば入力"
+                                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解説</label>
+                                    <textarea value={eda.解説}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '解説', e.target.value)}
+                                      rows={2}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                      placeholder="解説文を入力"
+                                    />
+                                  </div>
+                                </>
+                              )}
+
+                              {/* 理科: 完答+順不同, 条件指定・要素, 採点基準テキスト, 解説 */}
+                              {isRika && (
+                                <>
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                                      <input type="checkbox" checked={eda.完答}
+                                        onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '完答', e.target.checked)}
+                                        className="accent-blue-600" /> 完答
+                                    </label>
+                                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                                      <input type="checkbox" checked={eda.順不同}
+                                        onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '順不同', e.target.checked)}
+                                        className="accent-blue-600" /> 順不同
+                                    </label>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">条件指定・要素</label>
+                                    <input type="text" value={eda.条件指定要素 ?? ''}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '条件指定要素', e.target.value)}
+                                      placeholder="条件指定・要素があれば入力"
+                                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">採点基準</label>
+                                    <textarea value={eda.採点基準テキスト ?? ''}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '採点基準テキスト', e.target.value)}
+                                      rows={2}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                      placeholder="採点基準を入力"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解説</label>
+                                    <textarea value={eda.解説}
+                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '解説', e.target.value)}
+                                      rows={2}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                      placeholder="解説文を入力"
+                                    />
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* 枝問追加ボタン */}
+                        <div className="px-3 py-2 bg-gray-50 border-t border-gray-100">
+                          <button onClick={() => addEda(daimon.大問番号, mon.monId)}
+                            className="w-full text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 hover:bg-indigo-50 px-2 py-1.5 rounded-lg transition text-center">
+                            ＋ 枝問を追加
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 問追加ボタン */}
+                    <button onClick={() => addMon(daimon.大問番号)}
+                      className="w-full text-xs text-blue-600 hover:text-blue-800 border border-blue-200 hover:bg-blue-50 px-2.5 py-2 rounded-lg transition text-center">
+                      ＋ 大問{daimon.大問番号}に問を追加
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* バリデーションエラー表示（リアルタイム） */}
+      {liveErrors.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+          <h4 className="text-sm font-bold text-amber-700 flex items-center gap-1.5">
+            ⚠️ 修正が必要な箇所があります
+          </h4>
+          <ul className="space-y-1">
+            {liveErrors.map((err, i) => (
+              <li key={i} className="text-xs text-amber-700 flex items-start gap-2">
+                <span className="shrink-0 mt-0.5">{err.type === 'haiten' ? '📊' : '🔢'}</span>
+                <span>{err.msg}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* アクションボタン */}
+      <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+        {/* ボタン群 */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <button onClick={handleSave} disabled={saving}
+            className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition font-medium">
+            💾 下書き保存
+          </button>
+          <button onClick={handleDownloadExcel}
+            className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition font-medium">
+            📥 Excelダウンロード
+          </button>
+          <button onClick={onBack}
+            className="text-sm text-gray-400 hover:text-gray-600 border border-gray-200 px-3 py-2 rounded-lg transition">
+            ← 戻る
+          </button>
+        </div>
+      </div>
+
+      {/* トースト通知 */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-sm px-5 py-3 rounded-xl shadow-lg z-50 transition">
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ===============================================
 // メインダッシュボード
@@ -164,6 +1032,10 @@ export default function CorrectorDashboard() {
   // タスク展開管理（インライン提出用）
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [inlineChecklistResults, setInlineChecklistResults] = useState({});
+
+  // 入力フォームビュー
+  const [inputViewTaskId, setInputViewTaskId] = useState(null);
+  const openInputView = (taskId) => setInputViewTaskId(taskId);
 
   // 業務募集タブ
   const [applyingId, setApplyingId] = useState(null);
@@ -389,6 +1261,28 @@ export default function CorrectorDashboard() {
       }
     }
   };
+
+  // 入力フォームビューが開いている場合は専用ビューを表示
+  if (inputViewTaskId) {
+    const task = tasks.find(t => t.id === inputViewTaskId);
+    const assignment = myAssignments.find(a => a.taskId === inputViewTaskId);
+    const existingInput = task ? getExamInputs().find(ei => ei.taskId === inputViewTaskId) : null;
+    if (task) {
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <div className="max-w-3xl mx-auto px-4 py-6">
+            <ExamInputForm
+              task={task}
+              assignment={assignment}
+              existingInput={existingInput}
+              onSave={(data) => { saveExamInput(data); }}
+              onBack={() => setInputViewTaskId(null)}
+            />
+          </div>
+        </div>
+      );
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -834,6 +1728,12 @@ export default function CorrectorDashboard() {
                                     📊 スプシで開く
                                   </a>
                                 )}
+                                <button
+                                  onClick={() => openInputView(task.id)}
+                                  className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg transition font-medium"
+                                >
+                                  📝 入力確認
+                                </button>
                                 <button
                                   onClick={() => toggleTaskExpand(task.id)}
                                   className={`text-xs px-3 py-1.5 rounded-lg transition font-medium ${
