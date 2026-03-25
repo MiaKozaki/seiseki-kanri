@@ -1764,7 +1764,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     { key: 'csv', icon: '\u{1F4C4}', title: 'CSV一括登録', desc: 'CSVファイルで一括登録' },
     { key: 'daimon', icon: '\u{1F4C4}', title: '大問分割CSV登録', desc: '大問ごとに分割して登録' },
     { key: 'shinnendo', icon: '\u{1F4C5}', title: '新年度試験種 一括登録', desc: 'CSV+PDF一括登録' },
-    { key: 'csv-import', icon: '\u{1F4E5}', title: 'CSV+PDF一括登録', desc: 'CSV読み込み+PDF自動紐付け' },
+    { key: 'csv-import', icon: '\u{1F4E5}', title: 'CSV一括登録', desc: 'CSVで試験種を一括登録' },
+    { key: 'pdf-upload', icon: '\u{1F4C4}', title: 'PDF一括アップロード', desc: 'ファイル名で登録済みタスクに自動紐付け' },
     { key: 'assigned', icon: '\u{1F4CC}', title: '割当済み', desc: '割当済みタスクの確認・解除' },
     { key: 'results', icon: '\u{1F4CA}', title: '実績', desc: '完了タスクの実績レポート' },
     { key: 'overview-list', icon: '\u{1F4CB}', title: '作成必要試験種一覧', desc: '科目・作業内容別の試験種一覧' },
@@ -2489,7 +2490,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
       {/* ===== Section: CSV+PDF一括登録 ===== */}
       {activeSection === 'csv-import' && (
         <div className="bg-white rounded-xl shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">CSV+PDF一括登録</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">CSV一括登録</h3>
           <div className="flex items-center gap-2 mb-3">
             <button
               type="button"
@@ -2555,7 +2556,6 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                             <th className="px-2 py-1 text-left border border-gray-200">期限</th>
                             <th className="px-2 py-1 text-center border border-gray-200">VIKING</th>
                             <th className="px-2 py-1 text-left border border-gray-200">タスク名</th>
-                            <th className="px-2 py-1 text-left border border-gray-200">PDF</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2571,12 +2571,6 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                               <td className="px-2 py-1 border border-gray-200">{row.deadline}</td>
                               <td className="px-2 py-1 border border-gray-200 text-center">{row.viking ? '○' : ''}</td>
                               <td className="px-2 py-1 border border-gray-200 text-gray-500">{row.taskName}</td>
-                              <td className="px-2 py-1 border border-gray-200 text-center">
-                                {csvImportMatches[row.matchKey] !== undefined
-                                  ? <span className="text-green-600 font-medium">{csvImportPdfFiles[csvImportMatches[row.matchKey]]?.name}</span>
-                                  : <span className="text-gray-400">-</span>
-                                }
-                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -2587,43 +2581,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
               )}
             </div>
 
-            {/* Step 2: PDF Upload (only shown after CSV loaded) */}
-            {csvImportParsed && csvImportParsed.valid.length > 0 && (
-              <div className="bg-green-50/50 border border-green-200 rounded-lg p-4 space-y-3">
-                <p className="text-xs font-semibold text-green-700">Step 2: PDFファイル一括アップロード（オプション）</p>
-                <p className="text-xs text-gray-500">
-                  ファイル名パターン: <code className="bg-gray-100 px-1 rounded">学校名_科目_年度.pdf</code>（例: 開成中学_理科_2026.pdf）
-                </p>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  multiple
-                  onChange={handleCsvImportPdfUpload}
-                  className="block text-sm text-gray-600 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-gray-300 file:text-sm file:font-medium file:bg-white file:text-gray-700 hover:file:bg-gray-50"
-                />
-                {csvImportPdfFiles.length > 0 && (
-                  <div className="text-xs space-y-1">
-                    <p className="font-medium text-gray-700">{csvImportPdfFiles.length}件のPDFファイル選択済み</p>
-                    <p className="text-green-600">マッチ: {Object.keys(csvImportMatches).length}件</p>
-                    {csvImportPdfFiles.length - Object.keys(csvImportMatches).length > 0 && (
-                      <div className="text-amber-600">
-                        <p>未マッチ: {csvImportPdfFiles.length - Object.keys(csvImportMatches).length}件</p>
-                        <ul className="list-disc list-inside ml-2 text-gray-500">
-                          {csvImportPdfFiles
-                            .filter((_, idx) => !Object.values(csvImportMatches).includes(idx))
-                            .map((f, i) => (
-                              <li key={i}>{f.name}</li>
-                            ))
-                          }
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Step 3: Register */}
+            {/* 登録ボタン */}
             {csvImportParsed && csvImportParsed.valid.length > 0 && (
               <div className="flex gap-2">
                 <button
@@ -2649,6 +2607,60 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 {csvImportResult}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== Section: PDF一括アップロード ===== */}
+      {activeSection === 'pdf-upload' && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">PDF一括アップロード</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            ファイル名の形式: <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">学校名_科目_年度.pdf</code><br />
+            登録済みのタスクに自動的に紐付けます。
+          </p>
+          <input
+            type="file"
+            accept=".pdf"
+            multiple
+            onChange={async (e) => {
+              const files = Array.from(e.target.files);
+              if (files.length === 0) return;
+              const allTasks = getTasks();
+              let matched = 0;
+              let unmatched = [];
+              for (const file of files) {
+                const baseName = file.name.replace(/\.pdf$/i, '');
+                const parts = baseName.split('_');
+                // 学校名_科目_年度 でマッチ
+                const task = allTasks.find(t => {
+                  const taskKey = [t.schoolName, t.subject, t.year].filter(Boolean).join('_');
+                  return taskKey && baseName.startsWith(taskKey);
+                });
+                if (task) {
+                  try {
+                    const meta = await saveTaskAttachment({ taskId: task.id, fileName: file.name, fileSize: file.size, fileType: file.type, blob: file });
+                    const existing = task.taskAttachments || [];
+                    updateTask(task.id, { taskAttachments: [...existing, meta] });
+                    matched++;
+                  } catch (err) { console.error(err); }
+                } else {
+                  unmatched.push(file.name);
+                }
+              }
+              const msg = `${matched}件のPDFを紐付けました。` + (unmatched.length > 0 ? ` 未マッチ: ${unmatched.join(', ')}` : '');
+              setMessage(msg);
+              setTimeout(() => setMessage(''), 5000);
+              e.target.value = '';
+            }}
+            className="block text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border file:border-gray-300 file:text-sm file:font-medium file:bg-white file:text-gray-700 hover:file:bg-gray-50 mb-4"
+          />
+          <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
+            <p className="font-medium text-gray-700 mb-1">マッチング例:</p>
+            <ul className="space-y-0.5">
+              <li><code>開成中学_理科_2026.pdf</code> → タスク「開成中学_理科_2026_第1回」に紐付け</li>
+              <li><code>麻布中学_算数_2026.pdf</code> → タスク「麻布中学_算数_2026_第1回」に紐付け</li>
+            </ul>
           </div>
         </div>
       )}
