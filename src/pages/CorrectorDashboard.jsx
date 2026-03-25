@@ -1732,7 +1732,7 @@ export default function CorrectorDashboard() {
                                   onClick={() => openInputView(task.id)}
                                   className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg transition font-medium"
                                 >
-                                  📝 入力確認
+                                  📝 作業開始
                                 </button>
                                 <button
                                   onClick={() => toggleTaskExpand(task.id)}
