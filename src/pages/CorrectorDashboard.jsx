@@ -81,6 +81,7 @@ const TABS = [
   { label: '担当業務', icon: '📋' },
   { label: '業務募集', icon: '📢' },
   { label: '通知', icon: '🔔' },
+  { label: '質問', icon: '❓' },
   { label: '使い方', icon: '📖' },
 ];
 
@@ -2163,7 +2164,7 @@ export default function CorrectorDashboard() {
         })()}
 
         {/* ===== TAB: 通知 ===== */}
-        {activeTab === 3 && (<>
+        {activeTab === 3 && (
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-gray-800">通知</h2>
@@ -2214,7 +2215,11 @@ export default function CorrectorDashboard() {
             )}
           </div>
 
-          {/* 質問セクション */}
+        )}
+
+        {/* ===== Tab 4: 質問 ===== */}
+        {activeTab === 4 && (
+          <div>
           {(() => {
             const allAssignments = getAssignments(user.id);
             const activeTasks = getTasks();
@@ -2325,9 +2330,11 @@ export default function CorrectorDashboard() {
               </div>
             );
           })()}
-        </>)}
+          </div>
+        )}
 
-        {activeTab === 4 && (() => {
+        {/* ===== Tab 5: 使い方 ===== */}
+        {activeTab === 5 && (() => {
           const correctorSections = [
             { key: 'capacity', icon: '⏱️', title: '工数登録', desc: '作業可能な期間と時間の登録' },
             { key: 'tasks', icon: '📋', title: '担当業務', desc: 'タスク一覧・提出・ファイル添付' },
