@@ -460,16 +460,21 @@ export const validateExamTaskCSV = (rows, context) => {
       rowErrors.push('期限はYYYY-MM-DD形式で入力してください');
     }
 
+    const year = (row['年度'] || '').trim();
+    const round = (row['回数'] || '').trim();
+
     if (rowErrors.length > 0) {
       errors.push({ line: lineNum, message: rowErrors.join('；'), row });
     } else {
       valid.push({
         schoolName,
         subject,
+        year,
+        round,
         workType,
         requiredHours,
         deadline,
-        taskName: `${schoolName} ${subject} ${workType}`,
+        taskName: [schoolName, subject, year, round].filter(Boolean).join('_'),
         _line: lineNum,
       });
     }
@@ -481,6 +486,8 @@ export const validateExamTaskCSV = (rows, context) => {
 export const EXAM_TASK_CSV_COLUMNS = [
   { key: 'schoolName', header: '学校名' },
   { key: 'subject', header: '科目' },
+  { key: 'year', header: '年度' },
+  { key: 'round', header: '回数' },
   { key: 'workType', header: '作業内容' },
   { key: 'requiredHours', header: '工数' },
   { key: 'deadline', header: '期限' },
@@ -607,18 +614,23 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
       rowErrors.push('期限はYYYY-MM-DD形式で入力してください');
     }
 
+    const year = (row['年度'] || '').trim();
+    const round = (row['回数'] || '').trim();
+
     if (rowErrors.length > 0) {
       errors.push({ line: lineNum, message: rowErrors.join('；'), row });
     } else {
       valid.push({
         schoolName,
         subject,
+        year,
+        round,
         daimonName,
         fieldName,
         fieldId,
         hours,
         deadline,
-        taskName: `${schoolName} ${subject} ${daimonName}`,
+        taskName: [schoolName, subject, year, round, daimonName].filter(Boolean).join('_'),
         _line: lineNum,
       });
     }
@@ -630,6 +642,8 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
 export const DAIMON_TASK_CSV_COLUMNS = [
   { key: 'schoolName', header: '学校名' },
   { key: 'subject', header: '科目' },
+  { key: 'year', header: '年度' },
+  { key: 'round', header: '回数' },
   { key: 'daimonName', header: '大問名' },
   { key: 'fieldName', header: '分野' },
   { key: 'hours', header: '工数' },
@@ -685,6 +699,8 @@ export const validateNewYearTaskCSV = (rows) => {
       rowErrors.push('期限はYYYY-MM-DD形式で入力してください');
     }
 
+    const round = (row['回数'] || '').trim();
+
     if (rowErrors.length > 0) {
       errors.push({ line: lineNum, message: rowErrors.join('；'), row });
     } else {
@@ -692,6 +708,7 @@ export const validateNewYearTaskCSV = (rows) => {
         schoolName,
         subject,
         year,
+        round,
         requiredHours,
         deadline,
         matchKey: `${schoolName}_${subject}_${year}`,
@@ -707,6 +724,7 @@ export const NEW_YEAR_TASK_CSV_COLUMNS = [
   { key: 'schoolName', header: '学校名' },
   { key: 'subject', header: '科目' },
   { key: 'year', header: '年度' },
+  { key: 'round', header: '回数' },
   { key: 'requiredHours', header: '工数' },
   { key: 'deadline', header: '期限' },
 ];

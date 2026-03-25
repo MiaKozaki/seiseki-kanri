@@ -1382,8 +1382,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadTaskTemplate = () => {
     const templateData = [
-      { schoolName: schools[0]?.name || '開成中学', subject: '算数', workType: workTypesList[0] || '新年度試験種', requiredHours: 5, deadline: '2026-04-01' },
-      { schoolName: schools[1]?.name || '麻布中学', subject: '理科', workType: workTypesList[0] || 'タグ付け', requiredHours: 3, deadline: '2026-04-15' },
+      { schoolName: '開成中学', subject: '算数', year: '2026', round: '第1回', workType: '新年度試験種', requiredHours: 5, deadline: '2026-04-01' },
+      { schoolName: '麻布中学', subject: '理科', year: '2026', round: '第1回', workType: 'タグ付け', requiredHours: 3, deadline: '2026-04-15' },
     ];
     const csv = toCSV(templateData, EXAM_TASK_CSV_COLUMNS);
     downloadCSV(csv, '試験種一括登録テンプレート.csv');
@@ -1469,10 +1469,10 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadDaimonTemplate = () => {
     const templateData = [
-      { schoolName: schools[0]?.name || '開成中学', subject: '算数', daimonName: '大問1', fieldName: '旅人算', hours: 2, deadline: '2026-04-01' },
-      { schoolName: schools[0]?.name || '開成中学', subject: '算数', daimonName: '大問2', fieldName: '食塩水', hours: 1.5, deadline: '2026-04-01' },
-      { schoolName: schools[1]?.name || '麻布中学', subject: '理科', daimonName: '大問1', fieldName: '中和', hours: 3, deadline: '2026-04-15' },
-      { schoolName: schools[1]?.name || '麻布中学', subject: '理科', daimonName: '大問2', fieldName: 'てこ', hours: 2, deadline: '2026-04-15' },
+      { schoolName: '開成中学', subject: '算数', year: '2026', round: '第1回', daimonName: '大問1', fieldName: '旅人算', hours: 2, deadline: '2026-04-01' },
+      { schoolName: '開成中学', subject: '算数', year: '2026', round: '第1回', daimonName: '大問2', fieldName: '食塩水', hours: 1.5, deadline: '2026-04-01' },
+      { schoolName: '麻布中学', subject: '理科', year: '2026', round: '第1回', daimonName: '大問1', fieldName: '中和', hours: 3, deadline: '2026-04-15' },
+      { schoolName: '麻布中学', subject: '理科', year: '2026', round: '第1回', daimonName: '大問2', fieldName: 'てこ', hours: 2, deadline: '2026-04-15' },
     ];
     const csv = toCSV(templateData, DAIMON_TASK_CSV_COLUMNS);
     downloadCSV(csv, '大問分割タスク一括登録テンプレート.csv');
@@ -1589,8 +1589,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadShinnendoTemplate = () => {
     const templateData = [
-      { schoolName: schools[0]?.name || '開成中学', subject: '理科', year: '2026', requiredHours: 3, deadline: '2026-04-01' },
-      { schoolName: schools[0]?.name || '開成中学', subject: '算数', year: '2026', requiredHours: 2, deadline: '2026-04-01' },
+      { schoolName: '開成中学', subject: '理科', year: '2026', round: '第1回', requiredHours: 3, deadline: '2026-04-01' },
+      { schoolName: '開成中学', subject: '算数', year: '2026', round: '第1回', requiredHours: 2, deadline: '2026-04-01' },
     ];
     const csv = toCSV(templateData, NEW_YEAR_TASK_CSV_COLUMNS);
     downloadCSV(csv, '新年度試験種一括登録テンプレート.csv');
