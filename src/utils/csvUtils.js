@@ -710,3 +710,97 @@ export const NEW_YEAR_TASK_CSV_COLUMNS = [
   { key: 'requiredHours', header: '工数' },
   { key: 'deadline', header: '期限' },
 ];
+
+/**
+ * CSV一括登録（試験種+PDF紐付け用）バリデーション
+ * CSVフォーマット: 学校名,科目,年度,回数,作業内容,工数,期限,VIKING
+ *
+ * @param {Object[]} rows - parseCSVで得られたオブジェクト配列
+ * @param {Object} context - { subjects: string[], workTypes: string[] }
+ * @returns {{ valid: Object[], errors: {line: number, message: string, row: Object}[] }}
+ */
+export const validateCsvImportTaskCSV = (rows, context) => {
+  const { subjects, workTypes } = context;
+  const valid = [];
+  const errors = [];
+
+  if (rows.length === 0) {
+    errors.push({ line: 0, message: 'データがありません', row: {} });
+    return { valid, errors };
+  }
+
+  rows.forEach((row, i) => {
+    const lineNum = i + 2;
+    const rowErrors = [];
+
+    const schoolName = (row['学校名'] || '').trim();
+    if (!schoolName) rowErrors.push('学校名が空です');
+
+    const subject = (row['科目'] || '').trim();
+    if (!subject) {
+      rowErrors.push('科目が空です');
+    } else if (subjects && !subjects.includes(subject)) {
+      rowErrors.push(`科目「${subject}」は無効です（${subjects.join('/')}）`);
+    }
+
+    const year = (row['年度'] || '').trim();
+    if (!year) rowErrors.push('年度が空です');
+
+    const round = (row['回数'] || '').trim();
+
+    const workType = (row['作業内容'] || '').trim();
+    if (!workType) {
+      rowErrors.push('作業内容が空です');
+    } else if (workTypes && !workTypes.includes(workType)) {
+      rowErrors.push(`作業内容「${workType}」は無効です（${workTypes.join('/')}）`);
+    }
+
+    const hoursStr = (row['工数'] || row['工数(h)'] || '').trim();
+    const requiredHours = hoursStr ? parseFloat(hoursStr) : 0;
+    if (hoursStr && (isNaN(requiredHours) || requiredHours < 0)) {
+      rowErrors.push('工数は0以上の数値で入力してください');
+    }
+
+    const deadline = (row['期限'] || '').trim();
+    if (!deadline) {
+      rowErrors.push('期限が空です');
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
+      rowErrors.push('期限はYYYY-MM-DD形式で入力してください');
+    }
+
+    const vikingRaw = (row['VIKING'] || row['viking'] || '').trim().toLowerCase();
+    const viking = vikingRaw === 'true' || vikingRaw === '1' || vikingRaw === 'yes' || vikingRaw === '○';
+
+    if (rowErrors.length > 0) {
+      errors.push({ line: lineNum, message: rowErrors.join('；'), row });
+    } else {
+      const taskName = [schoolName, subject, year, round].filter(Boolean).join('_');
+      valid.push({
+        schoolName,
+        subject,
+        year,
+        round,
+        workType,
+        requiredHours,
+        deadline,
+        viking,
+        taskName,
+        matchKey: [schoolName, subject, year].filter(Boolean).join('_'),
+        _line: lineNum,
+      });
+    }
+  });
+
+  return { valid, errors };
+};
+
+export const CSV_IMPORT_TASK_COLUMNS = [
+  { key: 'schoolName', header: '学校名' },
+  { key: 'subject', header: '科目' },
+  { key: 'year', header: '年度' },
+  { key: 'round', header: '回数' },
+  { key: 'workType', header: '作業内容' },
+  { key: 'requiredHours', header: '工数' },
+  { key: 'deadline', header: '期限' },
+  { key: 'viking', header: 'VIKING' },
+];

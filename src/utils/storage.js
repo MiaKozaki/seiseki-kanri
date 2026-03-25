@@ -487,6 +487,8 @@ export const INITIAL_DATA = {
     { id: 'wt5', name: 'tensakitインポート', sortOrder: 5, createdAt: '2026-01-01T00:00:00.000Z' },
   ],
   manuals: [],
+  questions: [],
+  questionSettings: [],
 };
 
 export const SUBJECTS_LIST = ['国語', '算数', '理科', '社会'];
@@ -830,6 +832,8 @@ export const initStorage = () => {
     }
     if (!data.manuals) { data.manuals = []; updated = true; }
     if (!data.reviewMemos) { data.reviewMemos = []; updated = true; }
+    if (!data.questions) { data.questions = []; updated = true; }
+    if (!data.questionSettings) { data.questionSettings = []; updated = true; }
     if (updated) localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 };

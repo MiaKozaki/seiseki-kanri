@@ -978,6 +978,7 @@ export default function CorrectorDashboard() {
     getExamInputs, saveExamInput,
     getRecruitments, getApplications, addApplication, claimVikingTask,
     getUserFields, getFields,
+    getQuestions, addQuestion, getQuestionSettings,
     startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
     getRejections, getRejectionCategories, getRejectionSeverities,
     getVerificationItems,
@@ -990,6 +991,10 @@ export default function CorrectorDashboard() {
   const [capError, setCapError] = useState('');
   const [calendarMonth, setCalendarMonth] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() });
   const [openManualSections, setOpenManualSections] = useState({});
+
+  // 質問機能
+  const [questionForm, setQuestionForm] = useState({ subject: '', workType: '', message: '' });
+  const [questionSubmitting, setQuestionSubmitting] = useState(false);
 
   // パスワード変更モーダル
   const [showPwModal, setShowPwModal] = useState(false);
@@ -1814,7 +1819,7 @@ export default function CorrectorDashboard() {
                           {/* インライン提出セクション */}
                           {expandedTaskId === task.id && !isDone && !isSubmitted && (() => {
                             const timerTotalSec = getTaskTotalTime(task.id) || 0;
-                            const timerMin = Math.floor(timerTotalSec / 60);
+                            const timerMin = Math.ceil(timerTotalSec / 60);
                             const timerHours = Math.max(0.5, Math.round((timerTotalSec / 3600) * 2) / 2);
                             const checkItems = getVerificationItems(task.subject, 'submission', task.workType);
                             const hasCheckItems = checkItems.length > 0;
@@ -2158,7 +2163,7 @@ export default function CorrectorDashboard() {
         })()}
 
         {/* ===== TAB: 通知 ===== */}
-        {activeTab === 3 && (
+        {activeTab === 3 && (<>
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-gray-800">通知</h2>
@@ -2208,7 +2213,119 @@ export default function CorrectorDashboard() {
               </div>
             )}
           </div>
-        )}
+
+          {/* 質問セクション */}
+          {(() => {
+            const allAssignments = getAssignments(user.id);
+            const activeTasks = getTasks();
+            const qSettings = getQuestionSettings();
+            // ユーザーのアクティブなアサインから科目+作業種の組み合わせを取得
+            const activeSubjectWorkTypes = [];
+            allAssignments.forEach(a => {
+              if (isFinished(a.status)) return;
+              const task = activeTasks.find(t => t.id === a.taskId);
+              if (!task) return;
+              const key = `${task.subject || ''}__${task.workType || ''}`;
+              if (!activeSubjectWorkTypes.find(x => x.key === key)) {
+                // questionSettingsで有効かチェック（設定がない場合はデフォルト有効）
+                const setting = qSettings.find(s => s.subject === task.subject && s.workType === (task.workType || null));
+                const enabled = setting ? setting.enabled : true;
+                if (enabled) {
+                  activeSubjectWorkTypes.push({ key, subject: task.subject || '', workType: task.workType || '' });
+                }
+              }
+            });
+            const myQuestions = getQuestions({ fromUserId: user.id });
+
+            const handleQuestionSubmit = (e) => {
+              e.preventDefault();
+              if (!questionForm.subject || !questionForm.message.trim()) return;
+              setQuestionSubmitting(true);
+              addQuestion({
+                fromUserId: user.id,
+                subject: questionForm.subject,
+                workType: questionForm.workType || null,
+                taskId: null,
+                message: questionForm.message.trim(),
+              });
+              setQuestionForm({ subject: '', workType: '', message: '' });
+              setQuestionSubmitting(false);
+            };
+
+            return (
+              <div className="bg-white rounded-xl shadow-sm p-6 mt-4">
+                <h2 className="text-base font-semibold text-gray-800 mb-4">質問</h2>
+
+                {activeSubjectWorkTypes.length === 0 ? (
+                  <p className="text-gray-400 text-sm text-center py-4">質問可能な担当業務はありません</p>
+                ) : (
+                  <form onSubmit={handleQuestionSubmit} className="space-y-3 mb-6">
+                    <div className="flex gap-2">
+                      <select
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+                        value={`${questionForm.subject}__${questionForm.workType}`}
+                        onChange={(e) => {
+                          const [subject, workType] = e.target.value.split('__');
+                          setQuestionForm(prev => ({ ...prev, subject, workType }));
+                        }}
+                      >
+                        <option value="__">科目・作業種を選択</option>
+                        {activeSubjectWorkTypes.map(swt => (
+                          <option key={swt.key} value={swt.key}>
+                            {swt.subject}{swt.workType ? ` · ${swt.workType}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <textarea
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none resize-none"
+                      rows={3}
+                      placeholder="質問内容を入力してください"
+                      value={questionForm.message}
+                      onChange={(e) => setQuestionForm(prev => ({ ...prev, message: e.target.value }))}
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={!questionForm.subject || !questionForm.message.trim() || questionSubmitting}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                      >
+                        質問を送信
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* 過去の質問一覧 */}
+                {myQuestions.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">過去の質問</h3>
+                    <div className="space-y-2">
+                      {myQuestions.map(q => (
+                        <div key={q.id} className={`p-3 rounded-lg border ${q.answer ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium text-gray-600">{q.subject}{q.workType ? ` · ${q.workType}` : ''}</span>
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${q.answer ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
+                              {q.answer ? '回答済' : '未回答'}
+                            </span>
+                            <span className="text-xs text-gray-400 ml-auto">{new Date(q.createdAt).toLocaleString('ja-JP')}</span>
+                          </div>
+                          <p className="text-sm text-gray-800">{q.message}</p>
+                          {q.answer && (
+                            <div className="mt-2 pt-2 border-t border-green-200">
+                              <p className="text-xs font-medium text-green-700 mb-0.5">回答（{new Date(q.answeredAt).toLocaleString('ja-JP')}）</p>
+                              <p className="text-sm text-gray-800">{q.answer}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </>)}
 
         {activeTab === 4 && (() => {
           const correctorSections = [

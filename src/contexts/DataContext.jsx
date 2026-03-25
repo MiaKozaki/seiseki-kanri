@@ -1241,6 +1241,84 @@ export const DataProvider = ({ children }) => {
     forceRefresh();
   };
 
+  // ---- Questions (質問機能) ----
+  const getQuestions = (filters = {}) => {
+    let items = d('questions') || [];
+    if (filters.fromUserId) items = items.filter(q => q.fromUserId === filters.fromUserId);
+    if (filters.subject) items = items.filter(q => q.subject === filters.subject);
+    if (filters.workType) items = items.filter(q => q.workType === filters.workType);
+    return items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  };
+
+  const addQuestion = (questionData) => {
+    const question = {
+      ...questionData,
+      id: generateId(),
+      answer: null,
+      answeredBy: null,
+      answeredAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    updateCollection('questions', [...(d('questions') || []), question]);
+    // リーダーへの通知を作成
+    const fromUser = d('users').find(u => u.id === question.fromUserId);
+    const leaders = d('users').filter(u => u.role === 'leader');
+    const newNotifications = leaders.map(leader => ({
+      id: generateId(),
+      userId: leader.id,
+      message: `${fromUser?.name || '添削者'}から質問があります: [${question.subject}${question.workType ? ' · ' + question.workType : ''}] ${question.message.substring(0, 50)}${question.message.length > 50 ? '...' : ''}`,
+      type: 'question',
+      relatedId: question.id,
+      read: false,
+      createdAt: new Date().toISOString(),
+    }));
+    updateCollection('notifications', [...d('notifications'), ...newNotifications]);
+    forceRefresh();
+    return question;
+  };
+
+  const answerQuestion = (id, answer, answeredBy) => {
+    const questions = d('questions') || [];
+    const updated = questions.map(q => q.id === id ? {
+      ...q,
+      answer,
+      answeredBy,
+      answeredAt: new Date().toISOString(),
+    } : q);
+    updateCollection('questions', updated);
+    // 質問者への通知を作成
+    const question = updated.find(q => q.id === id);
+    const answerer = d('users').find(u => u.id === answeredBy);
+    if (question) {
+      const notif = {
+        id: generateId(),
+        userId: question.fromUserId,
+        message: `${answerer?.name || 'リーダー'}が質問に回答しました: [${question.subject}${question.workType ? ' · ' + question.workType : ''}]`,
+        type: 'question_answer',
+        relatedId: question.id,
+        read: false,
+        createdAt: new Date().toISOString(),
+      };
+      updateCollection('notifications', [...d('notifications'), notif]);
+    }
+    forceRefresh();
+  };
+
+  const getQuestionSettings = () => d('questionSettings') || [];
+
+  const updateQuestionSetting = (subject, workType, enabled) => {
+    const settings = d('questionSettings') || [];
+    const existing = settings.find(s => s.subject === subject && s.workType === workType);
+    if (existing) {
+      const updated = settings.map(s => s.id === existing.id ? { ...s, enabled } : s);
+      updateCollection('questionSettings', updated);
+    } else {
+      const newSetting = { id: generateId(), subject, workType, enabled };
+      updateCollection('questionSettings', [...settings, newSetting]);
+    }
+    forceRefresh();
+  };
+
   // ---- autoAssign用: 一括データ取得 + 結果反映 ----
   const getAllData = () => data || getAll();
 
@@ -1289,6 +1367,7 @@ export const DataProvider = ({ children }) => {
       getFeedbacks, addFeedback,
       getReviewMemos, addReviewMemo, deleteReviewMemo,
       getNotifications, markNotificationRead, markAllNotificationsRead,
+      getQuestions, addQuestion, answerQuestion, getQuestionSettings, updateQuestionSetting,
       startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
     }}>
       {children}
