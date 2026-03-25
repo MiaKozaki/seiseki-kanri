@@ -988,6 +988,7 @@ export default function CorrectorDashboard() {
   const [activeTab, setActiveTab] = useState(0);
   const [capForm, setCapForm] = useState({ startDate: '', endDate: '', hoursPerDay: 8, note: '' });
   const [capError, setCapError] = useState('');
+  const [calendarMonth, setCalendarMonth] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() });
   const [openManualSections, setOpenManualSections] = useState({});
 
   // パスワード変更モーダル
@@ -1394,121 +1395,167 @@ export default function CorrectorDashboard() {
       </div>
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-        {/* ===== TAB: 工数登録 ===== */}
-        {activeTab === 0 && (
-          <>
-            {/* Summary cards */}
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: '登録済み工数', value: `${totalAvailable}h`, color: 'bg-blue-50 text-blue-700' },
-                { label: '割当工数', value: `${totalAssigned}h`, color: 'bg-orange-50 text-orange-700' },
-                { label: '空き工数', value: `${Math.max(0, totalAvailable - totalAssigned)}h`, color: 'bg-green-50 text-green-700' },
-              ].map(card => (
-                <div key={card.label} className={`rounded-xl p-3 ${card.color}`}>
-                  <p className="text-xs font-medium opacity-70">{card.label}</p>
-                  <p className="text-xl font-bold mt-0.5">{card.value}</p>
-                </div>
-              ))}
-            </div>
+        {/* ===== TAB: 工数登録（カレンダー形式） ===== */}
+        {activeTab === 0 && (() => {
+          const today = new Date();
+          const calYear = calendarMonth.year;
+          const calMonth = calendarMonth.month;
 
-            {/* Registration form */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-base font-semibold text-gray-800 mb-4">工数登録</h2>
-              <form onSubmit={handleCapSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">開始日</label>
-                    <input
-                      type="date"
-                      value={capForm.startDate}
-                      onChange={e => setCapForm({ ...capForm, startDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                      required
-                    />
+          const firstDay = new Date(calYear, calMonth, 1);
+          const lastDay = new Date(calYear, calMonth + 1, 0);
+          const startDow = firstDay.getDay();
+          const daysInMonth = lastDay.getDate();
+
+          // 日ごとの工数マップを構築
+          const dayHoursMap = {};
+          myCapacities.forEach(cap => {
+            const s = new Date(cap.startDate);
+            const e = new Date(cap.endDate);
+            for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+              const key = d.toISOString().slice(0, 10);
+              dayHoursMap[key] = (dayHoursMap[key] || 0) + (cap.hoursPerDay || 0);
+            }
+          });
+
+          const monthTotal = Array.from({ length: daysInMonth }, (_, i) => {
+            const key = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
+            return dayHoursMap[key] || 0;
+          }).reduce((a, b) => a + b, 0);
+
+          const prevMonth = () => {
+            if (calMonth === 0) setCalendarMonth({ year: calYear - 1, month: 11 });
+            else setCalendarMonth({ year: calYear, month: calMonth - 1 });
+          };
+          const nextMonth = () => {
+            if (calMonth === 11) setCalendarMonth({ year: calYear + 1, month: 0 });
+            else setCalendarMonth({ year: calYear, month: calMonth + 1 });
+          };
+
+          const cells = [];
+          for (let i = 0; i < startDow; i++) cells.push(null);
+          for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+          const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+          return (
+            <>
+              {/* サマリーカード */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: '登録済み工数', value: `${totalAvailable}h`, color: 'bg-blue-50 text-blue-700' },
+                  { label: '割当工数', value: `${totalAssigned}h`, color: 'bg-orange-50 text-orange-700' },
+                  { label: '空き工数', value: `${Math.max(0, totalAvailable - totalAssigned)}h`, color: 'bg-green-50 text-green-700' },
+                ].map(card => (
+                  <div key={card.label} className={`rounded-xl p-3 ${card.color}`}>
+                    <p className="text-xs font-medium opacity-70">{card.label}</p>
+                    <p className="text-xl font-bold mt-0.5">{card.value}</p>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">終了日</label>
-                    <input
-                      type="date"
-                      value={capForm.endDate}
-                      onChange={e => setCapForm({ ...capForm, endDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                      required
-                    />
+                ))}
+              </div>
+
+              {/* カレンダー */}
+              <div className="bg-white rounded-xl shadow-sm p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <button onClick={prevMonth} className="text-gray-500 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-100 transition">◀</button>
+                  <div className="text-center">
+                    <h2 className="text-base font-bold text-gray-800">{calYear}年 {calMonth + 1}月</h2>
+                    <p className="text-xs text-gray-500">月間合計: <span className="font-semibold text-blue-600">{monthTotal}h</span></p>
                   </div>
+                  <button onClick={nextMonth} className="text-gray-500 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-100 transition">▶</button>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">1日あたりの作業可能時間</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={capForm.hoursPerDay}
-                      onChange={e => setCapForm({ ...capForm, hoursPerDay: e.target.value })}
-                      min="0.5" max="24" step="0.5"
-                      className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                    <span className="text-sm text-gray-500">時間 / 日</span>
-                  </div>
+                {/* 曜日ヘッダ */}
+                <div className="grid grid-cols-7 gap-px mb-1">
+                  {['日', '月', '火', '水', '木', '金', '土'].map((d, i) => (
+                    <div key={d} className={`text-center text-xs font-semibold py-1 ${i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-500'}`}>{d}</div>
+                  ))}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">メモ（任意）</label>
-                  <input
-                    type="text"
-                    value={capForm.note}
-                    onChange={e => setCapForm({ ...capForm, note: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="例：午後のみ対応可能"
-                  />
-                </div>
+                {/* 日セル */}
+                <div className="grid grid-cols-7 gap-px">
+                  {cells.map((day, idx) => {
+                    if (day === null) return <div key={`empty-${idx}`} className="h-16" />;
+                    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const hours = dayHoursMap[dateStr] || 0;
+                    const isToday = dateStr === todayStr;
+                    const dow = idx % 7;
+                    const isPast = dateStr < todayStr;
 
-                {capError && <p className="text-red-500 text-sm">{capError}</p>}
-
-                <button
-                  type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition"
-                >
-                  登録する
-                </button>
-              </form>
-            </div>
-
-            {/* Capacity list */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">登録済み工数一覧</h2>
-              {myCapacities.length === 0 ? (
-                <p className="text-gray-400 text-sm text-center py-4">工数が登録されていません</p>
-              ) : (
-                <div className="space-y-2">
-                  {[...myCapacities].sort((a, b) => new Date(b.startDate) - new Date(a.startDate)).map(cap => {
-                    const days = Math.ceil(Math.abs(new Date(cap.endDate) - new Date(cap.startDate)) / 86400000) + 1;
                     return (
-                      <div key={cap.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">
-                            {cap.startDate} 〜 {cap.endDate}
-                            <span className="ml-2 text-xs text-gray-400">（{days}日間）</span>
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {cap.hoursPerDay}時間/日 × 合計 <span className="font-semibold text-blue-600">{cap.totalHours}時間</span>
-                            {cap.note && <span className="ml-2 text-gray-400">・{cap.note}</span>}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => deleteCapacity(cap.id)}
-                          className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded transition"
-                        >
-                          削除
-                        </button>
+                      <div
+                        key={day}
+                        className={`h-16 border rounded-lg p-1 flex flex-col items-center justify-between transition cursor-pointer hover:border-blue-400
+                          ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}
+                          ${hours > 0 && !isPast ? 'bg-green-50' : ''}
+                          ${isPast ? 'opacity-60' : ''}`}
+                        onClick={() => {
+                          if (isPast) return;
+                          const newHours = prompt(`${calMonth + 1}/${day} の作業可能時間（h）を入力\n（0で削除、空欄でキャンセル）`, String(hours || ''));
+                          if (newHours === null || newHours === '') return;
+                          const h = Number(newHours);
+                          // 既存のその日を含むcapacityを削除して、新しい1日分のcapacityを追加
+                          const capsToDelete = myCapacities.filter(cap => dateStr >= cap.startDate && dateStr <= cap.endDate);
+                          // 簡易実装: 1日単位のcapacityとして追加
+                          capsToDelete.forEach(cap => {
+                            // 既存を分割（前半・後半に分ける）
+                            deleteCapacity(cap.id);
+                            const capStart = cap.startDate;
+                            const capEnd = cap.endDate;
+                            // dateStrの前の部分を再登録
+                            if (capStart < dateStr) {
+                              const prevDay = new Date(new Date(dateStr).getTime() - 86400000).toISOString().slice(0, 10);
+                              addCapacity({ userId: user.id, startDate: capStart, endDate: prevDay, hoursPerDay: cap.hoursPerDay, note: cap.note });
+                            }
+                            // dateStrの後の部分を再登録
+                            if (capEnd > dateStr) {
+                              const nextDay = new Date(new Date(dateStr).getTime() + 86400000).toISOString().slice(0, 10);
+                              addCapacity({ userId: user.id, startDate: nextDay, endDate: capEnd, hoursPerDay: cap.hoursPerDay, note: cap.note });
+                            }
+                          });
+                          if (h > 0) {
+                            addCapacity({ userId: user.id, startDate: dateStr, endDate: dateStr, hoursPerDay: h });
+                          }
+                        }}
+                      >
+                        <span className={`text-xs ${dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : 'text-gray-600'}`}>{day}</span>
+                        {hours > 0 ? (
+                          <span className="text-sm font-bold text-green-700">{hours}</span>
+                        ) : (
+                          <span className="text-xs text-gray-300">-</span>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          </>
-        )}
+              </div>
+
+              {/* 一括入力 */}
+              <div className="bg-white rounded-xl shadow-sm p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">一括入力</h3>
+                <form onSubmit={handleCapSubmit} className="flex flex-wrap items-end gap-2">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">開始日</label>
+                    <input type="date" value={capForm.startDate} onChange={e => setCapForm({ ...capForm, startDate: e.target.value })}
+                      className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" required />
+                  </div>
+                  <span className="text-gray-400 pb-1.5">〜</span>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">終了日</label>
+                    <input type="date" value={capForm.endDate} onChange={e => setCapForm({ ...capForm, endDate: e.target.value })}
+                      className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" required />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">時間/日</label>
+                    <input type="number" value={capForm.hoursPerDay} onChange={e => setCapForm({ ...capForm, hoursPerDay: e.target.value })}
+                      min="0.5" max="24" step="0.5" className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
+                  </div>
+                  <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1.5 rounded-lg transition">一括入力</button>
+                </form>
+                {capError && <p className="text-red-500 text-xs mt-1">{capError}</p>}
+              </div>
+            </>
+          );
+        })()}
 
         {/* ===== TAB: 担当業務 ===== */}
         {activeTab === 1 && (
