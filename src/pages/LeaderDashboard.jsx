@@ -1761,12 +1761,10 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const taskSections = [
     { key: 'list', icon: '\u{1F4CB}', title: '試験種一覧', desc: 'タスクの検索・フィルタ・管理' },
     { key: 'add', icon: '\u{2795}', title: '新規追加', desc: '試験種を個別に追加' },
-    { key: 'csv', icon: '\u{1F4C4}', title: 'CSV一括登録', desc: 'CSVファイルで一括登録' },
-    { key: 'daimon', icon: '\u{1F4C4}', title: '大問分割CSV登録', desc: '大問ごとに分割して登録' },
-    { key: 'shinnendo', icon: '\u{1F4C5}', title: '新年度試験種 一括登録', desc: 'CSV+PDF一括登録' },
     { key: 'csv-import', icon: '\u{1F4E5}', title: 'CSV一括登録', desc: 'CSVで試験種を一括登録' },
+    { key: 'daimon', icon: '\u{1F4C4}', title: '大問分割CSV登録', desc: '大問ごとに分割して登録' },
     { key: 'pdf-upload', icon: '\u{1F4C4}', title: 'PDF一括アップロード', desc: 'ファイル名で登録済みタスクに自動紐付け' },
-    { key: 'assigned', icon: '\u{1F4CC}', title: '割当済み', desc: '割当済みタスクの確認・解除' },
+    { key: 'pdf-status', icon: '\u{1F4CA}', title: 'PDF登録ステータス', desc: '試験種ごとのPDF紐付け状況を確認' },
     { key: 'results', icon: '\u{1F4CA}', title: '実績', desc: '完了タスクの実績レポート' },
     { key: 'overview-list', icon: '\u{1F4CB}', title: '作成必要試験種一覧', desc: '科目・作業内容別の試験種一覧' },
   ];
@@ -2662,6 +2660,59 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
               <li><code>麻布中学_算数_2026.pdf</code> → タスク「麻布中学_算数_2026_第1回」に紐付け</li>
             </ul>
           </div>
+        </div>
+      )}
+
+      {/* ===== Section: PDF登録ステータス ===== */}
+      {activeSection === 'pdf-status' && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">PDF登録ステータス</h3>
+          {(() => {
+            const allTasks = tasks.filter(t => t.workType === '新年度試験種');
+            if (allTasks.length === 0) return <p className="text-xs text-gray-400 text-center py-4">新年度試験種のタスクがありません</p>;
+            const withPdf = allTasks.filter(t => t.taskAttachments?.length > 0);
+            const withoutPdf = allTasks.filter(t => !t.taskAttachments || t.taskAttachments.length === 0);
+            return (
+              <div className="space-y-4">
+                <div className="flex gap-4 text-sm">
+                  <span className="text-green-700 font-medium">PDF登録済み: {withPdf.length}件</span>
+                  <span className="text-red-600 font-medium">未登録: {withoutPdf.length}件</span>
+                  <span className="text-gray-500">合計: {allTasks.length}件</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-3">
+                  <div className="bg-green-500 h-3 rounded-full transition-all" style={{ width: `${allTasks.length > 0 ? (withPdf.length / allTasks.length * 100) : 0}%` }}></div>
+                </div>
+                {withoutPdf.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-red-600 mb-2">PDF未登録のタスク</p>
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      {withoutPdf.map(t => (
+                        <div key={t.id} className="flex items-center gap-2 p-2 bg-red-50 rounded-lg text-xs">
+                          <span className="text-red-400">●</span>
+                          <span className="font-medium text-gray-700">{t.name}</span>
+                          <span className="text-gray-400">{t.subject}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {withPdf.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-green-700 mb-2">PDF登録済みのタスク</p>
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      {withPdf.map(t => (
+                        <div key={t.id} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg text-xs">
+                          <span className="text-green-500">●</span>
+                          <span className="font-medium text-gray-700">{t.name}</span>
+                          <span className="text-gray-400">{t.subject} · {t.taskAttachments.length}件</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
