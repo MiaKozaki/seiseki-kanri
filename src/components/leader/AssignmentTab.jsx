@@ -8,7 +8,7 @@ const AssignmentTab = ({ activeSubjects }) => {
   const {
     getTasks, getAssignments, getCorrectors, getCapacities,
     getAllData, applyAutoAssignResult, getWorkTypes,
-    addReviewMemo,
+    addReviewMemo, deleteAssignment, updateTask,
   } = useData();
   const workTypesList = getWorkTypes().map(wt => wt.name);
   const { user } = useAuth();
@@ -111,6 +111,18 @@ const AssignmentTab = ({ activeSubjects }) => {
     setAssignDeadlineFrom('');
     setAssignDeadlineTo('');
   };
+
+  // --- Unassign (剥がし) handler ---
+  const handleUnassign = (assignmentId, taskId) => {
+    if (!window.confirm('この振り分けを解除しますか？タスクは未振り分けに戻ります。')) return;
+    deleteAssignment(assignmentId);
+    updateTask(taskId, { status: 'pending' });
+    setMessage('振り分けを解除しました');
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  // Assigned tasks for the unassign section
+  const assignedTasks = tasks.filter(t => t.status === 'assigned' || t.status === 'in_progress');
 
   // VIKING helpers
   const pendingVikingTasks = tasks.filter(t => t.viking && t.status === 'pending');
@@ -445,6 +457,40 @@ const AssignmentTab = ({ activeSubjects }) => {
                       className="w-full text-xs border border-gray-200 rounded-lg px-3 py-1.5 mt-1.5 placeholder-gray-400"
                     />
                   )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ===== 振り分け済みタスク（剥がし） ===== */}
+      {assignedTasks.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">振り分け済みタスク（{assignedTasks.length}件）</h3>
+          <p className="text-xs text-gray-400 mb-3">振り分けを解除（剥がし）すると、タスクは未割当に戻ります。</p>
+          <div className="space-y-2">
+            {assignedTasks.map(task => {
+              const assignment = assignments.find(a => a.taskId === task.id && !isFinished(a.status));
+              const assignedUser = assignment ? correctors.find(c => c.id === assignment.userId) : null;
+              if (!assignment) return null;
+              return (
+                <div key={task.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{task.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {task.subject}{task.workType ? ` · ${task.workType}` : ''} · {task.requiredHours}h · 期限: {task.deadline}
+                    </p>
+                    {assignedUser && (
+                      <p className="text-xs text-blue-600 mt-0.5">担当: {assignedUser.name}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleUnassign(assignment.id, task.id)}
+                    className="shrink-0 text-xs bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg transition font-medium"
+                  >
+                    剥がす
+                  </button>
                 </div>
               );
             })}

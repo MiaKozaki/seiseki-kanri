@@ -1041,7 +1041,9 @@ export default function CorrectorDashboard() {
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [inlineChecklistResults, setInlineChecklistResults] = useState({});
 
-  // 入力フォームビュー
+  // 入力フォームビュー（算数・理科・社会のみ。国語は外部ツールを使用）
+  const INPUT_FORM_SUBJECTS = ['小学算数', '小学理科', '小学社会'];
+  const hasInputForm = (subject) => INPUT_FORM_SUBJECTS.includes(subject);
   const [inputViewTaskId, setInputViewTaskId] = useState(null);
   const openInputView = (taskId) => setInputViewTaskId(taskId);
 
@@ -1693,53 +1695,6 @@ export default function CorrectorDashboard() {
         {/* ===== TAB: 担当業務 ===== */}
         {activeTab === 1 && (
           <>
-              {/* VIKINGタスク一覧 */}
-              {(() => {
-                const myUserFields = getUserFields ? getUserFields(user.id) : [];
-                const myFieldIds = myUserFields.map(uf => uf.fieldId);
-                const vikingTasks = tasks.filter(t => t.viking && t.status === 'pending' && (
-                  user.subjects?.includes(t.subject) || (t.macroTask && false)
-                ) && (!t.fieldId || myFieldIds.includes(t.fieldId)));
-                if (vikingTasks.length === 0) return null;
-                return (
-                  <div className="bg-white rounded-xl shadow-sm p-6 mb-4 border-2 border-orange-200">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-base font-semibold text-orange-700">🛡 VIKINGタスク</h2>
-                      <span className="text-xs text-orange-500">{vikingTasks.length}件取得可能</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mb-3">自分で取って作業できるタスクです。クリックすると自動的に割り当てられます。</p>
-                    <div className="space-y-2">
-                      {vikingTasks.map(task => (
-                        <div key={task.id} className="flex items-center gap-3 p-3 border border-orange-100 rounded-lg hover:bg-orange-50 transition">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">VIKING</span>
-                              {task.macroTask && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">{task.workType === 'マクロ' ? 'マクロ' : 'takos'}</span>}
-                              <span className="text-sm font-medium text-gray-800">{task.name}</span>
-                              {task.parentDaimonName && <span className="text-xs text-gray-500">({task.parentDaimonName})</span>}
-                            </div>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              {task.subject}{task.workType ? ` · ${task.workType}` : ''}{task.fieldId && getFields ? (() => { const f = getFields().find(f => f.id === task.fieldId); return f ? ` · ${f.name}` : ''; })() : ''} · {task.requiredHours}h · 期限: {task.deadline}
-                            </p>
-                            {task.takosLink && (
-                              <a href={task.takosLink} target="_blank" rel="noopener noreferrer"
-                                 className="text-xs text-blue-600 hover:text-blue-800 underline mt-0.5 inline-block">
-                                takosリンク
-                              </a>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => { if (confirm(`「${task.name}」を取得しますか？`)) claimVikingTask(task.id, user.id); }}
-                            className="shrink-0 text-xs bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition font-medium"
-                          >
-                            🛡 作業を取る
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
               {/* タスク一覧 */}
               <div className="bg-white rounded-xl shadow-sm p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -1958,7 +1913,7 @@ export default function CorrectorDashboard() {
                                     📊 スプシで開く
                                   </a>
                                 )}
-                                {isExternalWork(task.subject, task.workType) ? (
+                                {(isExternalWork(task.subject, task.workType) || !hasInputForm(task.subject)) ? (
                                   <>
                                     {/* 外部作業: 手動タイマー */}
                                     {manualTimerTaskId !== task.id && (
@@ -2267,8 +2222,54 @@ export default function CorrectorDashboard() {
           const allRecruitments = getRecruitments();
           const userSubjects = user.subjects ?? [];
 
+          const myUserFields = getUserFields ? getUserFields(user.id) : [];
+          const myFieldIds = myUserFields.map(uf => uf.fieldId);
+          const vikingTasks = tasks.filter(t => t.viking && t.status === 'pending' && (
+            user.subjects?.includes(t.subject) || (t.macroTask && false)
+          ) && (!t.fieldId || myFieldIds.includes(t.fieldId)));
+
           return (
             <>
+              {/* VIKINGタスク一覧 */}
+              {vikingTasks.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm p-6 mb-4 border-2 border-orange-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-base font-semibold text-orange-700">🛡 VIKINGタスク</h2>
+                    <span className="text-xs text-orange-500">{vikingTasks.length}件取得可能</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">自分で取って作業できるタスクです。クリックすると自動的に割り当てられます。</p>
+                  <div className="space-y-2">
+                    {vikingTasks.map(task => (
+                      <div key={task.id} className="flex items-center gap-3 p-3 border border-orange-100 rounded-lg hover:bg-orange-50 transition">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">VIKING</span>
+                            {task.macroTask && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">{task.workType === 'マクロ' ? 'マクロ' : 'takos'}</span>}
+                            <span className="text-sm font-medium text-gray-800">{task.name}</span>
+                            {task.parentDaimonName && <span className="text-xs text-gray-500">({task.parentDaimonName})</span>}
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {task.subject}{task.workType ? ` · ${task.workType}` : ''}{task.fieldId && getFields ? (() => { const f = getFields().find(f => f.id === task.fieldId); return f ? ` · ${f.name}` : ''; })() : ''} · {task.requiredHours}h · 期限: {task.deadline}
+                          </p>
+                          {task.takosLink && (
+                            <a href={task.takosLink} target="_blank" rel="noopener noreferrer"
+                               className="text-xs text-blue-600 hover:text-blue-800 underline mt-0.5 inline-block">
+                              takosリンク
+                            </a>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => { if (confirm(`「${task.name}」を取得しますか？`)) claimVikingTask(task.id, user.id); }}
+                          className="shrink-0 text-xs bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition font-medium"
+                        >
+                          🛡 作業を取る
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* 募集中の業務 */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-base font-semibold text-gray-800 mb-4">募集中の業務</h2>
