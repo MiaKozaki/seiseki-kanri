@@ -1298,6 +1298,10 @@ export const DataProvider = ({ children }) => {
     const question = {
       ...questionData,
       id: generateId(),
+      status: 'open',
+      replies: [],
+      resolvedAt: null,
+      // Keep legacy fields for backward compat
       answer: null,
       answeredBy: null,
       answeredAt: null,
@@ -1319,6 +1323,65 @@ export const DataProvider = ({ children }) => {
     updateCollection('notifications', [...d('notifications'), ...newNotifications]);
     forceRefresh();
     return question;
+  };
+
+  const addQuestionReply = (questionId, { userId, userRole, userName, message }) => {
+    const questions = d('questions') || [];
+    const reply = {
+      id: generateId(),
+      userId,
+      userRole,
+      userName,
+      message,
+      createdAt: new Date().toISOString(),
+    };
+    const updated = questions.map(q => q.id === questionId ? {
+      ...q,
+      replies: [...(q.replies || []), reply],
+    } : q);
+    updateCollection('questions', updated);
+    // 通知: 添削者が返信 → リーダーに通知 / リーダーが返信 → 質問者に通知
+    const question = updated.find(q => q.id === questionId);
+    if (question) {
+      if (userRole === 'corrector') {
+        // 添削者が返信 → リーダー全員に通知
+        const leaders = d('users').filter(u => u.role === 'leader');
+        const newNotifications = leaders.map(leader => ({
+          id: generateId(),
+          userId: leader.id,
+          message: `${userName}が質問に返信しました: [${question.subject}${question.workType ? ' · ' + question.workType : ''}]`,
+          type: 'question_reply',
+          relatedId: question.id,
+          read: false,
+          createdAt: new Date().toISOString(),
+        }));
+        updateCollection('notifications', [...d('notifications'), ...newNotifications]);
+      } else if (userRole === 'leader') {
+        // リーダーが返信 → 質問者に通知
+        const notif = {
+          id: generateId(),
+          userId: question.fromUserId,
+          message: `${userName}が質問に返信しました: [${question.subject}${question.workType ? ' · ' + question.workType : ''}]`,
+          type: 'question_reply',
+          relatedId: question.id,
+          read: false,
+          createdAt: new Date().toISOString(),
+        };
+        updateCollection('notifications', [...d('notifications'), notif]);
+      }
+    }
+    forceRefresh();
+  };
+
+  const resolveQuestion = (questionId) => {
+    const questions = d('questions') || [];
+    const updated = questions.map(q => q.id === questionId ? {
+      ...q,
+      status: 'resolved',
+      resolvedAt: new Date().toISOString(),
+    } : q);
+    updateCollection('questions', updated);
+    forceRefresh();
   };
 
   const answerQuestion = (id, answer, answeredBy) => {
@@ -1429,7 +1492,7 @@ export const DataProvider = ({ children }) => {
       getFeedbacks, addFeedback,
       getReviewMemos, addReviewMemo, deleteReviewMemo,
       getNotifications, markNotificationRead, markAllNotificationsRead,
-      getQuestions, addQuestion, answerQuestion, getQuestionSettings, updateQuestionSetting,
+      getQuestions, addQuestion, addQuestionReply, resolveQuestion, answerQuestion, getQuestionSettings, updateQuestionSetting,
       startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
       getExternalWorkSettings, isExternalWork, addExternalWorkSetting, removeExternalWorkSetting,
     }}>

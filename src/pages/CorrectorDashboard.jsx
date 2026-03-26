@@ -1155,7 +1155,7 @@ export default function CorrectorDashboard() {
     getExamInputs, saveExamInput,
     getRecruitments, getApplications, addApplication, claimVikingTask,
     getUserFields, getFields,
-    getQuestions, addQuestion, getQuestionSettings,
+    getQuestions, addQuestion, addQuestionReply, resolveQuestion, getQuestionSettings,
     startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
     getRejections, getRejectionCategories, getRejectionSeverities,
     getVerificationItems,
@@ -1173,6 +1173,9 @@ export default function CorrectorDashboard() {
   // 質問機能
   const [questionForm, setQuestionForm] = useState({ subject: '', workType: '', message: '' });
   const [questionSubmitting, setQuestionSubmitting] = useState(false);
+  const [expandedQuestions, setExpandedQuestions] = useState({});
+  const [replyTexts, setReplyTexts] = useState({});
+  const [questionFilter, setQuestionFilter] = useState('open');
 
   // パスワード変更モーダル
   const [showPwModal, setShowPwModal] = useState(false);
@@ -2638,7 +2641,6 @@ export default function CorrectorDashboard() {
               if (!task) return;
               const key = `${task.subject || ''}__${task.workType || ''}`;
               if (!activeSubjectWorkTypes.find(x => x.key === key)) {
-                // questionSettingsで有効かチェック（設定がない場合はデフォルト有効）
                 const setting = qSettings.find(s => s.subject === task.subject && s.workType === (task.workType || null));
                 const enabled = setting ? setting.enabled : true;
                 if (enabled) {
@@ -2646,7 +2648,15 @@ export default function CorrectorDashboard() {
                 }
               }
             });
-            const myQuestions = getQuestions({ fromUserId: user.id });
+            const allMyQuestions = getQuestions({ fromUserId: user.id });
+            const myQuestions = allMyQuestions.filter(q => {
+              const status = q.status || (q.answer ? 'resolved' : 'open');
+              if (questionFilter === 'open') return status === 'open';
+              if (questionFilter === 'resolved') return status === 'resolved';
+              return true;
+            });
+            const openCount = allMyQuestions.filter(q => (q.status || (q.answer ? 'resolved' : 'open')) === 'open').length;
+            const resolvedCount = allMyQuestions.filter(q => (q.status || (q.answer ? 'resolved' : 'open')) === 'resolved').length;
 
             const handleQuestionSubmit = (e) => {
               e.preventDefault();
@@ -2661,6 +2671,26 @@ export default function CorrectorDashboard() {
               });
               setQuestionForm({ subject: '', workType: '', message: '' });
               setQuestionSubmitting(false);
+            };
+
+            const toggleExpand = (qId) => {
+              setExpandedQuestions(prev => ({ ...prev, [qId]: !prev[qId] }));
+            };
+
+            const handleReply = (qId) => {
+              const text = replyTexts[qId];
+              if (!text?.trim()) return;
+              addQuestionReply(qId, {
+                userId: user.id,
+                userRole: 'corrector',
+                userName: user.name,
+                message: text.trim(),
+              });
+              setReplyTexts(prev => ({ ...prev, [qId]: '' }));
+            };
+
+            const handleResolve = (qId) => {
+              resolveQuestion(qId);
             };
 
             return (
@@ -2707,29 +2737,129 @@ export default function CorrectorDashboard() {
                   </form>
                 )}
 
-                {/* 過去の質問一覧 */}
-                {myQuestions.length > 0 && (
+                {/* フィルタータブ */}
+                {allMyQuestions.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">過去の質問</h3>
-                    <div className="space-y-2">
-                      {myQuestions.map(q => (
-                        <div key={q.id} className={`p-3 rounded-lg border ${q.answer ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-medium text-gray-600">{q.subject}{q.workType ? ` · ${q.workType}` : ''}</span>
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${q.answer ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
-                              {q.answer ? '回答済' : '未回答'}
-                            </span>
-                            <span className="text-xs text-gray-400 ml-auto">{new Date(q.createdAt).toLocaleString('ja-JP')}</span>
-                          </div>
-                          <p className="text-sm text-gray-800">{q.message}</p>
-                          {q.answer && (
-                            <div className="mt-2 pt-2 border-t border-green-200">
-                              <p className="text-xs font-medium text-green-700 mb-0.5">回答（{new Date(q.answeredAt).toLocaleString('ja-JP')}）</p>
-                              <p className="text-sm text-gray-800">{q.answer}</p>
-                            </div>
+                    <div className="flex gap-1 mb-3 border-b border-gray-200">
+                      {[
+                        { key: 'open', label: '未解決', count: openCount },
+                        { key: 'resolved', label: '解決済み', count: resolvedCount },
+                        { key: 'all', label: 'すべて', count: allMyQuestions.length },
+                      ].map(f => (
+                        <button
+                          key={f.key}
+                          onClick={() => setQuestionFilter(f.key)}
+                          className={`px-3 py-2 text-sm font-medium border-b-2 transition ${
+                            questionFilter === f.key
+                              ? 'border-blue-500 text-blue-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          {f.label}
+                          {f.count > 0 && (
+                            <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${
+                              questionFilter === f.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                            }`}>{f.count}</span>
                           )}
-                        </div>
+                        </button>
                       ))}
+                    </div>
+
+                    {/* 質問スレッド一覧 */}
+                    <div className="space-y-2">
+                      {myQuestions.length === 0 ? (
+                        <p className="text-gray-400 text-sm text-center py-4">該当する質問はありません</p>
+                      ) : myQuestions.map(q => {
+                        const qStatus = q.status || (q.answer ? 'resolved' : 'open');
+                        const isOpen = qStatus === 'open';
+                        const isExpanded = expandedQuestions[q.id];
+                        const replies = q.replies || [];
+                        // Include legacy answer as a reply if present
+                        const allReplies = q.answer && replies.length === 0
+                          ? [{ id: 'legacy', userId: q.answeredBy, userRole: 'leader', userName: 'リーダー', message: q.answer, createdAt: q.answeredAt }]
+                          : replies;
+
+                        return (
+                          <div key={q.id} className={`rounded-lg border ${isOpen ? 'border-yellow-200' : 'border-green-200'}`}>
+                            {/* Header - clickable */}
+                            <button
+                              onClick={() => toggleExpand(q.id)}
+                              className={`w-full p-3 text-left ${isOpen ? 'bg-yellow-50' : 'bg-green-50'} rounded-t-lg ${isExpanded ? '' : 'rounded-b-lg'}`}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-medium text-gray-600">{q.subject}{q.workType ? ` · ${q.workType}` : ''}</span>
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${isOpen ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}`}>
+                                  {isOpen ? '未解決' : '解決済み'}
+                                </span>
+                                {allReplies.length > 0 && (
+                                  <span className="text-xs text-gray-400">返信 {allReplies.length}件</span>
+                                )}
+                                <span className="text-xs text-gray-400 ml-auto">{new Date(q.createdAt).toLocaleString('ja-JP')}</span>
+                                <span className="text-gray-400 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                              </div>
+                              <p className="text-sm text-gray-800 line-clamp-2">{q.message}</p>
+                            </button>
+
+                            {/* Expanded thread */}
+                            {isExpanded && (
+                              <div className="border-t border-gray-200 p-3 bg-white rounded-b-lg space-y-3">
+                                {/* Original message */}
+                                <div className="p-2 bg-gray-50 rounded-lg">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-xs font-medium text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">自分</span>
+                                    <span className="text-xs text-gray-400">{new Date(q.createdAt).toLocaleString('ja-JP')}</span>
+                                  </div>
+                                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{q.message}</p>
+                                </div>
+
+                                {/* Replies */}
+                                {allReplies.map(r => (
+                                  <div key={r.id} className={`p-2 rounded-lg ${r.userRole === 'leader' ? 'bg-blue-50 ml-4' : 'bg-gray-50'}`}>
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                                        r.userRole === 'leader' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                                      }`}>
+                                        {r.userRole === 'leader' ? 'リーダー' : '自分'}
+                                      </span>
+                                      <span className="text-xs text-gray-600">{r.userName}</span>
+                                      <span className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleString('ja-JP')}</span>
+                                    </div>
+                                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{r.message}</p>
+                                  </div>
+                                ))}
+
+                                {/* Reply input + resolve button (only for open questions) */}
+                                {isOpen && (
+                                  <div className="pt-2 border-t border-gray-100 space-y-2">
+                                    <div className="flex gap-2">
+                                      <textarea
+                                        value={replyTexts[q.id] || ''}
+                                        onChange={e => setReplyTexts(prev => ({ ...prev, [q.id]: e.target.value }))}
+                                        placeholder="返信を入力..."
+                                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 outline-none resize-none"
+                                        rows={2}
+                                      />
+                                      <button
+                                        onClick={() => handleReply(q.id)}
+                                        disabled={!replyTexts[q.id]?.trim()}
+                                        className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed self-end"
+                                      >
+                                        送信
+                                      </button>
+                                    </div>
+                                    <button
+                                      onClick={() => handleResolve(q.id)}
+                                      className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition"
+                                    >
+                                      解決しました
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
