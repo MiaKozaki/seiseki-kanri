@@ -503,7 +503,7 @@ export const EXAM_TASK_CSV_COLUMNS = [
  */
 export const validateFieldMasterCSV = (rows, context) => {
   const { subjects } = context;
-  const validSubjects = subjects || ['理科', '算数'];
+  const validSubjects = subjects || ['小学理科', '小学算数'];
   const validCategories = ['化学', '物理', '生物', '地学'];
   const valid = [];
   const errors = [];
@@ -525,7 +525,7 @@ export const validateFieldMasterCSV = (rows, context) => {
     }
 
     const category = (row['カテゴリ'] || '').trim() || null;
-    if (category && subject === '理科' && !validCategories.includes(category)) {
+    if (category && subject === '小学理科' && !validCategories.includes(category)) {
       rowErrors.push(`カテゴリ「${category}」は無効です（${validCategories.join('/')}）`);
     }
 
@@ -535,7 +535,7 @@ export const validateFieldMasterCSV = (rows, context) => {
       valid.push({
         name,
         subject,
-        category: subject === '理科' ? category : null,
+        category: subject === '小学理科' ? category : null,
         _line: lineNum,
       });
     }
@@ -562,7 +562,7 @@ export const FIELD_MASTER_CSV_COLUMNS = [
 export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
   const valid = [];
   const errors = [];
-  const validSubjects = ['理科', '算数'];
+  const validSubjects = ['小学理科', '小学算数'];
 
   rows.forEach((row, i) => {
     const lineNum = i + 2;

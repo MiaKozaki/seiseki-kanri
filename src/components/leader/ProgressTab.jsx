@@ -942,7 +942,7 @@ const ProgressTab = ({ activeSubjects }) => {
                             )}
 
                             {/* Reject - 社会・国語は差し戻しの代わりにFBを使うため非表示 */}
-                            {task.subject !== '社会' && task.subject !== '国語' && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
+                            {task.subject !== '小学社会' && task.subject !== '小学国語' && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
                               <button
                                 onClick={() => {
                                   setReviewingId(reviewingId === assignment.id ? null : assignment.id);
@@ -956,7 +956,7 @@ const ProgressTab = ({ activeSubjects }) => {
                             )}
 
                             {/* 社会・国語用: FB送信ボタン（差し戻しの代わり） */}
-                            {(task.subject === '社会' || task.subject === '国語') && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
+                            {(task.subject === '小学社会' || task.subject === '小学国語') && assignment.status !== 'approved' && (assignment.status === 'submitted' || assignment.verificationStatus === 'reviewing') && (
                               <button
                                 onClick={() => setFeedbackAssignmentId(feedbackAssignmentId === assignment.id ? null : assignment.id)}
                                 className="px-4 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition text-sm font-medium"
@@ -1290,7 +1290,7 @@ const ProgressTab = ({ activeSubjects }) => {
                           )}
 
                           {/* FB（フィードバック）パネル - 社会・国語（submitted, reviewing, approved 全ステータスで表示） */}
-                          {(task.subject === '社会' || task.subject === '国語') && (assignment.status === 'submitted' || assignment.status === 'approved' || assignment.verificationStatus === 'reviewing') && (
+                          {(task.subject === '小学社会' || task.subject === '小学国語') && (assignment.status === 'submitted' || assignment.status === 'approved' || assignment.verificationStatus === 'reviewing') && (
                             <div className="mt-2">
                               {feedbackAssignmentId === assignment.id ? (
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
@@ -1309,7 +1309,7 @@ const ProgressTab = ({ activeSubjects }) => {
                                   </div>
 
                                   {/* FB内容チェックリスト（社会のみ） */}
-                                  {task.subject === '社会' && (
+                                  {task.subject === '小学社会' && (
                                   <div>
                                     <p className="text-[10px] text-gray-500 mb-1">FB内容チェックリスト（複数選択可）</p>
                                     <div className="space-y-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg p-2">
@@ -1330,7 +1330,7 @@ const ProgressTab = ({ activeSubjects }) => {
 
                                   {/* 具体的な内容・指摘箇所 */}
                                   <div>
-                                    <p className="text-[10px] text-gray-500 mb-0.5">{task.subject === '国語' ? 'FB内容（自由記述）' : '具体的な内容・指摘箇所（自由記述）'}</p>
+                                    <p className="text-[10px] text-gray-500 mb-0.5">{task.subject === '小学国語' ? 'FB内容（自由記述）' : '具体的な内容・指摘箇所（自由記述）'}</p>
                                     <textarea
                                       value={feedbackDetail}
                                       onChange={e => setFeedbackDetail(e.target.value)}
@@ -1346,7 +1346,7 @@ const ProgressTab = ({ activeSubjects }) => {
                                     <button onClick={() => {
                                       const checkedItems = FB_CATEGORIES.filter(cat => feedbackChecks[cat.id]);
                                       let messageParts = [];
-                                      if (task.subject === '社会') {
+                                      if (task.subject === '小学社会') {
                                         if (checkedItems.length === 0) return;
                                         messageParts.push('【FB内容】');
                                         checkedItems.forEach(cat => messageParts.push('・' + cat.label));
@@ -1374,7 +1374,7 @@ const ProgressTab = ({ activeSubjects }) => {
                                       setMessage('FBを送信しました');
                                       setTimeout(() => setMessage(''), 3000);
                                     }}
-                                      disabled={task.subject === '社会' ? FB_CATEGORIES.filter(cat => feedbackChecks[cat.id]).length === 0 : !feedbackDetail.trim()}
+                                      disabled={task.subject === '小学社会' ? FB_CATEGORIES.filter(cat => feedbackChecks[cat.id]).length === 0 : !feedbackDetail.trim()}
                                       className="text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg transition">
                                       送信
                                     </button>

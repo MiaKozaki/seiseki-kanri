@@ -119,21 +119,21 @@ const applyRikaStyles = (ws, headers) => {
  */
 export const downloadExamExcel = (examInput) => {
   const { 年度, 学校名, 回数, 科目, 試験時間, 大問リスト = [] } = examInput;
-  const isRika = 科目 === '理科';
+  const isRika = 科目 === '小学理科';
 
   // ===== 科目別の構成シートヘッダー・行データ =====
   let koseiHeader, koseiRowFn;
 
-  if (科目 === '算数') {
+  if (科目 === '小学算数') {
     koseiHeader = ['年度', '学校名', '回数', '科目', '大問', '大問ごとの満点', '試験時間'];
     koseiRowFn = (d) => [年度 ?? '', 学校名 ?? '', 回数 ?? '', 科目, d.大問番号 ?? '', d.満点 ?? '', 試験時間 ?? ''];
-  } else if (科目 === '国語') {
+  } else if (科目 === '小学国語') {
     koseiHeader = ['年度', '学校名', '回数', '科目', '大問', '大問ごとの満点', '文種', '出典', '著者'];
     koseiRowFn = (d) => [年度 ?? '', 学校名 ?? '', 回数 ?? '', 科目, d.大問番号 ?? '', d.満点 ?? '', d.文種 ?? '', d.出典 ?? '', d.著者 ?? ''];
-  } else if (科目 === '社会') {
+  } else if (科目 === '小学社会') {
     koseiHeader = ['年度', '学校名', '回数', '科目', '大問', '大問ごとの満点'];
     koseiRowFn = (d) => [年度 ?? '', 学校名 ?? '', 回数 ?? '', 科目, d.大問番号 ?? '', d.満点 ?? ''];
-  } else if (科目 === '理科') {
+  } else if (科目 === '小学理科') {
     koseiHeader = ['年度', '学校名', '回数', '科目', '大問', '大問ごとの満点', 'テーマ', '試験時間'];
     koseiRowFn = (d) => [年度 ?? '', 学校名 ?? '', 回数 ?? '', 科目, d.大問番号 ?? '', d.満点 ?? '', d.テーマ ?? '', 試験時間 ?? ''];
   } else {
@@ -145,14 +145,14 @@ export const downloadExamExcel = (examInput) => {
   // ===== 科目別の内容シート =====
   let naiyouHeader, naiyouRowFn;
 
-  if (科目 === '算数') {
+  if (科目 === '小学算数') {
     naiyouHeader = ['大問名', '小問名', '枝問', '模範解答', '配点', '解答_画像', '解説', '解説_画像', '完答・順不同・別解'];
     naiyouRowFn = (daimon, mon, eda) => {
       const flags = [eda.完答 && '完答', eda.順不同 && '順不同', eda.別解].filter(Boolean).join('・');
       return [daimon.大問番号 ?? '', mon.小問名 ?? '', eda.枝問名 ?? '', eda.模範解答 ?? '', eda.配点 ?? '',
         eda.解答画像 ?? '', eda.解説 ?? '', eda.解説画像 ?? '', flags];
     };
-  } else if (科目 === '国語') {
+  } else if (科目 === '小学国語') {
     let maxKijun = 0, maxFuki = 0;
     for (const d of 大問リスト) {
       for (const m of (d.問リスト ?? [])) {
@@ -179,14 +179,14 @@ export const downloadExamExcel = (examInput) => {
       }
       return row;
     };
-  } else if (科目 === '社会') {
+  } else if (科目 === '小学社会') {
     naiyouHeader = ['大問名', '小問名', '枝問', '模範解答', '配点', '完答・順不同', '条件指定', '別解', '不可解答', '解説'];
     naiyouRowFn = (daimon, mon, eda) => {
       const flags = [eda.完答 && '完答', eda.順不同 && '順不同'].filter(Boolean).join('・');
       return [daimon.大問番号 ?? '', mon.小問名 ?? '', eda.枝問名 ?? '', eda.模範解答 ?? '', eda.配点 ?? '',
         flags, eda.条件指定 ?? '', eda.別解 ?? '', eda.不可解答 ?? '', eda.解説 ?? ''];
     };
-  } else if (科目 === '理科') {
+  } else if (科目 === '小学理科') {
     naiyouHeader = ['大問名', '小問名', '枝問', '模範解答', '配点', '完答・順不同', '条件指定・要素', '採点基準', '解説'];
     naiyouRowFn = (daimon, mon, eda) => {
       const flags = [eda.完答 && '完答', eda.順不同 && '順不同'].filter(Boolean).join('・');

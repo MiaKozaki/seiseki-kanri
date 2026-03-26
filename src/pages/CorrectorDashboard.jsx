@@ -195,10 +195,10 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
     };
   });
 
-  const isKokugo = form.科目 === '国語';
-  const isSansu = form.科目 === '算数';
-  const isRika = form.科目 === '理科';
-  const isShakai = form.科目 === '社会';
+  const isKokugo = form.科目 === '小学国語';
+  const isSansu = form.科目 === '小学算数';
+  const isRika = form.科目 === '小学理科';
+  const isShakai = form.科目 === '小学社会';
 
   // ---- 構成ヘルパー ----
   const setBase = (field, value) => setForm(f => ({ ...f, [field]: value }));
@@ -340,7 +340,7 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
     });
 
     // ===== 算数: 1桁全角 / 2桁以上半角チェック =====
-    if (task.subject === '算数') {
+    if (task.subject === '小学算数') {
       const toFull = (s) => s.replace(/[0-9]/g, c => String.fromCharCode(c.charCodeAt(0) + 0xFEE0));
       const toHalf = (s) => s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
 
@@ -1131,7 +1131,7 @@ export default function CorrectorDashboard() {
         });
 
         // 算数の全角/半角チェック
-        if (task.subject === '算数') {
+        if (task.subject === '小学算数') {
           const checkText = (text, location) => {
             if (!text || typeof text !== 'string') return;
             if (text.match(/(?<![0-9０-９])[0-9](?![0-9０-９])/)) {
@@ -1574,7 +1574,7 @@ export default function CorrectorDashboard() {
                 const myUserFields = getUserFields ? getUserFields(user.id) : [];
                 const myFieldIds = myUserFields.map(uf => uf.fieldId);
                 const vikingTasks = tasks.filter(t => t.viking && t.status === 'pending' && (
-                  user.subjects?.includes(t.subject) || (t.macroTask && user.subjects?.includes('マクロ'))
+                  user.subjects?.includes(t.subject) || (t.macroTask && false)
                 ) && (!t.fieldId || myFieldIds.includes(t.fieldId)));
                 if (vikingTasks.length === 0) return null;
                 return (

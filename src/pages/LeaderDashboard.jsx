@@ -8,6 +8,7 @@ import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
 import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, validateDaimonTaskCSV, validateNewYearTaskCSV, validateCsvImportTaskCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, DAIMON_TASK_CSV_COLUMNS, NEW_YEAR_TASK_CSV_COLUMNS, CSV_IMPORT_TASK_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
 import { SUBJECTS_LIST, WORK_TYPES_LIST, generateId } from '../utils/storage.js';
+import { SCHOOL_SUGGESTIONS } from '../utils/schoolList.js';
 import { predictAllTasks, predictAllSubjects } from '../utils/prediction.js';
 import { downloadAttachment, saveAttachment, deleteAttachment, saveTaskAttachment, getTaskAttachments, deleteTaskAttachments, validateTaskFile } from '../utils/fileStorage.js';
 import { downloadHistoryExcel } from '../utils/excelExport.js';
@@ -1052,6 +1053,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const [error, setError] = useState('');
   const [taskFiles, setTaskFiles] = useState([]);
   const [taskFileError, setTaskFileError] = useState('');
+  const [schoolSuggestions, setSchoolSuggestions] = useState([]);
+  const [showSchoolSuggestions, setShowSchoolSuggestions] = useState(false);
 
   // Task list state
   const [sortKey, setSortKey] = useState('deadline');
@@ -1137,6 +1140,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (form.schoolName && !SCHOOL_SUGGESTIONS.includes(form.schoolName)) { setError('学校名はリストから選択してください'); return; }
     if (!form.subject) { setError('科目を選択してください'); return; }
     if (!form.workType) { setError('作業内容を選択してください'); return; }
 
@@ -1186,7 +1190,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
           workType: form.workType,
           requiredHours: Number(daimon.requiredHours) || 0,
           deadline: form.deadline,
-          viking: form.subject === '理科',
+          viking: form.subject === '小学理科',
           fieldId: daimon.fieldId || null,
           parentTaskGroup,
         });
@@ -1383,8 +1387,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadTaskTemplate = () => {
     const templateData = [
-      { schoolName: '開成中学', subject: '算数', year: '2026', round: '第1回', workType: '新年度試験種', requiredHours: 5, deadline: '2026-04-01' },
-      { schoolName: '麻布中学', subject: '理科', year: '2026', round: '第1回', workType: 'タグ付け', requiredHours: 3, deadline: '2026-04-15' },
+      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '第1回', workType: '新年度試験種', requiredHours: 5, deadline: '2026-04-01' },
+      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '第1回', workType: 'タグ付け', requiredHours: 3, deadline: '2026-04-15' },
     ];
     const csv = toCSV(templateData, EXAM_TASK_CSV_COLUMNS);
     downloadCSV(csv, '試験種一括登録テンプレート.csv');
@@ -1453,7 +1457,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
           requiredHours: row.hours,
           deadline: row.deadline,
           sheetsUrl: '',
-          viking: row.subject === '理科',
+          viking: row.subject === '小学理科',
           fieldId: row.fieldId,
           parentTaskGroup: group.parentTaskGroup,
         });
@@ -1470,10 +1474,10 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadDaimonTemplate = () => {
     const templateData = [
-      { schoolName: '開成中学', subject: '算数', year: '2026', round: '第1回', daimonName: '大問1', fieldName: '旅人算', hours: 2, deadline: '2026-04-01' },
-      { schoolName: '開成中学', subject: '算数', year: '2026', round: '第1回', daimonName: '大問2', fieldName: '食塩水', hours: 1.5, deadline: '2026-04-01' },
-      { schoolName: '麻布中学', subject: '理科', year: '2026', round: '第1回', daimonName: '大問1', fieldName: '中和', hours: 3, deadline: '2026-04-15' },
-      { schoolName: '麻布中学', subject: '理科', year: '2026', round: '第1回', daimonName: '大問2', fieldName: 'てこ', hours: 2, deadline: '2026-04-15' },
+      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '第1回', daimonName: '大問1', fieldName: '旅人算', hours: 2, deadline: '2026-04-01' },
+      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '第1回', daimonName: '大問2', fieldName: '食塩水', hours: 1.5, deadline: '2026-04-01' },
+      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '第1回', daimonName: '大問1', fieldName: '中和', hours: 3, deadline: '2026-04-15' },
+      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '第1回', daimonName: '大問2', fieldName: 'てこ', hours: 2, deadline: '2026-04-15' },
     ];
     const csv = toCSV(templateData, DAIMON_TASK_CSV_COLUMNS);
     downloadCSV(csv, '大問分割タスク一括登録テンプレート.csv');
@@ -1547,7 +1551,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
           workType: '新年度試験種',
           requiredHours: row.requiredHours,
           deadline: row.deadline || '',
-          viking: row.subject === '理科',
+          viking: row.subject === '小学理科',
           sheetsUrl: '',
           fieldId: null,
           year: row.year,
@@ -1590,8 +1594,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadShinnendoTemplate = () => {
     const templateData = [
-      { schoolName: '開成中学', subject: '理科', year: '2026', round: '第1回', requiredHours: 3, deadline: '2026-04-01' },
-      { schoolName: '開成中学', subject: '算数', year: '2026', round: '第1回', requiredHours: 2, deadline: '2026-04-01' },
+      { schoolName: '開成中学', subject: '小学理科', year: '2026', round: '第1回', requiredHours: 3, deadline: '2026-04-01' },
+      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '第1回', requiredHours: 2, deadline: '2026-04-01' },
     ];
     const csv = toCSV(templateData, NEW_YEAR_TASK_CSV_COLUMNS);
     downloadCSV(csv, '新年度試験種一括登録テンプレート.csv');
@@ -1710,8 +1714,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadCsvImportTemplate = () => {
     const templateData = [
-      { schoolName: schools[0]?.name || '開成中学', subject: '理科', year: '2026', round: '第1回', workType: workTypesList[0] || '新年度試験種', requiredHours: 3, deadline: '2026-04-01', viking: 'true' },
-      { schoolName: schools[0]?.name || '開成中学', subject: '算数', year: '2026', round: '第2回', workType: workTypesList[0] || '新年度試験種', requiredHours: 2, deadline: '2026-04-01', viking: 'false' },
+      { schoolName: schools[0]?.name || '開成中学', subject: '小学理科', year: '2026', round: '第1回', workType: workTypesList[0] || '新年度試験種', requiredHours: 3, deadline: '2026-04-01', viking: 'true' },
+      { schoolName: schools[0]?.name || '開成中学', subject: '小学算数', year: '2026', round: '第2回', workType: workTypesList[0] || '新年度試験種', requiredHours: 2, deadline: '2026-04-01', viking: 'false' },
     ];
     const csv = toCSV(templateData, CSV_IMPORT_TASK_COLUMNS);
     downloadCSV(csv, 'CSV一括登録テンプレート.csv');
@@ -1803,17 +1807,63 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
         <div className="bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">{editId ? '試験種を編集' : '新しい試験種を追加'}</h3>
           <form onSubmit={handleSubmit} className="space-y-3">
-            {/* 学校名・科目・年度・回数 */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
+            {/* 学校名・科目・年度・回数・作業内容 */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="relative">
                 <label className="block text-xs font-medium text-gray-600 mb-1">学校名</label>
                 <input
                   type="text"
                   value={form.schoolName}
-                  onChange={e => setForm({ ...form, schoolName: e.target.value })}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setForm({ ...form, schoolName: val });
+                    if (val.length >= 1) {
+                      const filtered = SCHOOL_SUGGESTIONS.filter(s => s.toLowerCase().includes(val.toLowerCase()));
+                      setSchoolSuggestions(filtered.slice(0, 20));
+                      setShowSchoolSuggestions(filtered.length > 0);
+                    } else {
+                      setSchoolSuggestions([]);
+                      setShowSchoolSuggestions(false);
+                    }
+                  }}
+                  onFocus={() => {
+                    if (form.schoolName.length >= 1) {
+                      const filtered = SCHOOL_SUGGESTIONS.filter(s => s.toLowerCase().includes(form.schoolName.toLowerCase()));
+                      setSchoolSuggestions(filtered.slice(0, 20));
+                      setShowSchoolSuggestions(filtered.length > 0);
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      setShowSchoolSuggestions(false);
+                      if (form.schoolName && !SCHOOL_SUGGESTIONS.includes(form.schoolName)) {
+                        setError('学校名はリストから選択してください');
+                      } else {
+                        setError('');
+                      }
+                    }, 200);
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="例：開成中学"
+                  placeholder="学校名を入力..."
+                  autoComplete="off"
                 />
+                {showSchoolSuggestions && schoolSuggestions.length > 0 && (
+                  <ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {schoolSuggestions.map((s, i) => (
+                      <li
+                        key={i}
+                        className="px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer"
+                        onMouseDown={() => {
+                          setForm({ ...form, schoolName: s });
+                          setShowSchoolSuggestions(false);
+                          setError('');
+                        }}
+                      >
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">科目</label>
@@ -1829,6 +1879,30 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 </select>
               </div>
               <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">年度</label>
+                <select
+                  value={form.year}
+                  onChange={e => setForm({ ...form, year: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  {[2024, 2025, 2026, 2027, 2028].map(y => (
+                    <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">回数</label>
+                <select
+                  value={form.round}
+                  onChange={e => setForm({ ...form, round: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  {['第1回', '第2回', '第3回', '第4回', '第5回'].map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">作業内容</label>
                 <select
                   value={form.workType}
@@ -1840,26 +1914,6 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                     <option key={w} value={w}>{w}</option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">年度</label>
-                <input
-                  type="text"
-                  value={form.year}
-                  onChange={e => setForm({ ...form, year: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="例：2026"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">回数</label>
-                <input
-                  type="text"
-                  value={form.round}
-                  onChange={e => setForm({ ...form, round: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="例：第1回"
-                />
               </div>
             </div>
             {/* 自動生成されるタスク名プレビュー */}
@@ -1919,7 +1973,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
               </label>
             </div>
             )}
-            {(form.subject === '理科' || form.subject === '算数') && form.workType === '新年度試験種' && (
+            {(form.subject === '小学理科' || form.subject === '小学算数') && form.workType === '新年度試験種' && (
               <div className="border border-indigo-200 rounded-lg p-3 bg-indigo-50/50 space-y-3">
                 <div className="flex items-center gap-2">
                   <input
@@ -2287,7 +2341,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                                 <td className="px-2 py-1 border border-gray-200">{row.fieldName}</td>
                                 <td className="px-2 py-1 border border-gray-200 text-right">{row.hours}h</td>
                                 <td className="px-2 py-1 border border-gray-200">{row.deadline}</td>
-                                <td className="px-2 py-1 border border-gray-200 text-center">{row.subject === '理科' ? '✓' : '-'}</td>
+                                <td className="px-2 py-1 border border-gray-200 text-center">{row.subject === '小学理科' ? '✓' : '-'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -5131,7 +5185,7 @@ const UserManagementTab = ({ activeSubjects }) => {
   };
 
   // Subject badge colors
-  const subjectColor = { '国語': 'bg-rose-50 text-rose-700', '算数': 'bg-blue-50 text-blue-700', '理科': 'bg-green-50 text-green-700', '社会': 'bg-amber-50 text-amber-700' };
+  const subjectColor = { '小学国語': 'bg-rose-50 text-rose-700', '小学算数': 'bg-blue-50 text-blue-700', '小学理科': 'bg-green-50 text-green-700', '小学社会': 'bg-amber-50 text-amber-700' };
 
   const userSections = [
     { key: 'list', icon: '\u{1F465}', title: '\u4F5C\u696D\u8005\u4E00\u89A7', desc: '\u767B\u9332\u6E08\u307F\u4F5C\u696D\u8005\u306E\u78BA\u8A8D\u30FB\u7DE8\u96C6' },
@@ -5195,7 +5249,7 @@ const UserManagementTab = ({ activeSubjects }) => {
           {!editId && (
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-xs text-gray-500">担当科目:</span>
-              {SUBJECTS_LIST.filter(s => s !== 'マクロ').map(s => (
+              {SUBJECTS_LIST.map(s => (
                 <label key={s} className="flex items-center gap-1 text-sm cursor-pointer">
                   <input
                     type="checkbox"
@@ -5806,11 +5860,11 @@ const MasterDataTab = ({ activeSubjects }) => {
   const [editSevId, setEditSevId] = useState(null);
   const [viForm, setViForm] = useState({ name: '', description: '', subject: null, sortOrder: 1, isRequired: false, purpose: 'verification', workType: null });
   const [editViId, setEditViId] = useState(null);
-  const [fieldForm, setFieldForm] = useState({ name: '', subject: '理科', category: null, sortOrder: 1 });
+  const [fieldForm, setFieldForm] = useState({ name: '', subject: '小学理科', category: null, sortOrder: 1 });
   const [editFieldId, setEditFieldId] = useState(null);
   const [bulkFieldInput, setBulkFieldInput] = useState('');
   const [showBulkFieldForm, setShowBulkFieldForm] = useState(false);
-  const [bulkFieldSubject, setBulkFieldSubject] = useState('理科');
+  const [bulkFieldSubject, setBulkFieldSubject] = useState('小学理科');
   const [bulkFieldCategory, setBulkFieldCategory] = useState(null);
   const [bulkFieldResult, setBulkFieldResult] = useState(null);
   const [activeMasterSection, setActiveMasterSection] = useState(null);
@@ -5839,7 +5893,7 @@ const MasterDataTab = ({ activeSubjects }) => {
     }
     const { rows } = parseCSV(csvText);
     if (rows.length === 0) { setFieldCsvParsed({ valid: [], errors: [{ line: 0, message: 'データ行がありません', row: {} }] }); return; }
-    const result = validateFieldMasterCSV(rows, { subjects: ['理科', '算数'] });
+    const result = validateFieldMasterCSV(rows, { subjects: ['小学理科', '小学算数'] });
     setFieldCsvParsed(result);
   };
 
@@ -5870,8 +5924,8 @@ const MasterDataTab = ({ activeSubjects }) => {
 
   const handleDownloadFieldTemplate = () => {
     const templateData = [
-      { name: '中和', subject: '理科', category: '化学' },
-      { name: '割合の線分図', subject: '算数', category: '' },
+      { name: '中和', subject: '小学理科', category: '化学' },
+      { name: '割合の線分図', subject: '小学算数', category: '' },
     ];
     const csv = toCSV(templateData, FIELD_MASTER_CSV_COLUMNS);
     downloadCSV(csv, '分野一括登録テンプレート.csv');
@@ -6086,12 +6140,12 @@ const MasterDataTab = ({ activeSubjects }) => {
         <p className="text-xs text-gray-500 mb-3">理科・算数の分野を管理します。VIKINGタスクの分野制限に使用します。</p>
         <div className="flex flex-wrap gap-2 mb-3">
           <select value={fieldForm.subject}
-            onChange={e => setFieldForm({ ...fieldForm, subject: e.target.value, category: e.target.value === '理科' ? fieldForm.category : null })}
+            onChange={e => setFieldForm({ ...fieldForm, subject: e.target.value, category: e.target.value === '小学理科' ? fieldForm.category : null })}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            <option value="理科">理科</option>
-            <option value="算数">算数</option>
+            <option value="小学理科">小学理科</option>
+            <option value="小学算数">小学算数</option>
           </select>
-          {fieldForm.subject === '理科' && (
+          {fieldForm.subject === '小学理科' && (
             <select value={fieldForm.category || ''}
               onChange={e => setFieldForm({ ...fieldForm, category: e.target.value || null })}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
@@ -6116,13 +6170,13 @@ const MasterDataTab = ({ activeSubjects }) => {
             } else {
               addField(fieldForm);
             }
-            setFieldForm({ name: '', subject: fieldForm.subject, category: fieldForm.subject === '理科' ? fieldForm.category : null, sortOrder: 1 });
+            setFieldForm({ name: '', subject: fieldForm.subject, category: fieldForm.subject === '小学理科' ? fieldForm.category : null, sortOrder: 1 });
           }}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
             {editFieldId ? '更新' : '追加'}
           </button>
           {editFieldId && (
-            <button onClick={() => { setEditFieldId(null); setFieldForm({ name: '', subject: '理科', category: null, sortOrder: 1 }); }}
+            <button onClick={() => { setEditFieldId(null); setFieldForm({ name: '', subject: '小学理科', category: null, sortOrder: 1 }); }}
               className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
           )}
           <button onClick={() => { setShowBulkFieldForm(!showBulkFieldForm); setBulkFieldResult(null); }}
@@ -6140,12 +6194,12 @@ const MasterDataTab = ({ activeSubjects }) => {
             <h5 className="text-sm font-semibold text-orange-700 mb-2">一括登録</h5>
             <div className="flex flex-wrap gap-2 mb-2">
               <select value={bulkFieldSubject}
-                onChange={e => { setBulkFieldSubject(e.target.value); if (e.target.value !== '理科') setBulkFieldCategory(null); }}
+                onChange={e => { setBulkFieldSubject(e.target.value); if (e.target.value !== '小学理科') setBulkFieldCategory(null); }}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                <option value="理科">理科</option>
-                <option value="算数">算数</option>
+                <option value="小学理科">小学理科</option>
+                <option value="小学算数">小学算数</option>
               </select>
-              {bulkFieldSubject === '理科' && (
+              {bulkFieldSubject === '小学理科' && (
                 <select value={bulkFieldCategory || ''}
                   onChange={e => setBulkFieldCategory(e.target.value || null)}
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
@@ -6172,7 +6226,7 @@ const MasterDataTab = ({ activeSubjects }) => {
                 const maxOrder = existingFields.length > 0 ? Math.max(...existingFields.map(f => f.sortOrder || 0)) : 0;
                 let count = 0;
                 lines.forEach((name, idx) => {
-                  addField({ name, subject: bulkFieldSubject, category: bulkFieldSubject === '理科' ? bulkFieldCategory : null, sortOrder: maxOrder + idx + 1 });
+                  addField({ name, subject: bulkFieldSubject, category: bulkFieldSubject === '小学理科' ? bulkFieldCategory : null, sortOrder: maxOrder + idx + 1 });
                   count++;
                 });
                 setBulkFieldResult(count);
@@ -6296,16 +6350,16 @@ const MasterDataTab = ({ activeSubjects }) => {
             return <p className="text-xs text-gray-400">分野が登録されていません</p>;
           }
 
-          return ['理科', '算数'].map(subject => {
+          return ['小学理科', '小学算数'].map(subject => {
             const subjectFields = allFields.filter(f => f.subject === subject);
             if (subjectFields.length === 0) return null;
 
             return (
               <div key={subject} className="mb-4">
-                <div className={`inline-block text-xs font-semibold px-3 py-1 rounded-full border mb-2 ${subject === '理科' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                <div className={`inline-block text-xs font-semibold px-3 py-1 rounded-full border mb-2 ${subject === '小学理科' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
                   {subject}（{subjectFields.length}件）
                 </div>
-                {subject === '理科' ? (
+                {subject === '小学理科' ? (
                   (() => {
                     const categoryGroups = {};
                     subjectFields.forEach(item => {

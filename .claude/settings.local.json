@@ -111,7 +111,19 @@
       "Read(//tmp/**)",
       "Bash(npx -y acorn --ecma2020 --module --jsx src/pages/CorrectorDashboard.jsx)",
       "Bash(ls /Users/mia/.nvm/versions/node/*/bin/node)",
-      "Bash(node ./node_modules/.bin/vite build)"
+      "Bash(node ./node_modules/.bin/vite build)",
+      "Bash(grep -c \"''国語''\" /Users/mia/Desktop/seiseki-kanri/src/utils/storage.js)",
+      "Bash(grep -c \"''算数''\" /Users/mia/Desktop/seiseki-kanri/src/utils/storage.js)",
+      "Bash(grep -c \"''理科''\" /Users/mia/Desktop/seiseki-kanri/src/utils/storage.js)",
+      "Bash(grep -c \"''社会''\" /Users/mia/Desktop/seiseki-kanri/src/utils/storage.js)",
+      "Bash(export PATH=\"$HOME/.nvm/versions/node/*/bin:$PATH\")",
+      "Bash(ls /Users/mia/.nvm/versions/node/*/bin/npx)",
+      "Bash(find / -name node -type f 2)",
+      "Bash(/dev/null -maxdepth 6)",
+      "Bash(ls ~/.fnm/node-versions/*/installation/bin/node)",
+      "Bash(ls ~/.nodenv/versions/*/bin/node)",
+      "Bash(mdfind -name node -onlyin /Users/mia/Library)",
+      "Bash(grep -E \"bin/node$\")"
     ]
   }
 }
