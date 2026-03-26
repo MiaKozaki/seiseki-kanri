@@ -4570,8 +4570,12 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                         <th className="py-1.5 px-2">氏名</th>
                         <th className="py-1.5 px-2">分類</th>
                         <th className="py-1.5 px-2 text-right">評価平均</th>
+                        <th className="py-1.5 px-2 text-right">差し戻し率</th>
+                        <th className="py-1.5 px-2 text-right">差し戻し数</th>
+                        <th className="py-1.5 px-2 text-right">重大度</th>
+                        <th className="py-1.5 px-2 text-right">平均作業時間</th>
+                        <th className="py-1.5 px-2 text-right">完了数</th>
                         <th className="py-1.5 px-2 text-right">期限遵守率</th>
-                        <th className="py-1.5 px-2 text-right">完了タスク数</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4585,17 +4589,23 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                             }, 0) / criteria.length * 100
                           : 0;
                         const isSelected = c.id === selectedUser;
+                        const avgTime = cMetrics.averageWorkTime;
+                        const avgTimeStr = avgTime > 0 ? (avgTime >= 3600 ? `${Math.floor(avgTime/3600)}h${Math.floor((avgTime%3600)/60)}m` : `${Math.floor(avgTime/60)}m`) : '-';
                         return (
                           <tr
                             key={c.id}
                             className={`border-b border-blue-100 cursor-pointer hover:bg-blue-100 transition ${isSelected ? 'bg-blue-100 font-semibold' : ''}`}
                             onClick={() => { setSelectedUser(c.id); setLocalScores({}); }}
                           >
-                            <td className="py-1.5 px-2 text-gray-800">{c.name}{isSelected && <span className="ml-1 text-blue-600">&#9664;</span>}</td>
+                            <td className="py-1.5 px-2 text-gray-800 whitespace-nowrap">{c.name}{isSelected && <span className="ml-1 text-blue-600">&#9664;</span>}</td>
                             <td className="py-1.5 px-2">{getClassificationBadge(c.classification) || <span className="text-gray-400">-</span>}</td>
                             <td className="py-1.5 px-2 text-right text-gray-700">{avgScore.toFixed(1)}%</td>
-                            <td className="py-1.5 px-2 text-right text-gray-700">{cMetrics.deadlineComplianceRate.toFixed(1)}%</td>
+                            <td className={`py-1.5 px-2 text-right ${cMetrics.rejectionRate > 30 ? 'text-red-600 font-medium' : 'text-gray-700'}`}>{cMetrics.rejectionRate.toFixed(1)}%</td>
+                            <td className="py-1.5 px-2 text-right text-gray-700">{cMetrics.rejectionCount}</td>
+                            <td className={`py-1.5 px-2 text-right ${cMetrics.severityScore > 5 ? 'text-red-600 font-medium' : 'text-gray-700'}`}>{cMetrics.severityScore.toFixed(1)}</td>
+                            <td className="py-1.5 px-2 text-right text-gray-700">{avgTimeStr}</td>
                             <td className="py-1.5 px-2 text-right text-gray-700">{cMetrics.taskCount}</td>
+                            <td className={`py-1.5 px-2 text-right ${cMetrics.deadlineComplianceRate < 70 ? 'text-red-600 font-medium' : 'text-green-700'}`}>{cMetrics.deadlineComplianceRate.toFixed(1)}%</td>
                           </tr>
                         );
                       })}
