@@ -2356,7 +2356,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
       {/* ===== Section: 作成必要試験種一覧 ===== */}
       {activeSection === 'overview-list' && (() => {
-        const olSubjects = [...new Set(tasks.map(t => t.subject).filter(Boolean))].sort();
+        const olSubjects = [...new Set([...SUBJECTS_LIST, ...tasks.map(t => t.subject).filter(Boolean)])].sort();
         const olWorkTypes = [...new Set(tasks.map(t => t.workType).filter(Boolean))].sort();
 
         // Use component-level state via a mini inner component to avoid hooks-in-callback issues
