@@ -1894,11 +1894,7 @@ export default function CorrectorDashboard() {
                             const allRequiredChecked = requiredItems.length === 0 || requiredItems.every(i => inlineChecklistResults[i.id]);
                             return (
                               <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
-                                {/* 作業時間表示 */}
-                                <div className="flex items-center gap-3">
-                                  <span className="text-xs text-gray-500">作業時間:</span>
-                                  <span className="text-sm font-medium text-blue-700">{timerMin}分（{timerHours}時間として計上）</span>
-                                </div>
+                                {/* 作業時間は内部で記録するが表示しない */}
 
                                 {/* チェックリスト（該当する場合） */}
                                 {hasCheckItems && (

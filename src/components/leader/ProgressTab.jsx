@@ -915,7 +915,7 @@ const ProgressTab = ({ activeSubjects }) => {
                             )}
 
                             {/* 過去問PJへの格納確認 (検証完了後) */}
-                            {assignment.status === 'approved' && assignment.storageStatus === 'pending_storage' && (
+                            {assignment.status === 'approved' && task.workType === '新年度試験種' && assignment.storageStatus !== 'stored' && (
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-amber-600 font-medium">過去問PJへの格納確認：</span>
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">格納待ち</span>
