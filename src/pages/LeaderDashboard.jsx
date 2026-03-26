@@ -2040,8 +2040,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                     className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
                   />
                   <label htmlFor="split-daimon-check" className="text-sm font-medium text-gray-700">
-                    大問分割モード
-                    <span className="ml-1 text-gray-400 font-normal">（大問ごとにタスクを分割登録）</span>
+                    分野情報追加
+                    <span className="ml-1 text-gray-400 font-normal">（大問ごとに分野・大問ID・takosリンクを登録）</span>
                   </label>
                 </div>
                 {form.splitByDaimon && (
@@ -2059,6 +2059,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                           }}
                           className="flex-1 min-w-[100px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
+                        {getFields(form.subject).length > 0 && (
                         <select
                           value={d.fieldId}
                           onChange={e => {
@@ -2073,6 +2074,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                             <option key={f.id} value={f.id}>{f.name}</option>
                           ))}
                         </select>
+                        )}
                         <input
                           type="number"
                           placeholder="工数"
@@ -4139,7 +4141,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   const {
     getCorrectors, getEvaluations, setEvaluation,
     getEvaluationCriteria, addEvaluationCriteria, updateEvaluationCriteria, deleteEvaluationCriteria,
-    getUsers, getRejections, getRejectionCategories, getRejectionSeverities,
+    getUsers, updateUser, getRejections, getRejectionCategories, getRejectionSeverities,
     getTimeLogs, getTaskTotalTime, getDaimonTotalTime,
     getTasks, getAssignments, getAllData,
     getFeedbacks,
@@ -4154,23 +4156,23 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
 
   // --- Shared state ---
   const [activeEvalSection, setActiveEvalSection] = useState(null);
-  const [evalSection, setEvalSection] = useState(0);
+  const [worktimeTab, setWorktimeTab] = useState(0); // inner tabs for worktime section
   const [selectedUser, setSelectedUser] = useState(correctors[0]?.id ?? '');
   const [critForm, setCritForm] = useState({ name: '', description: '', maxScore: 5, subject: null, autoMetric: null });
   const [editCritId, setEditCritId] = useState(null);
   const [localScores, setLocalScores] = useState({});
   const [evalSubject, setEvalSubject] = useState(null);
 
-  // --- Sub-tab 2 filters ---
+  // --- Work time filters ---
   const [logFilterUser, setLogFilterUser] = useState('');
   const [logFilterSubject, setLogFilterSubject] = useState('');
   const [logFilterStart, setLogFilterStart] = useState('');
   const [logFilterEnd, setLogFilterEnd] = useState('');
 
-  // --- Sub-tab 3 state ---
+  // --- Personal time state ---
   const [personalUser, setPersonalUser] = useState(correctors[0]?.id ?? '');
 
-  // --- Sub-tab 4 state ---
+  // --- Subject/daimon state ---
   const [subjectDetailSubject, setSubjectDetailSubject] = useState('');
   const [daimonFilterUser, setDaimonFilterUser] = useState('');
 
@@ -4178,6 +4180,9 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   const [fbSectionOpen, setFbSectionOpen] = useState(false);
   const [fbView, setFbView] = useState('byUser'); // 'byUser' | 'byCategory'
   const [fbFilterUser, setFbFilterUser] = useState('');
+
+  // --- Classification constants ---
+  const CLASSIFICATION_OPTIONS = ['通常作業者', '優良作業者', '要注意作業者', '新人'];
 
   // ---- Evaluation helpers ----
   const userEvals = allEvals.filter(e => e.userId === selectedUser);
@@ -4388,9 +4393,25 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   };
 
   const evalSections = [
-    { key: 'eval', icon: '\u2B50', title: '\u8A55\u4FA1\u7BA1\u7406', desc: '\u8A55\u4FA1\u57FA\u6E96\u30FB\u6DFB\u524A\u8005\u8A55\u4FA1\u30FB\u4F5C\u696D\u6642\u9593' },
+    { key: 'criteria', icon: '\u{1F4CB}', title: '\u8A55\u4FA1\u57FA\u6E96', desc: '\u8A55\u4FA1\u57FA\u6E96\u306E\u7BA1\u7406' },
+    { key: 'evaluation', icon: '\u2B50', title: '\u4F5C\u696D\u8005\u8A55\u4FA1', desc: '\u4F5C\u696D\u8005\u306E\u8A55\u4FA1\u5165\u529B' },
+    { key: 'worktime', icon: '\u23F1\uFE0F', title: '\u4F5C\u696D\u6642\u9593', desc: '\u4F5C\u696D\u6642\u9593\u4E00\u89A7\u30FB\u500B\u4EBA\u5225\u30FB\u79D1\u76EE\u5225' },
+    { key: 'classification', icon: '\u{1F3F7}\uFE0F', title: '\u4F5C\u696D\u8005\u5206\u985E', desc: '\u901A\u5E38/\u512A\u826F/\u8981\u6CE8\u610F\u306E\u5206\u985E' },
     { key: 'fb', icon: '\u{1F4CB}', title: 'FB\u96C6\u7D04\u30FB\u5206\u6790', desc: '\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\u306E\u96C6\u7D04\u30FB\u30AB\u30C6\u30B4\u30EA\u5206\u6790' },
   ];
+
+  // Classification badge helper
+  const getClassificationBadge = (classification) => {
+    const styles = {
+      '\u512A\u826F\u4F5C\u696D\u8005': 'bg-green-100 text-green-700 border-green-200',
+      '\u8981\u6CE8\u610F\u4F5C\u696D\u8005': 'bg-red-100 text-red-700 border-red-200',
+      '\u65B0\u4EBA': 'bg-purple-100 text-purple-700 border-purple-200',
+      '\u901A\u5E38\u4F5C\u696D\u8005': 'bg-gray-100 text-gray-600 border-gray-200',
+    };
+    if (!classification) return null;
+    const cls = styles[classification] || 'bg-gray-100 text-gray-600 border-gray-200';
+    return <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${cls}`}>{classification}</span>;
+  };
 
   return (
     <div className="space-y-4">
@@ -4414,21 +4435,8 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
             ← 戻る
           </button>
 
-      {/* ===== Section: 評価管理 ===== */}
-      {activeEvalSection === 'eval' && (
-        <div className="space-y-4">
-      {/* Sub-tab navigation */}
-      <div className="flex gap-1 mb-4 flex-wrap">
-        {['\u8A55\u4FA1\u57FA\u6E96', '\u6DFB\u524A\u8005\u8A55\u4FA1', '\u4F5C\u696D\u6642\u9593\u4E00\u89A7', '\u500B\u4EBA\u5225\u6642\u9593', '\u79D1\u76EE\u30FB\u5927\u554F\u5225'].map((label, i) => (
-          <button key={i} onClick={() => setEvalSection(i)}
-            className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${evalSection === i ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* ======== Sub-tab 0: 評価基準 ======== */}
-      {evalSection === 0 && (
+      {/* ===== Section: 評価基準 ===== */}
+      {activeEvalSection === 'criteria' && (
         <div className="bg-white rounded-xl shadow-sm p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-700">評価基準の管理</h3>
@@ -4502,10 +4510,10 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
         </div>
       )}
 
-      {/* ======== Sub-tab 1: 添削者評価 ======== */}
-      {evalSection === 1 && (
+      {/* ===== Section: 作業者評価 ===== */}
+      {activeEvalSection === 'evaluation' && (
         <div className="bg-white rounded-xl shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">添削者評価の入力</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">作業者評価の入力</h3>
           {/* 科目フィルタ */}
           <div className="flex gap-1 mb-3 flex-wrap">
             <button onClick={() => setEvalSubject(null)}
@@ -4524,16 +4532,20 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
               <button
                 key={c.id}
                 onClick={() => { setSelectedUser(c.id); setLocalScores({}); }}
-                className={`text-sm px-3 py-1.5 rounded-lg border transition ${selectedUser === c.id ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                className={`text-sm px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${selectedUser === c.id ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
               >
                 {c.name}
+                {selectedUser !== c.id && getClassificationBadge(c.classification)}
               </button>
             ))}
           </div>
 
           {selectedUser && (
             <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-xl">
-              <h5 className="text-xs font-semibold text-gray-600 mb-2">自動計算メトリクス{evalSubject ? ` (${evalSubject})` : ' (全科目)'}</h5>
+              <div className="flex items-center gap-2 mb-2">
+                <h5 className="text-xs font-semibold text-gray-600">自動計算メトリクス{evalSubject ? ` (${evalSubject})` : ' (全科目)'}</h5>
+                {getClassificationBadge(correctors.find(c => c.id === selectedUser)?.classification)}
+              </div>
               {(() => {
                 const metrics = calcAllMetrics(selectedUser, evalSubject, getAllData());
                 return (
@@ -4643,8 +4655,21 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
         </div>
       )}
 
-      {/* ======== Sub-tab 2: 作業時間一覧 ======== */}
-      {evalSection === 2 && (
+      {/* ===== Section: 作業時間 ===== */}
+      {activeEvalSection === 'worktime' && (
+        <div className="space-y-4">
+      {/* Inner tab navigation */}
+      <div className="flex gap-1 mb-4 flex-wrap">
+        {['\u4F5C\u696D\u6642\u9593\u4E00\u89A7', '\u500B\u4EBA\u5225\u6642\u9593', '\u79D1\u76EE\u30FB\u5927\u554F\u5225'].map((label, i) => (
+          <button key={i} onClick={() => setWorktimeTab(i)}
+            className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${worktimeTab === i ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ======== Inner tab 0: 作業時間一覧 ======== */}
+      {worktimeTab === 0 && (
         <div className="bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">作業時間一覧</h3>
 
@@ -4741,8 +4766,8 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
         </div>
       )}
 
-      {/* ======== Sub-tab 3: 個人別時間 ======== */}
-      {evalSection === 3 && (
+      {/* ======== Inner tab 1: 個人別時間 ======== */}
+      {worktimeTab === 1 && (
         <div className="bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">個人別作業時間</h3>
 
@@ -4752,9 +4777,10 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
               <button
                 key={c.id}
                 onClick={() => setPersonalUser(c.id)}
-                className={`text-sm px-3 py-1.5 rounded-lg border transition ${personalUser === c.id ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                className={`text-sm px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${personalUser === c.id ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
               >
                 {c.name}
+                {personalUser !== c.id && getClassificationBadge(c.classification)}
               </button>
             ))}
           </div>
@@ -4818,8 +4844,8 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
         </div>
       )}
 
-      {/* ======== Sub-tab 4: 科目・大問別 ======== */}
-      {evalSection === 4 && (
+      {/* ======== Inner tab 2: 科目・大問別 ======== */}
+      {worktimeTab === 2 && (
         <div className="space-y-4">
           {/* 科目別集計 */}
           <div className="bg-white rounded-xl shadow-sm p-5">
@@ -4938,6 +4964,77 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
         </div>
       )}
 
+        </div>
+      )}
+
+      {/* ===== Section: 作業者分類 ===== */}
+      {activeEvalSection === 'classification' && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">作業者分類</h3>
+          <p className="text-xs text-gray-500 mb-4">各作業者を分類カテゴリに割り当てます。分類は作業者名の横にバッジとして表示されます。</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">管理ID</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">作業者名</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">担当科目</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">現在の分類</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500">分類変更</th>
+                </tr>
+              </thead>
+              <tbody>
+                {correctors.map(c => (
+                  <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-2 px-2 text-gray-500 text-xs">{c.managementId || '-'}</td>
+                    <td className="py-2 px-2 text-gray-700 font-medium">{c.name}</td>
+                    <td className="py-2 px-2 text-gray-600 text-xs">
+                      {(c.subjects || []).join(', ') || '-'}
+                    </td>
+                    <td className="py-2 px-2">
+                      {getClassificationBadge(c.classification) || <span className="text-xs text-gray-400">未分類</span>}
+                    </td>
+                    <td className="py-2 px-2">
+                      <select
+                        value={c.classification || ''}
+                        onChange={e => {
+                          const val = e.target.value || null;
+                          updateUser(c.id, { classification: val });
+                        }}
+                        className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      >
+                        <option value="">未分類</option>
+                        {CLASSIFICATION_OPTIONS.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+                {correctors.length === 0 && (
+                  <tr><td colSpan={5} className="text-center py-8 text-gray-400">作業者が登録されていません</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {/* Classification summary */}
+          {correctors.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-3">
+              {CLASSIFICATION_OPTIONS.map(opt => {
+                const count = correctors.filter(c => c.classification === opt).length;
+                return (
+                  <div key={opt} className="flex items-center gap-1.5">
+                    {getClassificationBadge(opt)}
+                    <span className="text-xs text-gray-500">{count}名</span>
+                  </div>
+                );
+              })}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-gray-50 text-gray-400 border-gray-200">未分類</span>
+                <span className="text-xs text-gray-500">{correctors.filter(c => !c.classification).length}名</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -7645,32 +7742,25 @@ export default function LeaderDashboard() {
               <span className="text-xs text-gray-500 font-medium">科目:</span>
               <button
                 onClick={() => {
-                  if (showAll) {
-                    setShowAll(false);
-                    setSubjectFilter(user.subjects?.length > 0 ? [...user.subjects] : [...SUBJECTS_LIST]);
-                  } else {
-                    setShowAll(true);
-                    setSubjectFilter([...SUBJECTS_LIST]);
-                  }
+                  setShowAll(true);
+                  setSubjectFilter([...SUBJECTS_LIST]);
                 }}
                 className={`px-3 py-1 rounded-full text-xs font-medium transition ${showAll ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
               >
                 全体
               </button>
               {SUBJECTS_LIST.map(s => {
-                const isActive = subjectFilter.includes(s);
+                const isSingleSelected = !showAll && subjectFilter.length === 1 && subjectFilter[0] === s;
                 const isMySubject = (user.subjects ?? []).includes(s);
                 return (
                   <button
                     key={s}
                     onClick={() => {
                       setShowAll(false);
-                      setSubjectFilter(prev =>
-                        prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
-                      );
+                      setSubjectFilter([s]);
                     }}
                     className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-                      isActive
+                      isSingleSelected
                         ? 'bg-blue-600 text-white'
                         : isMySubject
                           ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 ring-1 ring-blue-200'
