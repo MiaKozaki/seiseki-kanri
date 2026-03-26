@@ -1590,12 +1590,19 @@ export default function CorrectorDashboard() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">VIKING</span>
-                              {task.macroTask && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">takos</span>}
+                              {task.macroTask && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">{task.workType === 'マクロ' ? 'マクロ' : 'takos'}</span>}
                               <span className="text-sm font-medium text-gray-800">{task.name}</span>
+                              {task.parentDaimonName && <span className="text-xs text-gray-500">({task.parentDaimonName})</span>}
                             </div>
                             <p className="text-xs text-gray-400 mt-0.5">
                               {task.subject}{task.workType ? ` · ${task.workType}` : ''}{task.fieldId && getFields ? (() => { const f = getFields().find(f => f.id === task.fieldId); return f ? ` · ${f.name}` : ''; })() : ''} · {task.requiredHours}h · 期限: {task.deadline}
                             </p>
+                            {task.takosLink && (
+                              <a href={task.takosLink} target="_blank" rel="noopener noreferrer"
+                                 className="text-xs text-blue-600 hover:text-blue-800 underline mt-0.5 inline-block">
+                                takosリンク
+                              </a>
+                            )}
                           </div>
                           <button
                             onClick={() => { if (confirm(`「${task.name}」を取得しますか？`)) claimVikingTask(task.id, user.id); }}
@@ -1650,6 +1657,16 @@ export default function CorrectorDashboard() {
                                 振り分け: {new Date(assignment.assignedAt).toLocaleDateString('ja-JP')}
                                 {!isSubmitting && assignment.note && ` (${assignment.note})`}
                               </p>
+                              {/* マクロタスク: 大問名 + takosリンク */}
+                              {task.parentDaimonName && (
+                                <span className="text-xs text-indigo-600 font-medium">大問: {task.parentDaimonName}</span>
+                              )}
+                              {task.takosLink && (
+                                <a href={task.takosLink} target="_blank" rel="noopener noreferrer"
+                                   className="text-xs text-blue-600 hover:text-blue-800 underline ml-2">
+                                  takosリンク
+                                </a>
+                              )}
                               {/* 問題ファイル */}
                               {task.taskAttachments && task.taskAttachments.length > 0 && (
                                 <TaskAttachmentDownloads attachments={task.taskAttachments} />

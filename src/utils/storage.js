@@ -493,7 +493,7 @@ export const INITIAL_DATA = {
 
 export const SUBJECTS_LIST = ['小学国語', '小学算数', '小学理科', '小学社会'];
 
-export const WORK_TYPES_LIST = ['新年度試験種', 'タグ付け', '解答出し', '部分点', 'tensakitインポート', 'takos作成'];
+export const WORK_TYPES_LIST = ['新年度試験種', 'タグ付け', '解答出し', '部分点', 'tensakitインポート', 'takos作成', 'マクロ'];
 
 export const generateId = () =>
   Math.random().toString(36).substr(2, 9) + Date.now().toString(36);

@@ -415,33 +415,66 @@ export const DataProvider = ({ children }) => {
       t.id === assignment.taskId ? { ...t, status: 'completed' } : t
     );
 
-    // 2. takos作成タスクを自動生成
-    const takosTaskId = generateId();
-    const takosTask = {
-      id: takosTaskId,
-      name: `${task.name} takos作成`,
-      subject: task.subject,
-      workType: 'takos作成',
-      viking: true,
-      macroTask: true,
-      requiredHours: 1,
-      linkedTaskId: task.id,
-      deadline: task.deadline || '',
-      sheetsUrl: '',
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
+    // 2. マクロタスクを自動生成（大問ごと、または大問なしの場合は1つ）
+    const newMacroTasks = [];
+    const daimons = task.daimons && task.daimons.length > 0 ? task.daimons : null;
 
-    collectionUpdates.tasks = [...updatedTasks, takosTask];
+    if (daimons) {
+      daimons.forEach(daimon => {
+        const macroId = generateId();
+        newMacroTasks.push({
+          id: macroId,
+          name: `${task.name}_${daimon.name}_マクロ`,
+          subject: task.subject,
+          workType: 'マクロ',
+          schoolName: task.schoolName || '',
+          year: task.year || '',
+          round: task.round || '',
+          fieldId: daimon.fieldId || null,
+          daimonId: daimon.daimonId || null,
+          takosLink: daimon.takosLink || null,
+          viking: true,
+          macroTask: true,
+          status: 'pending',
+          requiredHours: 0,
+          parentTaskId: task.id,
+          parentDaimonName: daimon.name,
+          deadline: task.deadline || '',
+          createdAt: new Date().toISOString(),
+        });
+      });
+    } else {
+      const macroId = generateId();
+      newMacroTasks.push({
+        id: macroId,
+        name: `${task.name}_マクロ`,
+        subject: task.subject,
+        workType: 'マクロ',
+        schoolName: task.schoolName || '',
+        year: task.year || '',
+        round: task.round || '',
+        viking: true,
+        macroTask: true,
+        status: 'pending',
+        requiredHours: 0,
+        parentTaskId: task.id,
+        deadline: task.deadline || '',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    collectionUpdates.tasks = [...updatedTasks, ...newMacroTasks];
     batchOps.push({ type: 'set', collection: 'tasks', id: assignment.taskId, data: { ...updatedTasks.find(t => t.id === assignment.taskId), id: undefined, status: 'completed' } });
-    batchOps.push({ type: 'set', collection: 'tasks', id: takosTaskId, data: (() => { const { id: _, ...rest } = takosTask; return rest; })() });
+    newMacroTasks.forEach(mt => {
+      batchOps.push({ type: 'set', collection: 'tasks', id: mt.id, data: (() => { const { id: _, ...rest } = mt; return rest; })() });
+    });
 
     // 3. マクロ作業者に通知
     const macroWorkers = d('users').filter(u => u.role === 'corrector' && (u.subjects ?? []).includes('マクロ'));
     const newNotifs = macroWorkers.map(w => ({
       id: generateId(), userId: w.id,
-      message: `新しいtakos作成タスク「${takosTask.name}」が利用可能です（VIKING）`,
-      type: 'viking_task', relatedId: takosTaskId, read: false, createdAt: new Date().toISOString(),
+      message: `新しいマクロタスク（${newMacroTasks.length}件）が「${task.name}」から生成されました（VIKING）`,
+      type: 'viking_task', relatedId: newMacroTasks[0]?.id, read: false, createdAt: new Date().toISOString(),
     }));
     collectionUpdates.notifications = [...d('notifications'), ...newNotifs];
     newNotifs.forEach(n => batchOps.push({ type: 'set', collection: 'notifications', id: n.id, data: (() => { const { id: _, ...r } = n; return r; })() }));
@@ -450,6 +483,8 @@ export const DataProvider = ({ children }) => {
     fsWrite(() => batchWrite(batchOps));
     forceRefresh();
   };
+
+  const markAsStored = confirmStorage;
 
   // ---- Evaluation Criteria ----
   const getEvaluationCriteria = () => d('evaluationCriteria');
@@ -1348,7 +1383,7 @@ export const DataProvider = ({ children }) => {
       getExamTypes, addExamType, deleteExamType,
       getCapacities, addCapacity, deleteCapacity,
       getTasks, addTask, updateTask, deleteTask,
-      getAssignments, updateAssignment, deleteAssignment, confirmStorage,
+      getAssignments, updateAssignment, deleteAssignment, confirmStorage, markAsStored,
       getEvaluationCriteria, addEvaluationCriteria, updateEvaluationCriteria, deleteEvaluationCriteria,
       getEvaluations, setEvaluation,
       getExamInputs, saveExamInput, deleteExamInput,

@@ -174,7 +174,7 @@ const ProgressTab = ({ activeSubjects }) => {
     getExamInputs, getTimeLogs, getTaskTotalTime, getDaimonTotalTime,
     getRejectionCategories, getRejectionSeverities, getRejections, addRejection,
     getVerificationItems, getVerificationResults, initVerificationResults, toggleVerificationResult,
-    updateAssignment, confirmStorage,
+    updateAssignment, confirmStorage, markAsStored,
     getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
     getFeedbacks, addFeedback,
     getWorkTypes,
@@ -921,9 +921,9 @@ const ProgressTab = ({ activeSubjects }) => {
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">格納待ち</span>
                                 <button
                                   onClick={() => {
-                                    if (window.confirm('過去問PJへの格納を確認します。格納済みにするとVIKING用のマクロタスク（takos作成）が自動生成されます。よろしいですか？')) {
-                                      confirmStorage(assignment.id);
-                                      setMessage('格納確認完了 → マクロタスク（takos作成）を自動放出しました');
+                                    if (window.confirm('過去問PJへの格納を確認します。格納済みにするとVIKING用のマクロタスクが大問ごとに自動生成されます。よろしいですか？')) {
+                                      markAsStored(assignment.id);
+                                      setMessage('格納確認完了 → マクロタスク（大問別）を自動放出しました');
                                       setTimeout(() => setMessage(''), 4000);
                                     }
                                   }}
@@ -936,9 +936,12 @@ const ProgressTab = ({ activeSubjects }) => {
 
                             {/* 格納済み → マクロタスク放出済みバッジ */}
                             {assignment.storageStatus === 'stored' && (
-                              <span className="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-xl text-sm font-medium">
-                                格納済み → マクロタスク放出済み
-                              </span>
+                              <div className="flex flex-col gap-1">
+                                <span className="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-xl text-sm font-medium">
+                                  格納済み ✅ {assignment.storedAt && <span className="text-xs text-indigo-500 ml-1">({new Date(assignment.storedAt).toLocaleDateString('ja-JP')})</span>}
+                                </span>
+                                <span className="text-xs text-indigo-500 ml-1">マクロタスク生成済み</span>
+                              </div>
                             )}
 
                             {/* Reject - 社会・国語は差し戻しの代わりにFBを使うため非表示 */}
