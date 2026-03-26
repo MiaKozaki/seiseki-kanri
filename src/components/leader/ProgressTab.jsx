@@ -769,6 +769,23 @@ const ProgressTab = ({ activeSubjects }) => {
                       </span>
                     )}
 
+                    {/* Storage action button (inline, no need to expand) */}
+                    {assignment?.status === 'approved' && task.workType === '新年度試験種' && assignment?.storageStatus !== 'stored' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('過去問PJへの格納を確認します。格納済みにするとVIKING用のマクロタスクが大問ごとに自動生成されます。よろしいですか？')) {
+                            markAsStored(assignment.id);
+                            setMessage('格納確認完了 → マクロタスク（大問別）を自動放出しました');
+                            setTimeout(() => setMessage(''), 4000);
+                          }
+                        }}
+                        className="shrink-0 px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-xs font-medium"
+                      >
+                        格納済みにする
+                      </button>
+                    )}
+
                     {/* Expand icon */}
                     <span className="text-gray-400 text-xs shrink-0">{isExpanded ? '▲' : '▼'}</span>
                   </button>
