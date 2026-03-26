@@ -2055,8 +2055,13 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 </div>
                 {form.splitByDaimon && (
                   <div className="space-y-2">
+                    {(['小学理科', '小学算数'].includes(form.subject) && getFields(form.subject).length === 0) && (
+                      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                        ⚠️ 分野が未登録です。マスタ → 分野マスタで追加してください。
+                      </p>
+                    )}
                     {form.daimons.map((d, i) => (
-                      <div key={i} className="flex gap-2 items-center">
+                      <div key={i} className="flex gap-2 items-center flex-wrap">
                         <input
                           type="text"
                           placeholder="大問名 (例: 大問1)"
@@ -2068,21 +2073,22 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                           }}
                           className="flex-1 min-w-[100px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
-                        {getFields(form.subject).length > 0 && (
-                        <select
-                          value={d.fieldId}
-                          onChange={e => {
-                            const updated = [...form.daimons];
-                            updated[i] = { ...updated[i], fieldId: e.target.value };
-                            setForm({ ...form, daimons: updated });
-                          }}
-                          className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                        >
-                          <option value="">分野を選択</option>
-                          {getFields(form.subject).map(f => (
-                            <option key={f.id} value={f.id}>{f.name}</option>
-                          ))}
-                        </select>
+                        {['小学理科', '小学算数'].includes(form.subject) && (
+                          <select
+                            value={d.fieldId || ''}
+                            onChange={e => {
+                              const updated = [...form.daimons];
+                              updated[i] = { ...updated[i], fieldId: e.target.value };
+                              setForm({ ...form, daimons: updated });
+                            }}
+                            disabled={getFields(form.subject).length === 0}
+                            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                          >
+                            <option value="">{getFields(form.subject).length === 0 ? '分野未登録' : '分野を選択'}</option>
+                            {getFields(form.subject).map(f => (
+                              <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                          </select>
                         )}
                         <input
                           type="number"
