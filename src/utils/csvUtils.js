@@ -1,3 +1,4 @@
+import { SUBJECTS_LIST } from './storage.js';
 // CSV Utility Functions — BOM付きUTF-8で日本語対応
 
 /**
@@ -562,7 +563,6 @@ export const FIELD_MASTER_CSV_COLUMNS = [
 export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
   const valid = [];
   const errors = [];
-  const validSubjects = ['小学理科', '小学算数'];
 
   rows.forEach((row, i) => {
     const lineNum = i + 2;
@@ -571,15 +571,23 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
     const schoolName = (row['学校名'] || '').trim();
     if (!schoolName) {
       rowErrors.push('学校名が空です');
-    } else if (!schools.find(s => s.name === schoolName)) {
-      rowErrors.push(`学校「${schoolName}」が見つかりません`);
     }
 
     const subject = (row['科目'] || '').trim();
     if (!subject) {
       rowErrors.push('科目が空です');
-    } else if (!validSubjects.includes(subject)) {
-      rowErrors.push(`科目「${subject}」は無効です（${validSubjects.join('/')}）`);
+    } else if (!SUBJECTS_LIST.includes(subject)) {
+      rowErrors.push(`科目「${subject}」は無効です（${SUBJECTS_LIST.join('/')}）`);
+    }
+
+    const year = (row['年度'] || '').trim();
+    if (!year) {
+      rowErrors.push('年度が空です');
+    }
+
+    const round = (row['回数'] || '').trim();
+    if (!round) {
+      rowErrors.push('回数が空です');
     }
 
     const daimonName = (row['大問名'] || '').trim();
@@ -589,9 +597,7 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
 
     const fieldName = (row['分野'] || '').trim();
     let fieldId = null;
-    if (!fieldName) {
-      rowErrors.push('分野が空です');
-    } else if (subject && validSubjects.includes(subject) && getFieldsFn) {
+    if (fieldName && subject && getFieldsFn) {
       const fields = getFieldsFn(subject);
       const matched = fields.find(f => f.name === fieldName);
       if (matched) {
@@ -600,22 +606,6 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
         rowErrors.push(`分野「${fieldName}」が科目「${subject}」に見つかりません`);
       }
     }
-
-    const hoursStr = (row['工数'] || row['工数(h)'] || '').trim();
-    const hours = hoursStr ? parseFloat(hoursStr) : 0;
-    if (hoursStr && (isNaN(hours) || hours < 0)) {
-      rowErrors.push('工数は0以上の数値で入力してください');
-    }
-
-    const deadline = (row['期限'] || '').trim();
-    if (!deadline) {
-      rowErrors.push('期限が空です');
-    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
-      rowErrors.push('期限はYYYY-MM-DD形式で入力してください');
-    }
-
-    const year = (row['年度'] || '').trim();
-    const round = (row['回数'] || '').trim();
 
     if (rowErrors.length > 0) {
       errors.push({ line: lineNum, message: rowErrors.join('；'), row });
@@ -628,9 +618,6 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
         daimonName,
         fieldName,
         fieldId,
-        hours,
-        deadline,
-        taskName: [schoolName, subject, year, round, daimonName].filter(Boolean).join('_'),
         _line: lineNum,
       });
     }
@@ -646,8 +633,6 @@ export const DAIMON_TASK_CSV_COLUMNS = [
   { key: 'round', header: '回数' },
   { key: 'daimonName', header: '大問名' },
   { key: 'fieldName', header: '分野' },
-  { key: 'hours', header: '工数' },
-  { key: 'deadline', header: '期限' },
 ];
 
 /**

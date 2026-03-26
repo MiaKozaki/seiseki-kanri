@@ -1426,61 +1426,81 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDaimonCsvConfirm = () => {
     if (!daimonCsvParsed || daimonCsvParsed.valid.length === 0) return;
-    // Group by school+subject+deadline
+    // Group by school+subject+year+round
     const groupMap = {};
     daimonCsvParsed.valid.forEach(row => {
-      const key = `${row.schoolName}__${row.subject}__${row.deadline}`;
-      if (!groupMap[key]) groupMap[key] = { rows: [], parentTaskGroup: generateId() };
-      groupMap[key].rows.push(row);
+      const key = `${row.schoolName}__${row.subject}__${row.year}__${row.round}`;
+      if (!groupMap[key]) groupMap[key] = { schoolName: row.schoolName, subject: row.subject, year: row.year, round: row.round, daimons: [] };
+      groupMap[key].daimons.push({ name: row.daimonName, fieldId: row.fieldId || null });
     });
 
-    let count = 0;
+    let taskCount = 0;
+    const currentTasks = getTasks();
     const examTypes = getExamTypes();
     Object.values(groupMap).forEach(group => {
-      group.rows.forEach(row => {
-        // Look up or create school
-        let school = schools.find(s => s.name === row.schoolName);
-        if (!school) {
-          school = addSchool(row.schoolName);
-        }
-        // Look up or create examType
-        let et = examTypes.find(e => e.schoolId === school.id && e.subject === row.subject);
-        if (!et) {
-          et = addExamType(school.id, row.subject);
-          examTypes.push(et); // add to local list so subsequent rows can find it
-        }
+      // Look up or create school
+      let school = schools.find(s => s.name === group.schoolName);
+      if (!school) {
+        school = addSchool(group.schoolName);
+      }
+      // Look up or create examType
+      let et = examTypes.find(e => e.schoolId === school.id && e.subject === group.subject);
+      if (!et) {
+        et = addExamType(school.id, group.subject);
+        examTypes.push(et);
+      }
 
-        addTask({
-          name: row.taskName,
-          subject: row.subject,
+      // Find existing task matching school+subject+year+round
+      const taskNamePattern = [group.schoolName, group.subject, group.year, group.round].filter(Boolean).join('_');
+      let existingTask = currentTasks.find(t =>
+        t.name === taskNamePattern ||
+        (t.schoolName === group.schoolName && t.subject === group.subject && t.year === group.year && t.round === group.round)
+      );
+
+      if (existingTask) {
+        // Update existing task with daimon info
+        updateTask(existingTask.id, { daimons: group.daimons });
+      } else {
+        // Create new task with daimon info
+        const newTask = addTask({
+          name: taskNamePattern,
+          schoolName: group.schoolName,
+          subject: group.subject,
+          year: group.year,
+          round: group.round,
           workType: '新年度試験種',
-          requiredHours: row.hours,
-          deadline: row.deadline,
+          requiredHours: 0,
+          deadline: '',
           sheetsUrl: '',
-          viking: row.subject === '小学理科',
-          fieldId: row.fieldId,
-          parentTaskGroup: group.parentTaskGroup,
+          viking: group.subject === '小学理科',
+          daimons: group.daimons,
         });
-        count++;
-      });
+        taskCount++;
+      }
     });
 
-    setDaimonCsvImportDone(`${count}件の大問分割タスクを登録しました`);
+    const groupCount = Object.keys(groupMap).length;
+    const daimonCount = daimonCsvParsed.valid.length;
+    const msg = taskCount > 0
+      ? `${groupCount}件のタスクに${daimonCount}件の大問情報を登録しました（新規タスク: ${taskCount}件）`
+      : `${groupCount}件のタスクに${daimonCount}件の大問情報を登録しました`;
+    setDaimonCsvImportDone(msg);
     setDaimonCsvParsed(null);
     setDaimonCsvText('');
-    setMessage(`大問情報一括登録: ${count}件のタスクを追加しました`);
+    setMessage(`大問情報一括登録: ${msg}`);
     setTimeout(() => setMessage(''), 5000);
   };
 
   const handleDownloadDaimonTemplate = () => {
     const templateData = [
-      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '1', daimonName: '大問1', fieldName: '旅人算', hours: 2, deadline: '2026-04-01' },
-      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '1', daimonName: '大問2', fieldName: '食塩水', hours: 1.5, deadline: '2026-04-01' },
-      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '1', daimonName: '大問1', fieldName: '中和', hours: 3, deadline: '2026-04-15' },
-      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '1', daimonName: '大問2', fieldName: 'てこ', hours: 2, deadline: '2026-04-15' },
+      { schoolName: 'B96: 開成', subject: '小学理科', year: '2026', round: '1', daimonName: '大問1', fieldName: '中和' },
+      { schoolName: 'B96: 開成', subject: '小学理科', year: '2026', round: '1', daimonName: '大問2', fieldName: 'てこ' },
+      { schoolName: 'B96: 開成', subject: '小学算数', year: '2026', round: '1', daimonName: '大問1', fieldName: '旅人算' },
+      { schoolName: 'B16: 麻布', subject: '小学国語', year: '2026', round: '1', daimonName: '大問1', fieldName: '' },
+      { schoolName: 'B16: 麻布', subject: '小学国語', year: '2026', round: '1', daimonName: '大問2', fieldName: '' },
     ];
     const csv = toCSV(templateData, DAIMON_TASK_CSV_COLUMNS);
-    downloadCSV(csv, '大問分割タスク一括登録テンプレート.csv');
+    downloadCSV(csv, '大問情報一括登録テンプレート.csv');
   };
 
   // --- 新年度試験種 一括登録 helpers ---
@@ -1766,7 +1786,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     { key: 'list', icon: '\u{1F4CB}', title: '試験種一覧', desc: 'タスクの検索・フィルタ・管理' },
     { key: 'add', icon: '\u{2795}', title: '新規追加', desc: '試験種を個別に追加' },
     { key: 'csv-import', icon: '\u{1F4E5}', title: 'CSV一括登録', desc: 'CSVで試験種を一括登録' },
-    { key: 'daimon', icon: '\u{1F4C4}', title: '大問情報一括登録', desc: '大問ごとに分割して登録' },
+    { key: 'daimon', icon: '\u{1F4C4}', title: '大問情報一括登録', desc: '各試験種の大問構成を登録' },
     { key: 'pdf-upload', icon: '\u{1F4C4}', title: 'PDF一括アップロード', desc: 'ファイル名で登録済みタスクに自動紐付け' },
     { key: 'pdf-status', icon: '\u{1F4CA}', title: 'PDF登録ステータス', desc: '試験種ごとのPDF紐付け状況を確認' },
     { key: 'results', icon: '\u{1F4CA}', title: '実績', desc: '完了タスクの実績レポート' },
@@ -2277,11 +2297,12 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
           {true && (
               <div className="space-y-3 bg-purple-50/50 border border-purple-200 rounded-lg p-4">
                 <p className="text-xs text-gray-500">
-                  大問ごとに分野付きタスクを一括登録します。同じ学校+科目+期限の行は1つのグループとして登録されます。
-                  理科はVIKING（自己選択）、算数はリーダー割当になります。
+                  各学校・科目の大問情報を一括登録します。同じ学校名+科目+年度+回数の行は1つのタスクにまとめられます。
+                  既存のタスクがあればそこに大問情報を追加し、なければ新規タスクを作成します。
+                  分野は小学算数・小学理科では入力推奨、小学国語・小学社会では空欄可です。
                 </p>
                 <p className="text-xs text-gray-400">
-                  ヘッダ行: 学校名,科目,大問名,分野,工数,期限
+                  ヘッダ行: 学校名,科目,年度,回数,大問名,分野
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -2298,7 +2319,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                   onChange={e => handleDaimonCsvParse(e.target.value)}
                   rows={6}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-purple-500 outline-none"
-                  placeholder={`学校名,科目,大問名,分野,工数,期限\n開成中学,算数,大問1,旅人算,2,2026-04-01\n開成中学,算数,大問2,食塩水,1.5,2026-04-01\n麻布中学,理科,大問1,中和,3,2026-04-15`}
+                  placeholder={`学校名,科目,年度,回数,大問名,分野\nB96: 開成,小学理科,2026,1,大問1,中和\nB96: 開成,小学理科,2026,1,大問2,てこ\nB16: 麻布,小学国語,2026,1,大問1,\nB16: 麻布,小学国語,2026,1,大問2,`}
                 />
 
                 {daimonCsvParsed && (
@@ -2324,26 +2345,28 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                               <th className="px-2 py-1 text-left border border-gray-200">行</th>
                               <th className="px-2 py-1 text-left border border-gray-200">学校名</th>
                               <th className="px-2 py-1 text-left border border-gray-200">科目</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">年度</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">回数</th>
                               <th className="px-2 py-1 text-left border border-gray-200">大問名</th>
                               <th className="px-2 py-1 text-left border border-gray-200">分野</th>
-                              <th className="px-2 py-1 text-right border border-gray-200">工数</th>
-                              <th className="px-2 py-1 text-left border border-gray-200">期限</th>
-                              <th className="px-2 py-1 text-center border border-gray-200">VIKING</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {daimonCsvParsed.valid.map((row, i) => (
-                              <tr key={i} className="bg-green-50/50 hover:bg-green-100/50">
-                                <td className="px-2 py-1 border border-gray-200 text-gray-400">{row._line}</td>
-                                <td className="px-2 py-1 border border-gray-200">{row.schoolName}</td>
-                                <td className="px-2 py-1 border border-gray-200">{row.subject}</td>
-                                <td className="px-2 py-1 border border-gray-200">{row.daimonName}</td>
-                                <td className="px-2 py-1 border border-gray-200">{row.fieldName}</td>
-                                <td className="px-2 py-1 border border-gray-200 text-right">{row.hours}h</td>
-                                <td className="px-2 py-1 border border-gray-200">{row.deadline}</td>
-                                <td className="px-2 py-1 border border-gray-200 text-center">{row.subject === '小学理科' ? '✓' : '-'}</td>
-                              </tr>
-                            ))}
+                            {daimonCsvParsed.valid.map((row, i) => {
+                              const prevRow = i > 0 ? daimonCsvParsed.valid[i - 1] : null;
+                              const isNewGroup = !prevRow || prevRow.schoolName !== row.schoolName || prevRow.subject !== row.subject || prevRow.year !== row.year || prevRow.round !== row.round;
+                              return (
+                                <tr key={i} className={`hover:bg-green-100/50 ${isNewGroup ? 'border-t-2 border-t-purple-300 bg-green-50/80' : 'bg-green-50/30'}`}>
+                                  <td className="px-2 py-1 border border-gray-200 text-gray-400">{row._line}</td>
+                                  <td className="px-2 py-1 border border-gray-200">{row.schoolName}</td>
+                                  <td className="px-2 py-1 border border-gray-200">{row.subject}</td>
+                                  <td className="px-2 py-1 border border-gray-200">{row.year}</td>
+                                  <td className="px-2 py-1 border border-gray-200">{row.round}</td>
+                                  <td className="px-2 py-1 border border-gray-200">{row.daimonName}</td>
+                                  <td className="px-2 py-1 border border-gray-200">{row.fieldName || <span className="text-gray-300">-</span>}</td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -2356,7 +2379,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                           onClick={handleDaimonCsvConfirm}
                           className="bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
                         >
-                          一括登録（{daimonCsvParsed.valid.length}件）
+                          大問情報を登録（{daimonCsvParsed.valid.length}件）
                         </button>
                         <button
                           type="button"
@@ -7250,7 +7273,7 @@ const LeaderManualTab = () => {
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>タスク追加</strong>：科目、作業内容、必要工数、期限を入力して作成</li>
           <li><strong>CSV一括登録</strong>：タスクCSV / 試験種タスクCSVで一括投入</li>
-          <li><strong>大問情報一括登録</strong>：学校名・科目・大問名・分野・工数・期限のCSVで大問単位に分割登録</li>
+          <li><strong>大問情報一括登録</strong>：学校名・科目・年度・回数・大問名・分野のCSVで各試験種の大問構成を登録</li>
           <li><strong>タスク一覧</strong>：名前検索・ステータスフィルター・ソート</li>
           <li><strong>割当済み</strong>：割当タスクの確認、大問別作業時間表示、解除</li>
           <li><strong>実績</strong>：完了タスクの計画vs実績レポート、CSV出力</li>
