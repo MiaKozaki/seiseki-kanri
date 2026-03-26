@@ -123,7 +123,8 @@
       "Bash(ls ~/.fnm/node-versions/*/installation/bin/node)",
       "Bash(ls ~/.nodenv/versions/*/bin/node)",
       "Bash(mdfind -name node -onlyin /Users/mia/Library)",
-      "Bash(grep -E \"bin/node$\")"
+      "Bash(grep -E \"bin/node$\")",
+      "Bash(/Users/mia/Desktop/seiseki-kanri/node_modules/.bin/vite build:*)"
     ]
   }
 }

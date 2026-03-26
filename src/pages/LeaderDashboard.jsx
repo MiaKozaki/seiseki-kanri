@@ -4181,6 +4181,12 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   const [fbView, setFbView] = useState('byUser'); // 'byUser' | 'byCategory'
   const [fbFilterUser, setFbFilterUser] = useState('');
 
+  // --- Summary section state ---
+  const [summarySubject, setSummarySubject] = useState('');
+  const [summaryWorkType, setSummaryWorkType] = useState('');
+  const [summarySortKey, setSummarySortKey] = useState('managementId');
+  const [summarySortDir, setSummarySortDir] = useState('asc');
+
   // --- Classification constants ---
   const CLASSIFICATION_OPTIONS = ['通常作業者', '優良作業者', '要注意作業者', '新人'];
 
@@ -4398,6 +4404,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
     { key: 'worktime', icon: '\u23F1\uFE0F', title: '\u4F5C\u696D\u6642\u9593', desc: '\u4F5C\u696D\u6642\u9593\u4E00\u89A7\u30FB\u500B\u4EBA\u5225\u30FB\u79D1\u76EE\u5225' },
     { key: 'classification', icon: '\u{1F3F7}\uFE0F', title: '\u4F5C\u696D\u8005\u5206\u985E', desc: '\u901A\u5E38/\u512A\u826F/\u8981\u6CE8\u610F\u306E\u5206\u985E' },
     { key: 'fb', icon: '\u{1F4CB}', title: 'FB\u96C6\u7D04\u30FB\u5206\u6790', desc: '\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\u306E\u96C6\u7D04\u30FB\u30AB\u30C6\u30B4\u30EA\u5206\u6790' },
+    { key: 'summary', icon: '\u{1F4CA}', title: '\u8A55\u4FA1\u307E\u3068\u3081', desc: '\u79D1\u76EE\u30FB\u696D\u52D9\u5185\u5BB9\u5225\u306E\u8A55\u4FA1\u30EC\u30DD\u30FC\u30C8' },
   ];
 
   // Classification badge helper
@@ -5216,6 +5223,235 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
         })()}
       </div>
       )}
+
+      {/* ===== Section: 評価まとめ ===== */}
+      {activeEvalSection === 'summary' && (() => {
+        const allFeedbacks = getFeedbacks();
+        const allRejections = getRejections();
+
+        // Build summary rows for each corrector
+        const summaryRows = correctors.map(c => {
+          // Filter tasks by subject/workType
+          const userAssignments = assignments.filter(a => a.userId === c.id);
+          const userTaskIds = userAssignments.map(a => a.taskId);
+          let userTasks = tasks.filter(t => userTaskIds.includes(t.id));
+          if (summarySubject) userTasks = userTasks.filter(t => t.subject === summarySubject);
+          if (summaryWorkType) userTasks = userTasks.filter(t => t.workType === summaryWorkType);
+          const filteredTaskIds = new Set(userTasks.map(t => t.id));
+
+          // Evaluation score - average across criteria for selected subject
+          const relevantCriteria = summarySubject
+            ? criteria.filter(cr => !cr.subject || cr.subject === summarySubject)
+            : criteria;
+          const userEvalsAll = allEvals.filter(e => e.userId === c.id);
+          const scores = relevantCriteria.map(cr => {
+            const ev = userEvalsAll.find(e => e.criteriaId === cr.id);
+            return ev ? ev.score : null;
+          }).filter(s => s !== null);
+          const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
+          // Work time from timeLogs
+          let userLogs = allTimeLogs.filter(l => l.userId === c.id);
+          if (summarySubject || summaryWorkType) {
+            userLogs = userLogs.filter(l => filteredTaskIds.has(l.taskId));
+          }
+          const totalWorkTime = userLogs.reduce((sum, l) => sum + _calcDuration(l), 0);
+
+          // Completed tasks
+          const completedCount = userTasks.filter(t => t.status === 'completed').length;
+
+          // FB count
+          let fbCount = allFeedbacks.filter(fb => fb.toUserId === c.id);
+          if (summarySubject || summaryWorkType) {
+            fbCount = fbCount.filter(fb => filteredTaskIds.has(fb.taskId));
+          }
+
+          // Rejection count
+          let rejCount = allRejections.filter(r => r.userId === c.id);
+          if (summarySubject || summaryWorkType) {
+            rejCount = rejCount.filter(r => filteredTaskIds.has(r.taskId));
+          }
+
+          // Classification short label
+          const classMap = { '通常作業者': '通常', '優良作業者': '優良', '要注意作業者': '要注意', '新人': '新人' };
+          const classLabel = classMap[c.classification] || c.classification || '-';
+
+          return {
+            id: c.id,
+            managementId: c.managementId || '-',
+            name: c.name,
+            classification: c.classification || '',
+            classLabel,
+            subjects: (c.subjects || []).join(', '),
+            avgScore: Math.round(avgScore * 100) / 100,
+            totalWorkTime,
+            totalWorkTimeH: Math.round((totalWorkTime / 3600) * 100) / 100,
+            completedCount,
+            fbCount: fbCount.length,
+            rejCount: rejCount.length,
+            correctorNotes: c.correctorNotes || '',
+          };
+        });
+
+        // Sort
+        const sorted = [...summaryRows].sort((a, b) => {
+          let va = a[summarySortKey];
+          let vb = b[summarySortKey];
+          if (typeof va === 'string') va = va.toLowerCase();
+          if (typeof vb === 'string') vb = vb.toLowerCase();
+          if (va < vb) return summarySortDir === 'asc' ? -1 : 1;
+          if (va > vb) return summarySortDir === 'asc' ? 1 : -1;
+          return 0;
+        });
+
+        const handleSummarySort = (key) => {
+          if (summarySortKey === key) {
+            setSummarySortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+          } else {
+            setSummarySortKey(key);
+            setSummarySortDir('asc');
+          }
+        };
+
+        const sortIndicator = (key) => {
+          if (summarySortKey !== key) return '';
+          return summarySortDir === 'asc' ? ' ▲' : ' ▼';
+        };
+
+        const handleExportSummaryCSV = () => {
+          const csvData = sorted.map(r => ({
+            managementId: r.managementId,
+            name: r.name,
+            classification: r.classLabel,
+            subjects: r.subjects,
+            avgScore: r.avgScore,
+            totalWorkTimeH: r.totalWorkTimeH,
+            completedCount: r.completedCount,
+            fbCount: r.fbCount,
+            rejCount: r.rejCount,
+            correctorNotes: r.correctorNotes,
+          }));
+          const columns = [
+            { key: 'managementId', label: '管理ID' },
+            { key: 'name', label: '氏名' },
+            { key: 'classification', label: '分類' },
+            { key: 'subjects', label: '担当科目' },
+            { key: 'avgScore', label: '評価スコア' },
+            { key: 'totalWorkTimeH', label: '作業時間(h)' },
+            { key: 'completedCount', label: '完了タスク数' },
+            { key: 'fbCount', label: 'FB件数' },
+            { key: 'rejCount', label: '差し戻し件数' },
+            { key: 'correctorNotes', label: '傾向メモ' },
+          ];
+          const csv = toCSV(csvData, columns);
+          downloadCSV(csv, `評価まとめ_${new Date().toISOString().slice(0, 10)}.csv`);
+        };
+
+        return (
+          <div className="border border-indigo-200 rounded-xl overflow-hidden">
+            <div className="w-full flex items-center justify-between px-5 py-3 bg-indigo-50">
+              <span className="text-sm font-semibold text-indigo-800">評価まとめ</span>
+              <button
+                onClick={handleExportSummaryCSV}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
+              >
+                CSVで出力
+              </button>
+            </div>
+
+            <div className="p-5 bg-white space-y-4">
+              {/* Filters */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <select
+                  value={summarySubject}
+                  onChange={e => setSummarySubject(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  <option value="">全科目</option>
+                  {SUBJECTS_LIST.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <select
+                  value={summaryWorkType}
+                  onChange={e => setSummaryWorkType(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  <option value="">全業務</option>
+                  {WORK_TYPES_LIST.map(w => (
+                    <option key={w} value={w}>{w}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-gray-500">{sorted.length}名</span>
+              </div>
+
+              {/* Summary table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-indigo-200 bg-indigo-50/50">
+                      {[
+                        { key: 'managementId', label: '管理ID' },
+                        { key: 'name', label: '氏名' },
+                        { key: 'classLabel', label: '分類' },
+                        { key: 'subjects', label: '担当科目' },
+                        { key: 'avgScore', label: '評価スコア' },
+                        { key: 'totalWorkTimeH', label: '作業時間合計' },
+                        { key: 'completedCount', label: '完了タスク数' },
+                        { key: 'fbCount', label: 'FB件数' },
+                        { key: 'rejCount', label: '差し戻し件数' },
+                        { key: 'correctorNotes', label: '傾向メモ' },
+                      ].map(col => (
+                        <th
+                          key={col.key}
+                          onClick={() => handleSummarySort(col.key)}
+                          className="text-left py-2 px-2 text-xs font-semibold text-indigo-700 cursor-pointer hover:bg-indigo-100 transition select-none whitespace-nowrap"
+                        >
+                          {col.label}{sortIndicator(col.key)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.length > 0 ? sorted.map(row => (
+                      <tr key={row.id} className="border-b border-gray-100 hover:bg-indigo-50/30 transition">
+                        <td className="py-2 px-2 text-xs text-gray-600 font-mono">{row.managementId}</td>
+                        <td className="py-2 px-2 text-xs font-medium text-gray-800">{row.name}</td>
+                        <td className="py-2 px-2">{getClassificationBadge(row.classification)}</td>
+                        <td className="py-2 px-2 text-xs text-gray-600">{row.subjects || '-'}</td>
+                        <td className="py-2 px-2 text-xs text-right font-semibold">
+                          <span className={row.avgScore >= 4 ? 'text-green-600' : row.avgScore >= 2.5 ? 'text-amber-600' : row.avgScore > 0 ? 'text-red-600' : 'text-gray-400'}>
+                            {row.avgScore > 0 ? row.avgScore.toFixed(2) : '-'}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2 text-xs text-right text-gray-700">{row.totalWorkTimeH > 0 ? `${row.totalWorkTimeH}h` : '-'}</td>
+                        <td className="py-2 px-2 text-xs text-right text-gray-700">{row.completedCount}</td>
+                        <td className="py-2 px-2 text-xs text-right">
+                          {row.fbCount > 0 ? (
+                            <span className="inline-block bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">{row.fbCount}</span>
+                          ) : <span className="text-gray-400">0</span>}
+                        </td>
+                        <td className="py-2 px-2 text-xs text-right">
+                          {row.rejCount > 0 ? (
+                            <span className="inline-block bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">{row.rejCount}</span>
+                          ) : <span className="text-gray-400">0</span>}
+                        </td>
+                        <td className="py-2 px-2 text-xs text-gray-500 max-w-[200px] truncate" title={row.correctorNotes}>
+                          {row.correctorNotes || '-'}
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={10} className="text-center py-8 text-gray-400 text-sm">データがありません</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
         </div>
       )}
