@@ -168,8 +168,97 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
     downloadHistoryExcel(capacityHistoryData, assignmentHistoryData, range);
   };
 
+  // ---- CSV export helpers ----
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const correctorData = correctors.map(c => {
+    const totalCap = capacities.filter(cap => cap.userId === c.id).reduce((s, cap) => s + cap.totalHours, 0);
+    const assignedH = assignments.filter(a => a.userId === c.id && !isFinished(a.status)).reduce((s, a) => s + a.assignedHours, 0);
+    return { name: c.name, totalCap, assignedH, freeH: Math.round((totalCap - assignedH) * 10) / 10 };
+  });
+
+  const handleExportDailyCSV = () => {
+    const rows = dailyData.map(d => ({
+      date: d.date,
+      available: d['利用可能工数'],
+      required: d['必要作業工数'],
+      balance: d['余剰'],
+      rate: d['利用可能工数'] > 0 ? Math.round((d['利用可能工数'] / (d['必要作業工数'] || 1)) * 100) : 0,
+    }));
+    const columns = [
+      { header: '日付', key: 'date' },
+      { header: '登録工数(h)', key: 'available' },
+      { header: '必要工数(h)', key: 'required' },
+      { header: '余剰/不足(h)', key: 'balance' },
+      { header: '充足率(%)', key: 'rate' },
+    ];
+    downloadCSV(toCSV(rows, columns), `日別工数データ_${todayStr}.csv`);
+  };
+
+  const handleExportCorrectorCSV = () => {
+    const columns = [
+      { header: '作業者名', key: 'name' },
+      { header: '登録工数(h)', key: 'totalCap' },
+      { header: '割当工数(h)', key: 'assignedH' },
+      { header: '残工数(h)', key: 'freeH' },
+    ];
+    downloadCSV(toCSV(correctorData, columns), `作業者別工数データ_${todayStr}.csv`);
+  };
+
+  const handleExportCapacityHistoryCSV = () => {
+    const rows = allCapacities.map(c => {
+      const user = allUsers.find(u => u.id === c.userId);
+      return {
+        userName: user?.name ?? '不明',
+        startDate: c.startDate,
+        endDate: c.endDate,
+        hoursPerDay: c.hoursPerDay,
+        totalHours: c.totalHours,
+        note: c.note ?? '',
+      };
+    });
+    const columns = [
+      { header: '作業者名', key: 'userName' },
+      { header: '開始日', key: 'startDate' },
+      { header: '終了日', key: 'endDate' },
+      { header: '日あたり工数(h)', key: 'hoursPerDay' },
+      { header: '合計工数(h)', key: 'totalHours' },
+      { header: 'メモ', key: 'note' },
+    ];
+    downloadCSV(toCSV(rows, columns), `月間工数履歴_${todayStr}.csv`);
+  };
+
+  const handleExportAllCSV = () => {
+    handleExportDailyCSV();
+    handleExportCorrectorCSV();
+    handleExportCapacityHistoryCSV();
+  };
+
   return (
     <div className="space-y-4">
+
+      {/* ===== CSV一括出力ボタン ===== */}
+      <div className="bg-white rounded-xl shadow-sm p-4">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">CSV出力</h3>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={handleExportDailyCSV}
+            className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg transition font-medium">
+            日別工数データ
+          </button>
+          <button onClick={handleExportCorrectorCSV}
+            className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg transition font-medium">
+            作業者別工数データ
+          </button>
+          <button onClick={handleExportCapacityHistoryCSV}
+            className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg transition font-medium">
+            月間工数履歴
+          </button>
+          <button onClick={handleExportAllCSV}
+            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition font-medium">
+            全データ一括出力
+          </button>
+        </div>
+      </div>
 
       {/* ===== 日別工数充足グラフ ===== */}
       <div className="bg-white rounded-xl shadow-sm p-5">
