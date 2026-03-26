@@ -133,7 +133,10 @@
       "Bash(export PATH=\"$HOME/.local/share/nvm/versions/node/v22.14.0/bin:$PATH\")",
       "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/.nvm/versions/node/*/bin/**)",
       "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/.local/share/nvm/versions/node/*/bin/**)",
-      "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/.volta/bin/**)"
+      "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/.volta/bin/**)",
+      "Bash(PATH=\"$HOME/.nvm/versions/node/v22.14.0/bin:$PATH\" npm run build)",
+      "Bash(export PATH=\"$HOME/.nvm/versions/node/v22.14.0/bin:$HOME/.bun/bin:/usr/local/bin:/opt/homebrew/bin:$PATH\")",
+      "Bash(ls /Users/mia/.bun/bin/*)"
     ]
   }
 }

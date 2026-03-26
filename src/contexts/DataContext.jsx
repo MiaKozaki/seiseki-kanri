@@ -396,9 +396,18 @@ export const DataProvider = ({ children }) => {
   // ---- 格納確認（新年度試験種 → takos作成タスク自動生成） ----
   const confirmStorage = (assignmentId) => {
     const assignment = d('assignments').find(a => a.id === assignmentId);
-    if (!assignment) return;
+    if (!assignment) return { error: 'アサインメントが見つかりません' };
     const task = d('tasks').find(t => t.id === assignment.taskId);
-    if (!task) return;
+    if (!task) return { error: 'タスクが見つかりません' };
+
+    // バリデーション: 大問情報とtakosリンクの確認
+    if (!task.daimons || task.daimons.length === 0) {
+      return { error: '大問情報が登録されていません。大問情報一括登録で登録してください。' };
+    }
+    const missingLinks = task.daimons.filter(dm => !dm.takosLink);
+    if (missingLinks.length > 0) {
+      return { error: `takosリンクが未設定の大問があります: ${missingLinks.map(dm => dm.name).join(', ')}` };
+    }
 
     const batchOps = [];
     const collectionUpdates = {};

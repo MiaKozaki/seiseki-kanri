@@ -1217,8 +1217,9 @@ export default function CorrectorDashboard() {
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [inlineChecklistResults, setInlineChecklistResults] = useState({});
 
-  // 入力フォームビュー（算数・理科・社会のみ。国語は外部ツールを使用）
+  // 入力フォームビュー（新年度試験種 かつ 算数・理科・社会のみ。それ以外は外部作業タイマー）
   const INPUT_FORM_SUBJECTS = ['小学算数', '小学理科', '小学社会'];
+  const showInputForm = (subject, workType) => workType === '新年度試験種' && INPUT_FORM_SUBJECTS.includes(subject);
   const hasInputForm = (subject) => INPUT_FORM_SUBJECTS.includes(subject);
   const [inputViewTaskId, setInputViewTaskId] = useState(null);
   const openInputView = (taskId) => setInputViewTaskId(taskId);
@@ -2089,7 +2090,7 @@ export default function CorrectorDashboard() {
                                     📊 スプシで開く
                                   </a>
                                 )}
-                                {(isExternalWork(task.subject, task.workType) || !hasInputForm(task.subject)) ? (
+                                {(!showInputForm(task.subject, task.workType) || isExternalWork(task.subject, task.workType)) ? (
                                   <>
                                     {/* 外部作業: 手動タイマー */}
                                     {manualTimerTaskId !== task.id && (
