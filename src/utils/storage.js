@@ -163,6 +163,18 @@ export const initStorage = () => {
       data._fieldsInitV1 = true;
       updated = true;
     }
+    // fields 科目名マイグレーション（理科→小学理科、算数→小学算数）
+    if (!data._fieldsSubjectRenameV1) {
+      const subjectMap = { '理科': '小学理科', '算数': '小学算数', '国語': '小学国語', '社会': '小学社会' };
+      if (data.fields) {
+        data.fields = data.fields.map(f => {
+          const newSubject = subjectMap[f.subject];
+          return newSubject ? { ...f, subject: newSubject } : f;
+        });
+      }
+      data._fieldsSubjectRenameV1 = true;
+      updated = true;
+    }
     // evaluationCriteria migration
     if (data.evaluationCriteria && data.evaluationCriteria.length > 0 && data.evaluationCriteria[0].subject === undefined) {
       data.evaluationCriteria = data.evaluationCriteria.map(c => ({
