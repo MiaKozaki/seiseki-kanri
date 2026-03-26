@@ -47,7 +47,7 @@ src/
   pages/
     LoginPage.jsx                  # ログイン画面
     LeaderDashboard.jsx            # リーダー用メインレイアウト（241行）
-    CorrectorDashboard.jsx         # 添削者用ダッシュボード
+    CorrectorDashboard.jsx         # 作業者用ダッシュボード
   components/
     leader/
       OverviewTab.jsx              # 概要（KPIサマリー）
@@ -91,7 +91,7 @@ src/
 | 11 | 質問管理 | 作業者からの質問対応（スレッド形式） |
 | 12 | 使い方 | ガイド |
 
-## 添削者ダッシュボードのタブ
+## 作業者ダッシュボードのタブ
 
 | # | タブ | 内容 |
 |---|------|------|
