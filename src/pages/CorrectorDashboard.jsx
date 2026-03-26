@@ -1661,7 +1661,7 @@ export default function CorrectorDashboard() {
                                   {assignment.submittedAt && ` · 提出: ${new Date(assignment.submittedAt).toLocaleDateString('ja-JP')}`}
                                 </p>
                               )}
-                              {/* 提出済み: 検証待ちメッセージ */}
+                              {/* 提出済み: 検証待ちメッセージ + 修正ボタン */}
                               {isSubmitted && (
                                 <div>
                                   <p className="text-xs text-purple-600 mt-1 font-medium">
@@ -1671,6 +1671,26 @@ export default function CorrectorDashboard() {
                                     <p className="text-xs text-gray-500 mt-1">
                                       📎 添付: {assignment.attachments.map(a => a.fileName).join(', ')}
                                     </p>
+                                  )}
+                                  {/* 検証開始前なら修正可能 */}
+                                  {assignment.verificationStatus !== 'reviewing' && (
+                                    <button
+                                      onClick={() => {
+                                        if (window.confirm('提出を取り消して修正しますか？リーダーの検証が始まる前であれば修正できます。')) {
+                                          updateAssignment(assignment.id, {
+                                            status: 'in_progress',
+                                            submittedAt: null,
+                                            actualHours: null,
+                                            note: null,
+                                            attachments: null,
+                                            submissionChecklistResults: null,
+                                          });
+                                        }
+                                      }}
+                                      className="mt-2 text-xs text-amber-600 hover:text-amber-800 border border-amber-200 hover:bg-amber-50 px-3 py-1.5 rounded-lg transition"
+                                    >
+                                      ✏️ 提出を取り消して修正する
+                                    </button>
                                   )}
                                 </div>
                               )}
