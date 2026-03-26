@@ -1192,6 +1192,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
       return saved;
     };
 
+    const wasEditing = !!editId;
     if (editId) {
       updateTask(editId, { ...form, name: taskName, requiredHours: Number(form.requiredHours) });
       if (taskFiles.length > 0) {
@@ -1235,6 +1236,14 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     setForm({ name: '', schoolName: '', subject: '', year: String(new Date().getFullYear()), round: '1', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
     setTaskFiles([]);
     setTaskFileError('');
+    if (wasEditing) {
+      setMessage('試験種を更新しました');
+    } else if (form.splitByDaimon && form.daimons.length > 0) {
+      setMessage(`試験種を${form.daimons.length}件追加しました`);
+    } else {
+      setMessage('試験種を追加しました');
+    }
+    setTimeout(() => setMessage(''), 3000);
   };
 
   const handleEdit = (task) => {
