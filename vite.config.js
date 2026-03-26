@@ -1,3 +1,4 @@
+// 制作アプリ — Vite設定
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
