@@ -1429,6 +1429,61 @@ export const DataProvider = ({ children }) => {
   // ---- autoAssign用: 一括データ取得 + 結果反映 ----
   const getAllData = () => data || getAll();
 
+  // ---- AI Models ----
+  const getAiModels = () => d('aiModels') || [];
+  const addAiModel = (data) => {
+    const newModel = { ...data, id: generateId(), createdAt: new Date().toISOString() };
+    updateCollection('aiModels', [...(d('aiModels') || []), newModel]);
+    fsWrite(() => {});
+    forceRefresh();
+    return newModel;
+  };
+  const updateAiModel = (id, updates) => {
+    updateCollection('aiModels', (d('aiModels') || []).map(m => m.id === id ? { ...m, ...updates } : m));
+    fsWrite(() => {});
+    forceRefresh();
+  };
+  const deleteAiModel = (id) => {
+    updateCollection('aiModels', (d('aiModels') || []).filter(m => m.id !== id));
+    fsWrite(() => {});
+    forceRefresh();
+  };
+
+  // ---- AI Usage Logs ----
+  const getAiUsageLogs = (filters = {}) => {
+    let logs = d('aiUsageLogs') || [];
+    if (filters.assignmentId) logs = logs.filter(l => l.assignmentId === filters.assignmentId);
+    if (filters.userId) logs = logs.filter(l => l.userId === filters.userId);
+    if (filters.subject) logs = logs.filter(l => l.subject === filters.subject);
+    return logs;
+  };
+  const addAiUsageLog = (logData) => {
+    const newLog = { ...logData, id: generateId(), createdAt: new Date().toISOString() };
+    updateCollection('aiUsageLogs', [...(d('aiUsageLogs') || []), newLog]);
+    fsWrite(() => {});
+    forceRefresh();
+    return newLog;
+  };
+
+  // ---- AI Usage Settings ----
+  const getAiUsageSettings = () => d('aiUsageSettings') || [];
+  const isAiUsageEnabled = (subject, workType) => {
+    return (d('aiUsageSettings') || []).some(s => s.subject === subject && s.workType === workType);
+  };
+  const setAiUsageSetting = (subject, workType, enabled) => {
+    const settings = d('aiUsageSettings') || [];
+    if (enabled) {
+      const existing = settings.find(s => s.subject === subject && s.workType === workType);
+      if (existing) return;
+      const item = { id: generateId(), subject, workType, createdAt: new Date().toISOString() };
+      updateCollection('aiUsageSettings', [...settings, item]);
+    } else {
+      updateCollection('aiUsageSettings', settings.filter(s => !(s.subject === subject && s.workType === workType)));
+    }
+    fsWrite(() => {});
+    forceRefresh();
+  };
+
   // ---- External Work Settings (外部作業設定) ----
   const getExternalWorkSettings = () => d('externalWorkSettings') || [];
   const isExternalWork = (subject, workType) => {
@@ -1495,6 +1550,9 @@ export const DataProvider = ({ children }) => {
       getQuestions, addQuestion, addQuestionReply, resolveQuestion, answerQuestion, getQuestionSettings, updateQuestionSetting,
       startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
       getExternalWorkSettings, isExternalWork, addExternalWorkSetting, removeExternalWorkSetting,
+      getAiModels, addAiModel, updateAiModel, deleteAiModel,
+      getAiUsageLogs, addAiUsageLog,
+      getAiUsageSettings, isAiUsageEnabled, setAiUsageSetting,
     }}>
       {children}
     </DataContext.Provider>

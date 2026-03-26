@@ -1163,6 +1163,7 @@ export default function CorrectorDashboard() {
     getManuals,
     getReviewMemos,
     isExternalWork,
+    getAiModels, addAiUsageLog, isAiUsageEnabled,
   } = useData();
   const [activeTab, setActiveTab] = useState(0);
   const [capForm, setCapForm] = useState({ startDate: '', endDate: '', hoursPerDay: 8, note: '' });
@@ -1215,6 +1216,9 @@ export default function CorrectorDashboard() {
   // 提出前チェックリストモーダル
   const [checklistModalData, setChecklistModalData] = useState(null); // { assignmentId, defaultHours, items }
   const [checklistResults, setChecklistResults] = useState({}); // { itemId: boolean }
+
+  // AI使用記録フォーム
+  const [aiUsageForm, setAiUsageForm] = useState({ used: false, aiModelId: '', version: '', note: '' });
 
   // タスク展開管理（インライン提出用）
   const [expandedTaskId, setExpandedTaskId] = useState(null);
@@ -1501,6 +1505,20 @@ export default function CorrectorDashboard() {
       const clResults = Object.keys(checklistResults).length > 0
         ? Object.entries(checklistResults).map(([itemId, checked]) => ({ itemId, checked, checkedAt: new Date().toISOString() }))
         : undefined;
+      // AI使用記録を保存
+      if (aiUsageForm.used && aiUsageForm.aiModelId && task) {
+        addAiUsageLog({
+          assignmentId,
+          taskId,
+          userId: user.id,
+          subject: task.subject,
+          workType: task.workType,
+          aiModelId: aiUsageForm.aiModelId,
+          version: aiUsageForm.version,
+          note: aiUsageForm.note,
+        });
+      }
+
       updateAssignment(assignmentId, {
         status: 'submitted',
         actualHours: autoHours,
@@ -1511,6 +1529,7 @@ export default function CorrectorDashboard() {
       });
       setSubmittingId(null);
       setSubmitForm({ actualHours: '', note: '', files: [] });
+      setAiUsageForm({ used: false, aiModelId: '', version: '', note: '' });
       setExpandedTaskId(null);
       setInlineChecklistResults({});
       // 手動タイマーリセット
@@ -2271,6 +2290,67 @@ export default function CorrectorDashboard() {
                                     placeholder="例：修正点あり"
                                   />
                                 </div>
+
+                                {/* AI使用記録 */}
+                                {task && isAiUsageEnabled(task.subject, task.workType) && (
+                                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={aiUsageForm.used}
+                                        onChange={e => setAiUsageForm(prev => ({ ...prev, used: e.target.checked, aiModelId: '', version: '', note: '' }))}
+                                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                      />
+                                      <span className="text-xs font-medium text-purple-800">AIを使用した</span>
+                                    </label>
+                                    {aiUsageForm.used && (
+                                      <div className="mt-2 space-y-2">
+                                        <div>
+                                          <label className="block text-xs text-purple-700 mb-1">AIモデル</label>
+                                          <select
+                                            value={aiUsageForm.aiModelId}
+                                            onChange={e => setAiUsageForm(prev => ({ ...prev, aiModelId: e.target.value, version: '' }))}
+                                            className="w-full px-2 py-1.5 border border-purple-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                                          >
+                                            <option value="">選択してください</option>
+                                            {getAiModels().map(m => (
+                                              <option key={m.id} value={m.id}>{m.name}</option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        {aiUsageForm.aiModelId && (() => {
+                                          const selectedModel = getAiModels().find(m => m.id === aiUsageForm.aiModelId);
+                                          const versions = selectedModel?.versions || [];
+                                          return versions.length > 0 ? (
+                                            <div>
+                                              <label className="block text-xs text-purple-700 mb-1">バージョン</label>
+                                              <select
+                                                value={aiUsageForm.version}
+                                                onChange={e => setAiUsageForm(prev => ({ ...prev, version: e.target.value }))}
+                                                className="w-full px-2 py-1.5 border border-purple-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                                              >
+                                                <option value="">選択してください</option>
+                                                {versions.map((v, i) => (
+                                                  <option key={i} value={v}>{v}</option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                          ) : null;
+                                        })()}
+                                        <div>
+                                          <label className="block text-xs text-purple-700 mb-1">メモ（任意）</label>
+                                          <input
+                                            type="text"
+                                            value={aiUsageForm.note}
+                                            onChange={e => setAiUsageForm(prev => ({ ...prev, note: e.target.value }))}
+                                            className="w-full px-2 py-1.5 border border-purple-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                                            placeholder="使用目的や備考"
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
 
                                 {/* 提出ボタン */}
                                 <button

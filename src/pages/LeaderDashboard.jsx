@@ -15,6 +15,7 @@ import CorrectorEvaluationTab from '../components/leader/CorrectorEvaluationTab.
 import FileMergeTab from '../components/leader/FileMergeTab.jsx';
 import MasterDataTab from '../components/leader/MasterDataTab.jsx';
 import QuestionManagementTab from '../components/leader/QuestionManagementTab.jsx';
+import AiManagementTab from '../components/leader/AiManagementTab.jsx';
 import LeaderManualTab from '../components/leader/LeaderManualTab.jsx';
 
 const TABS = [
@@ -29,6 +30,7 @@ const TABS = [
   { label: 'ファイル統合', icon: '📎' },
   { label: 'マスタ', icon: '⚙️' },
   { label: '質問管理', icon: '❓' },
+  { label: 'AI管理', icon: '🤖' },
   { label: '使い方', icon: '📖' },
 ];
 
@@ -83,6 +85,7 @@ export default function LeaderDashboard() {
     FileMergeTab,
     MasterDataTab,
     QuestionManagementTab,
+    AiManagementTab,
     LeaderManualTab,
   ];
   const ActiveComponent = TAB_COMPONENTS[activeTab];

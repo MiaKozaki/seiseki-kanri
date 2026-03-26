@@ -93,6 +93,13 @@ export const INITIAL_DATA = {
   externalWorkSettings: [
     { id: 'ew1', subject: '小学国語', workType: '新年度試験種', createdAt: '2026-01-01T00:00:00.000Z' },
   ],
+  aiModels: [
+    { id: 'ai1', name: 'ChatGPT', versions: ['GPT-4o', 'GPT-4o mini', 'GPT-4.5', 'o1', 'o3-mini'], createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'ai2', name: 'Gemini', versions: ['Gemini 2.0 Flash', 'Gemini 2.0 Pro', 'Gemini 1.5 Pro'], createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'ai3', name: 'Claude', versions: ['Claude 4 Opus', 'Claude 4 Sonnet', 'Claude 3.5 Haiku'], createdAt: '2026-01-01T00:00:00.000Z' },
+  ],
+  aiUsageLogs: [],
+  aiUsageSettings: [],
 };
 
 export const SUBJECTS_LIST = ['小学国語', '小学算数', '小学理科', '小学社会'];
@@ -234,6 +241,9 @@ export const initStorage = () => {
     if (!data.questions) { data.questions = []; updated = true; }
     if (!data.questionSettings) { data.questionSettings = []; updated = true; }
     if (!data.externalWorkSettings) { data.externalWorkSettings = INITIAL_DATA.externalWorkSettings || []; updated = true; }
+    if (!data.aiModels) { data.aiModels = INITIAL_DATA.aiModels || []; updated = true; }
+    if (!data.aiUsageLogs) { data.aiUsageLogs = []; updated = true; }
+    if (!data.aiUsageSettings) { data.aiUsageSettings = []; updated = true; }
     if (updated) localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 };

@@ -10,7 +10,7 @@ import { saveAttachment, downloadAttachment } from '../../utils/fileStorage.js';
 
 // ---- Master Data Tab ----
 const MasterDataTab = ({ activeSubjects }) => {
-  const { getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType, getManuals, addManual, updateManual, deleteManual, getExternalWorkSettings, addExternalWorkSetting, removeExternalWorkSetting } = useData();
+  const { getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType, getManuals, addManual, updateManual, deleteManual, getExternalWorkSettings, addExternalWorkSetting, removeExternalWorkSetting, getAiModels, addAiModel, updateAiModel, deleteAiModel, getAiUsageSettings, setAiUsageSetting } = useData();
   const workTypesList = getWorkTypes().map(wt => wt.name);
   const [catForm, setCatForm] = useState({ name: '', description: '', subject: null, workType: null });
   const [sevForm, setSevForm] = useState({ name: '', level: 1, description: '', color: '#f59e0b' });
@@ -30,6 +30,12 @@ const MasterDataTab = ({ activeSubjects }) => {
   const [manualForm, setManualForm] = useState({ title: '', type: 'url', url: '', content: '', subject: null, workType: null, sortOrder: 1 });
   const [editManualId, setEditManualId] = useState(null);
   const [manualFile, setManualFile] = useState(null);
+
+  // AI管理
+  const [aiModelForm, setAiModelForm] = useState({ name: '' });
+  const [aiVersionForm, setAiVersionForm] = useState('');
+  const [editAiModelId, setEditAiModelId] = useState(null);
+  const [addingVersionModelId, setAddingVersionModelId] = useState(null);
 
   // CSV一括登録（分野）
   const [showFieldCsvImport, setShowFieldCsvImport] = useState(false);
@@ -97,6 +103,7 @@ const MasterDataTab = ({ activeSubjects }) => {
     { key: 'worktype', icon: '\u{1F527}', title: '\u4F5C\u696D\u7A2E\u30DE\u30B9\u30BF', desc: '\u4F5C\u696D\u7A2E\uFF08\u4F5C\u696D\u5185\u5BB9\uFF09\u306E\u7BA1\u7406' },
     { key: 'manual', icon: '\u{1F4D6}', title: '\u4F5C\u696D\u8005\u5411\u3051\u30DE\u30CB\u30E5\u30A2\u30EB', desc: 'URL\u30FB\u30D5\u30A1\u30A4\u30EB\u30FB\u30C6\u30AD\u30B9\u30C8\u306E\u30DE\u30CB\u30E5\u30A2\u30EB\u7BA1\u7406' },
     { key: 'externalwork', icon: '\u{1F4BB}', title: '\u5916\u90E8\u4F5C\u696D\u8A2D\u5B9A', desc: '\u624B\u52D5\u30BF\u30A4\u30DE\u30FC\u304C\u5FC5\u8981\u306A\u79D1\u76EE\u00D7\u4F5C\u696D\u7A2E\u306E\u8A2D\u5B9A' },
+    { key: 'ai', icon: '\u{1F916}', title: 'AI\u7BA1\u7406', desc: 'AI\u30E2\u30C7\u30EB\u7BA1\u7406\u30FB\u79D1\u76EE\u00D7\u696D\u52D9\u5185\u5BB9\u3054\u3068\u306EAI\u8A18\u9332\u8A2D\u5B9A' },
   ];
 
   return (
@@ -1009,6 +1016,165 @@ const MasterDataTab = ({ activeSubjects }) => {
             );
           });
         })()}
+      </div>
+      )}
+
+      {activeMasterSection === 'ai' && (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-6">
+        <div>
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">AIモデル管理</h4>
+          <p className="text-xs text-gray-500 mb-3">AI使用記録で選択できるモデルとバージョンを管理します。</p>
+
+          {/* Add AI Model */}
+          <div className="flex gap-2 mb-4">
+            <input
+              type="text"
+              value={aiModelForm.name}
+              onChange={e => setAiModelForm({ name: e.target.value })}
+              placeholder="AIモデル名（例: ChatGPT）"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <button
+              onClick={() => {
+                if (!aiModelForm.name.trim()) return;
+                if (editAiModelId) {
+                  updateAiModel(editAiModelId, { name: aiModelForm.name.trim() });
+                  setEditAiModelId(null);
+                } else {
+                  addAiModel({ name: aiModelForm.name.trim(), versions: [] });
+                }
+                setAiModelForm({ name: '' });
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition"
+            >
+              {editAiModelId ? '更新' : '追加'}
+            </button>
+            {editAiModelId && (
+              <button onClick={() => { setEditAiModelId(null); setAiModelForm({ name: '' }); }}
+                className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg">キャンセル</button>
+            )}
+          </div>
+
+          {/* AI Models list */}
+          <div className="space-y-3">
+            {getAiModels().map(model => (
+              <div key={model.id} className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-800">{model.name}</span>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => { setEditAiModelId(model.id); setAiModelForm({ name: model.name }); }}
+                      className="text-xs text-blue-600 hover:text-blue-800">編集</button>
+                    <button onClick={() => { if (window.confirm(`「${model.name}」を削除しますか？`)) deleteAiModel(model.id); }}
+                      className="text-xs text-red-500 hover:text-red-700">削除</button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {(model.versions || []).map((v, vi) => (
+                    <span key={vi} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
+                      {v}
+                      <button onClick={() => {
+                        const newVersions = model.versions.filter((_, i) => i !== vi);
+                        updateAiModel(model.id, { versions: newVersions });
+                      }} className="text-blue-400 hover:text-red-500 ml-0.5">&times;</button>
+                    </span>
+                  ))}
+                </div>
+                {addingVersionModelId === model.id ? (
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={aiVersionForm}
+                      onChange={e => setAiVersionForm(e.target.value)}
+                      placeholder="バージョン名"
+                      className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && aiVersionForm.trim()) {
+                          updateAiModel(model.id, { versions: [...(model.versions || []), aiVersionForm.trim()] });
+                          setAiVersionForm('');
+                          setAddingVersionModelId(null);
+                        }
+                      }}
+                    />
+                    <button onClick={() => {
+                      if (aiVersionForm.trim()) {
+                        updateAiModel(model.id, { versions: [...(model.versions || []), aiVersionForm.trim()] });
+                        setAiVersionForm('');
+                      }
+                      setAddingVersionModelId(null);
+                    }} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">追加</button>
+                    <button onClick={() => { setAddingVersionModelId(null); setAiVersionForm(''); }}
+                      className="text-xs text-gray-500 hover:text-gray-700">取消</button>
+                  </div>
+                ) : (
+                  <button onClick={() => { setAddingVersionModelId(model.id); setAiVersionForm(''); }}
+                    className="text-xs text-blue-600 hover:text-blue-800">+ バージョン追加</button>
+                )}
+              </div>
+            ))}
+            {getAiModels().length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-4">AIモデルが登録されていません</p>
+            )}
+          </div>
+        </div>
+
+        {/* AI記録設定 */}
+        <div>
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">AI記録設定</h4>
+          <p className="text-xs text-gray-500 mb-4">
+            チェックを入れた科目×業務内容の組み合わせでは、作業者がタスク提出時にAI使用記録を入力できるようになります。
+          </p>
+          {(() => {
+            const aiSettings = getAiUsageSettings();
+            const workTypeNames = getWorkTypes().map(wt => wt.name);
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600 border border-gray-200">科目 ＼ 業務内容</th>
+                      {workTypeNames.map(wt => (
+                        <th key={wt} className="text-center px-3 py-2 text-xs font-semibold text-gray-600 border border-gray-200 whitespace-nowrap">{wt}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {SUBJECTS_LIST.map(subject => (
+                      <tr key={subject} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 whitespace-nowrap">{subject}</td>
+                        {workTypeNames.map(wt => {
+                          const checked = aiSettings.some(s => s.subject === subject && s.workType === wt);
+                          return (
+                            <td key={wt} className="text-center px-3 py-2 border border-gray-200">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => setAiUsageSetting(subject, wt, !checked)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+          {getAiUsageSettings().length > 0 && (
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-xs font-semibold text-blue-700 mb-1">現在のAI記録設定:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {getAiUsageSettings().map(s => (
+                  <span key={s.id} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                    {s.subject} / {s.workType}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       )}
 

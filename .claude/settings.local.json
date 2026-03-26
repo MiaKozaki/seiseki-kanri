@@ -138,7 +138,8 @@
       "Bash(export PATH=\"$HOME/.nvm/versions/node/v22.14.0/bin:$HOME/.bun/bin:/usr/local/bin:/opt/homebrew/bin:$PATH\")",
       "Bash(ls /Users/mia/.bun/bin/*)",
       "Bash(awk 'END{print NR}' /Users/mia/Desktop/seiseki-kanri/src/pages/LeaderDashboard.jsx)",
-      "Bash(PATH=\"$HOME/.local/share/mise/installs/node/22.14.0/bin:$PATH\" npx vite build)"
+      "Bash(PATH=\"$HOME/.local/share/mise/installs/node/22.14.0/bin:$PATH\" npx vite build)",
+      "Bash(echo \"PATH=$PATH\")"
     ]
   }
 }
