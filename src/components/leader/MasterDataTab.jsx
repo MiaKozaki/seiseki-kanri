@@ -103,7 +103,6 @@ const MasterDataTab = ({ activeSubjects }) => {
     { key: 'worktype', icon: '\u{1F527}', title: '\u4F5C\u696D\u7A2E\u30DE\u30B9\u30BF', desc: '\u4F5C\u696D\u7A2E\uFF08\u4F5C\u696D\u5185\u5BB9\uFF09\u306E\u7BA1\u7406' },
     { key: 'manual', icon: '\u{1F4D6}', title: '\u4F5C\u696D\u8005\u5411\u3051\u30DE\u30CB\u30E5\u30A2\u30EB', desc: 'URL\u30FB\u30D5\u30A1\u30A4\u30EB\u30FB\u30C6\u30AD\u30B9\u30C8\u306E\u30DE\u30CB\u30E5\u30A2\u30EB\u7BA1\u7406' },
     { key: 'externalwork', icon: '\u{1F4BB}', title: '\u5916\u90E8\u4F5C\u696D\u8A2D\u5B9A', desc: '\u624B\u52D5\u30BF\u30A4\u30DE\u30FC\u304C\u5FC5\u8981\u306A\u79D1\u76EE\u00D7\u4F5C\u696D\u7A2E\u306E\u8A2D\u5B9A' },
-    { key: 'ai', icon: '\u{1F916}', title: 'AI\u7BA1\u7406', desc: 'AI\u30E2\u30C7\u30EB\u7BA1\u7406\u30FB\u79D1\u76EE\u00D7\u696D\u52D9\u5185\u5BB9\u3054\u3068\u306EAI\u8A18\u9332\u8A2D\u5B9A' },
   ];
 
   return (
@@ -1019,7 +1018,7 @@ const MasterDataTab = ({ activeSubjects }) => {
       </div>
       )}
 
-      {activeMasterSection === 'ai' && (
+      {false && activeMasterSection === 'ai_REMOVED' && (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-6">
         <div>
           <h4 className="text-sm font-semibold text-gray-700 mb-3">AIモデル管理</h4>

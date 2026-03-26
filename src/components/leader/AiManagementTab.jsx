@@ -9,13 +9,24 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 const COLORS = ['#6366f1', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#8b5cf6', '#14b8a6'];
 
-const AiManagementTab = ({ activeSubjects }) => {
-  const { getAiUsageLogs, getAiModels, getUsers, getTasks, getAssignments, getWorkTypes } = useData();
+const WORK_TYPES_LIST = ['新年度試験種', 'タグ付け', '解答出し', '部分点', 'tensakitインポート', 'takos作成', 'マクロ'];
 
+const AiManagementTab = ({ activeSubjects }) => {
+  const { getAiUsageLogs, getAiModels, addAiModel, updateAiModel, deleteAiModel, getAiUsageSettings, isAiUsageEnabled, setAiUsageSetting, getUsers, getTasks, getAssignments, getWorkTypes } = useData();
+
+  // Section navigation
+  const [activeSection, setActiveSection] = useState(null);
+
+  // Filter state
   const [filterSubject, setFilterSubject] = useState('');
   const [filterAiModel, setFilterAiModel] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+
+  // AI model management state
+  const [aiModelForm, setAiModelForm] = useState({ name: '' });
+  const [editAiModelId, setEditAiModelId] = useState(null);
+  const [newVersionText, setNewVersionText] = useState({});
 
   const aiModels = getAiModels();
   const users = getUsers();
@@ -97,8 +108,139 @@ const AiManagementTab = ({ activeSubjects }) => {
     URL.revokeObjectURL(url);
   };
 
+  const aiSections = [
+    { key: 'logs', icon: '📊', title: 'AI使用記録', desc: '使用記録の確認・分析・CSV出力' },
+    { key: 'models', icon: '🤖', title: 'AIモデル管理', desc: 'AIモデル・バージョンの追加・編集' },
+    { key: 'settings', icon: '⚙️', title: 'AI記録設定', desc: '科目×業務内容ごとのAI記録ON/OFF' },
+  ];
+
   return (
     <div className="space-y-6">
+      {/* Section Navigation */}
+      {!activeSection && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {aiSections.map(s => (
+            <button key={s.key} onClick={() => setActiveSection(s.key)}
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-left hover:border-purple-300 hover:shadow-md transition">
+              <span className="text-2xl">{s.icon}</span>
+              <h4 className="text-sm font-bold text-gray-800 mt-2">{s.title}</h4>
+              <p className="text-xs text-gray-500 mt-0.5">{s.desc}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeSection && (
+        <button onClick={() => setActiveSection(null)} className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+          ← 戻る
+        </button>
+      )}
+
+      {/* AIモデル管理 */}
+      {activeSection === 'models' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">AIモデル管理</h4>
+          <div className="flex gap-2 mb-3">
+            <input type="text" placeholder="AIモデル名" value={aiModelForm.name}
+              onChange={e => setAiModelForm({ name: e.target.value })}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <button onClick={() => {
+              if (!aiModelForm.name.trim()) return;
+              if (editAiModelId) {
+                updateAiModel(editAiModelId, { name: aiModelForm.name.trim() });
+                setEditAiModelId(null);
+              } else {
+                addAiModel({ name: aiModelForm.name.trim(), versions: [] });
+              }
+              setAiModelForm({ name: '' });
+            }} className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-4 py-2 rounded-lg">
+              {editAiModelId ? '更新' : '追加'}
+            </button>
+            {editAiModelId && (
+              <button onClick={() => { setEditAiModelId(null); setAiModelForm({ name: '' }); }}
+                className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg">キャンセル</button>
+            )}
+          </div>
+          <div className="space-y-3">
+            {aiModels.map(model => (
+              <div key={model.id} className="bg-gray-50 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold text-gray-800">{model.name}</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => { setEditAiModelId(model.id); setAiModelForm({ name: model.name }); }}
+                      className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded">編集</button>
+                    <button onClick={() => { if (window.confirm(`${model.name}を削除しますか？`)) deleteAiModel(model.id); }}
+                      className="text-xs text-red-400 hover:bg-red-50 px-2 py-1 rounded">削除</button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {(model.versions || []).map((v, i) => (
+                    <span key={i} className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      {v}
+                      <button onClick={() => updateAiModel(model.id, { versions: model.versions.filter((_, j) => j !== i) })}
+                        className="text-purple-400 hover:text-purple-700">×</button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  <input type="text" placeholder="バージョン追加" value={newVersionText[model.id] || ''}
+                    onChange={e => setNewVersionText(prev => ({ ...prev, [model.id]: e.target.value }))}
+                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && newVersionText[model.id]?.trim()) {
+                        updateAiModel(model.id, { versions: [...(model.versions || []), newVersionText[model.id].trim()] });
+                        setNewVersionText(prev => ({ ...prev, [model.id]: '' }));
+                      }
+                    }} />
+                  <button onClick={() => {
+                    if (!newVersionText[model.id]?.trim()) return;
+                    updateAiModel(model.id, { versions: [...(model.versions || []), newVersionText[model.id].trim()] });
+                    setNewVersionText(prev => ({ ...prev, [model.id]: '' }));
+                  }} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">追加</button>
+                </div>
+              </div>
+            ))}
+            {aiModels.length === 0 && <p className="text-xs text-gray-400">AIモデルが登録されていません</p>}
+          </div>
+        </div>
+      )}
+
+      {/* AI記録設定 */}
+      {activeSection === 'settings' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">AI記録設定</h4>
+          <p className="text-xs text-gray-500 mb-4">チェックを入れた科目×業務内容で、作業者提出時にAI使用記録を求めます。</p>
+          <div className="overflow-x-auto">
+            <table className="text-xs w-full">
+              <thead>
+                <tr>
+                  <th className="text-left py-1 px-2">科目＼業務内容</th>
+                  {WORK_TYPES_LIST.map(w => <th key={w} className="text-center py-1 px-2">{w}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {SUBJECTS_LIST.map(subject => (
+                  <tr key={subject} className="border-t border-gray-100">
+                    <td className="py-2 px-2 font-medium">{subject}</td>
+                    {WORK_TYPES_LIST.map(workType => (
+                      <td key={workType} className="text-center py-2 px-2">
+                        <input type="checkbox"
+                          checked={isAiUsageEnabled(subject, workType)}
+                          onChange={e => setAiUsageSetting(subject, workType, e.target.checked)}
+                          className="accent-purple-600" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* AI使用記録 */}
+      {activeSection === 'logs' && (
+      <>
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -246,6 +388,8 @@ const AiManagementTab = ({ activeSubjects }) => {
           <p className="text-xs text-gray-500 mt-2">{filteredLogs.length}件の記録</p>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 };
