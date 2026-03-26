@@ -125,6 +125,46 @@ export const calcCompletedTaskCount = (userId, subject = null, data = null) => {
 };
 
 /**
+ * 期限遵守率（期限内に提出された割合）
+ * @param {string} userId
+ * @param {string|null} subject
+ * @param {Object|null} data
+ * @returns {number} 0〜100 (percentage)
+ */
+export const calcDeadlineComplianceRate = (userId, subject = null, data = null) => {
+  const d = resolveData(data);
+  const userAssignments = (d.assignments || []).filter(a =>
+    a.userId === userId && (isFinished(a.status) || a.status === 'submitted') && a.submittedAt
+  );
+  const tasks = d.tasks || [];
+
+  let relevant = userAssignments;
+  if (subject) {
+    relevant = userAssignments.filter(a => {
+      const task = tasks.find(t => t.id === a.taskId);
+      return task?.subject === subject;
+    });
+  }
+
+  if (relevant.length === 0) return 100; // no submissions = 100% by default
+
+  let onTime = 0;
+  relevant.forEach(a => {
+    const task = tasks.find(t => t.id === a.taskId);
+    if (!task?.deadline) {
+      onTime++; // no deadline set = considered on time
+      return;
+    }
+    const submittedDate = a.submittedAt.slice(0, 10);
+    if (submittedDate <= task.deadline) {
+      onTime++;
+    }
+  });
+
+  return (onTime / relevant.length) * 100;
+};
+
+/**
  * ユーザーの差し戻し数を計算
  */
 export const calcRejectionCount = (userId, subject = null, data = null) => {
@@ -195,6 +235,7 @@ export const calcAllMetrics = (userId, subject = null, data = null) => {
     averageWorkTime: calcAverageWorkTime(userId, subject, data),
     averageWorkTimeByWorkType: calcAverageWorkTimeByWorkType(userId, subject, data),
     taskCount: calcCompletedTaskCount(userId, subject, data),
+    deadlineComplianceRate: calcDeadlineComplianceRate(userId, subject, data),
   };
 };
 
@@ -221,6 +262,10 @@ export const normalizeMetricToScore = (metricType, value, maxScore, allValues = 
     case 'task_count': {
       const maxCount = Math.max(...allValues, 1);
       return Math.round((value / maxCount) * maxScore * 10) / 10;
+    }
+    case 'deadline_compliance': {
+      // value is 0-100 percentage, higher is better
+      return Math.round((value / 100) * maxScore * 10) / 10;
     }
     default:
       return 0;

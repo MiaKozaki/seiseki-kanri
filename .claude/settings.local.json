@@ -124,7 +124,9 @@
       "Bash(ls ~/.nodenv/versions/*/bin/node)",
       "Bash(mdfind -name node -onlyin /Users/mia/Library)",
       "Bash(grep -E \"bin/node$\")",
-      "Bash(/Users/mia/Desktop/seiseki-kanri/node_modules/.bin/vite build:*)"
+      "Bash(/Users/mia/Desktop/seiseki-kanri/node_modules/.bin/vite build:*)",
+      "Bash(npx -y acorn-jsx --ecma2020 src/pages/LeaderDashboard.jsx)",
+      "Bash(echo $?)"
     ]
   }
 }

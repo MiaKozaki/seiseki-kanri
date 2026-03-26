@@ -4176,6 +4176,9 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   const [subjectDetailSubject, setSubjectDetailSubject] = useState('');
   const [daimonFilterUser, setDaimonFilterUser] = useState('');
 
+  // --- Comparison panel state ---
+  const [comparisonOpen, setComparisonOpen] = useState(false);
+
   // --- FB集約 state ---
   const [fbSectionOpen, setFbSectionOpen] = useState(false);
   const [fbView, setFbView] = useState('byUser'); // 'byUser' | 'byCategory'
@@ -4484,6 +4487,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
               <option value="severity_score">重大度スコア</option>
               <option value="work_time">作業時間</option>
               <option value="task_count">タスク完了数</option>
+              <option value="deadline_compliance">期限遵守率</option>
             </select>
             <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition">
               {editCritId ? '更新' : '追加'}
@@ -4505,7 +4509,8 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                   {c.autoMetric === 'rejection_rate' ? '自動:差し戻し率' :
                    c.autoMetric === 'severity_score' ? '自動:重大度' :
                    c.autoMetric === 'work_time' ? '自動:作業時間' :
-                   c.autoMetric === 'task_count' ? '自動:タスク数' : ''}
+                   c.autoMetric === 'task_count' ? '自動:タスク数' :
+                   c.autoMetric === 'deadline_compliance' ? '自動:期限遵守率' : ''}
                 </span>}
                 <button onClick={() => { setEditCritId(c.id); setCritForm({ name: c.name, description: c.description, maxScore: c.maxScore, subject: c.subject || null, autoMetric: c.autoMetric || null }); }}
                   className="text-blue-500 hover:text-blue-700 text-xs">編集</button>
@@ -4547,6 +4552,60 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
             ))}
           </div>
 
+          {/* Collapsible comparison panel */}
+          {selectedUser && (
+            <div className="mb-4">
+              <button
+                onClick={() => setComparisonOpen(!comparisonOpen)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-800 transition mb-2"
+              >
+                <span className={`transform transition-transform ${comparisonOpen ? 'rotate-90' : ''}`}>&#9654;</span>
+                <span>{'\uD83D\uDCCA'} 全体比較</span>
+              </button>
+              {comparisonOpen && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-gray-500 border-b border-blue-200">
+                        <th className="py-1.5 px-2">氏名</th>
+                        <th className="py-1.5 px-2">分類</th>
+                        <th className="py-1.5 px-2 text-right">評価平均</th>
+                        <th className="py-1.5 px-2 text-right">期限遵守率</th>
+                        <th className="py-1.5 px-2 text-right">完了タスク数</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {correctors.map(c => {
+                        const cMetrics = calcAllMetrics(c.id, evalSubject, getAllData());
+                        const cEvals = allEvals.filter(e => e.userId === c.id);
+                        const avgScore = criteria.length > 0
+                          ? criteria.reduce((sum, cr) => {
+                              const ev = cEvals.find(e => e.criteriaId === cr.id);
+                              return sum + ((ev?.score ?? 0) / cr.maxScore);
+                            }, 0) / criteria.length * 100
+                          : 0;
+                        const isSelected = c.id === selectedUser;
+                        return (
+                          <tr
+                            key={c.id}
+                            className={`border-b border-blue-100 cursor-pointer hover:bg-blue-100 transition ${isSelected ? 'bg-blue-100 font-semibold' : ''}`}
+                            onClick={() => { setSelectedUser(c.id); setLocalScores({}); }}
+                          >
+                            <td className="py-1.5 px-2 text-gray-800">{c.name}{isSelected && <span className="ml-1 text-blue-600">&#9664;</span>}</td>
+                            <td className="py-1.5 px-2">{getClassificationBadge(c.classification) || <span className="text-gray-400">-</span>}</td>
+                            <td className="py-1.5 px-2 text-right text-gray-700">{avgScore.toFixed(1)}%</td>
+                            <td className="py-1.5 px-2 text-right text-gray-700">{cMetrics.deadlineComplianceRate.toFixed(1)}%</td>
+                            <td className="py-1.5 px-2 text-right text-gray-700">{cMetrics.taskCount}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {selectedUser && (
             <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-xl">
               <div className="flex items-center gap-2 mb-2">
@@ -4557,7 +4616,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                 const metrics = calcAllMetrics(selectedUser, evalSubject, getAllData());
                 return (
                   <>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
                       <div className="bg-white rounded-lg p-2 text-center">
                         <p className="text-xs text-gray-500">差し戻し率</p>
                         <p className="text-lg font-bold text-gray-800">{(metrics.rejectionRate * 100).toFixed(1)}%</p>
@@ -4573,6 +4632,10 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                       <div className="bg-white rounded-lg p-2 text-center">
                         <p className="text-xs text-gray-500">完了タスク</p>
                         <p className="text-lg font-bold text-gray-800">{metrics.taskCount}件</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-2 text-center">
+                        <p className="text-xs text-gray-500">期限遵守率</p>
+                        <p className="text-lg font-bold text-gray-800">{metrics.deadlineComplianceRate.toFixed(1)}%</p>
                       </div>
                     </div>
                     {metrics.averageWorkTimeByWorkType.length > 0 && (
@@ -4635,11 +4698,13 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                           return c.autoMetric === 'rejection_rate' ? m.rejectionRate :
                                  c.autoMetric === 'severity_score' ? m.severityScore :
                                  c.autoMetric === 'work_time' ? m.averageWorkTime :
+                                 c.autoMetric === 'deadline_compliance' ? m.deadlineComplianceRate :
                                  m.taskCount;
                         });
                         const val = c.autoMetric === 'rejection_rate' ? metrics.rejectionRate :
                                     c.autoMetric === 'severity_score' ? metrics.severityScore :
                                     c.autoMetric === 'work_time' ? metrics.averageWorkTime :
+                                    c.autoMetric === 'deadline_compliance' ? metrics.deadlineComplianceRate :
                                     metrics.taskCount;
                         const autoScore = normalizeMetricToScore(c.autoMetric, val, c.maxScore, allVals);
                         return (
