@@ -2814,7 +2814,7 @@ export default function CorrectorDashboard() {
             <div className="space-y-4 max-w-4xl mx-auto">
               <div>
                 <h2 className="text-lg font-bold text-gray-800 mb-1">📖 添削者用マニュアル</h2>
-                <p className="text-sm text-gray-500">四谷大塚制作アプリの使い方ガイドです。各項目をクリックして詳細を確認できます。</p>
+                <p className="text-sm text-gray-500">制作アプリの使い方ガイドです。各項目をクリックして詳細を確認できます。</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

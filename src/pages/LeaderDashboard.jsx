@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
-import { autoAssign, manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
+import { manualAssign, previewAutoAssign, confirmAutoAssign } from '../utils/autoAssign.js';
 import { toCSV, downloadCSV, importCSVFile, parseCSV, validateUserCSV, validateFieldClearanceCSV, validateTaskCSV, validateExamTaskCSV, validateFieldMasterCSV, validateDaimonTaskCSV, validateNewYearTaskCSV, validateCsvImportTaskCSV, TASK_IMPORT_CSV_COLUMNS, EXAM_TASK_CSV_COLUMNS, FIELD_MASTER_CSV_COLUMNS, DAIMON_TASK_CSV_COLUMNS, NEW_YEAR_TASK_CSV_COLUMNS, CSV_IMPORT_TASK_COLUMNS, USER_CSV_COLUMNS, ASSIGNMENT_CSV_COLUMNS, CAPACITY_CSV_COLUMNS, EVALUATION_CSV_COLUMNS } from '../utils/csvUtils';
 import { SUBJECTS_LIST, WORK_TYPES_LIST, generateId } from '../utils/storage.js';
 import { SCHOOL_SUGGESTIONS } from '../utils/schoolList.js';
@@ -7926,7 +7926,7 @@ const LeaderManualTab = () => {
     <div className="space-y-4 max-w-4xl">
       <div>
         <h2 className="text-lg font-bold text-gray-800 mb-1">📖 リーダー用マニュアル</h2>
-        <p className="text-sm text-gray-500">四谷大塚制作アプリの使い方ガイドです。各項目をクリックして詳細を確認できます。</p>
+        <p className="text-sm text-gray-500">制作アプリの使い方ガイドです。各項目をクリックして詳細を確認できます。</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
