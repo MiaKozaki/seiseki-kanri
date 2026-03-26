@@ -129,7 +129,11 @@
       "Bash(echo $?)",
       "Bash(ls /Users/mia/.fnm/node-versions/*/installation/bin/node)",
       "Bash(ls /Users/mia/Desktop/seiseki-kanri/node_modules/.bin/../../../.nvm/versions/node/*/bin/node)",
-      "Bash(/usr/bin/env -S bash -c 'export PATH=\"\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\"; type node 2>&1')"
+      "Bash(/usr/bin/env -S bash -c 'export PATH=\"\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\"; type node 2>&1')",
+      "Bash(export PATH=\"$HOME/.local/share/nvm/versions/node/v22.14.0/bin:$PATH\")",
+      "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/.nvm/versions/node/*/bin/**)",
+      "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/.local/share/nvm/versions/node/*/bin/**)",
+      "Read(//Users/mia/Desktop/seiseki-kanri/$HOME/.volta/bin/**)"
     ]
   }
 }

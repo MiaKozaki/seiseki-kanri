@@ -107,8 +107,8 @@ const newEdamon = () => ({
   順不同: false,
   別解: '',
   解説: '',
-  解説画像: '',
-  解答画像: '',       // 算数用
+  解説画像: null,
+  解答画像: null,       // 算数用
   条件指定: '',       // 社会用
   条件指定要素: '',   // 理科用
   不可解答: '',       // 社会用
@@ -389,9 +389,49 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
   // リアルタイムバリデーション（フォーム変更のたびに自動再計算）
   const liveErrors = useMemo(() => validateBeforeSubmit(), [form]);
 
+  // ---- 画像アップロード ----
+  const handleImageUpload = (daimonNum, monId, edaId, type, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.includes('png') && !file.name.toLowerCase().endsWith('.png')) {
+      alert('PNG画像のみアップロード可能です');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('ファイルサイズは5MB以下にしてください');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const imageData = { fileName: file.name, fileSize: file.size, dataUrl: reader.result };
+      const field = type === 'answer' ? '解答画像' : '解説画像';
+      updateEda(daimonNum, monId, edaId, field, imageData);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleImageRemove = (daimonNum, monId, edaId, type) => {
+    const field = type === 'answer' ? '解答画像' : '解説画像';
+    updateEda(daimonNum, monId, edaId, field, null);
+  };
+
+  const [previewImage, setPreviewImage] = useState(null);
+
   // ---- 保存・書き出し ----
   const handleSave = async () => {
     setSaving(true);
+    // 画像データサイズ警告チェック
+    const jsonSize = JSON.stringify(form).length;
+    if (jsonSize > 2 * 1024 * 1024) {
+      const sizeMB = (jsonSize / 1024 / 1024).toFixed(1);
+      if (!window.confirm(`データサイズが ${sizeMB}MB あります（画像含む）。保存を続行しますか？`)) {
+        setSaving(false);
+        return;
+      }
+    }
     onSave({ ...form, status: 'draft' });
     showToast('💾 下書きを保存しました');
     setSaving(false);
@@ -682,12 +722,27 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
                               {isSansu && (
                                 <>
                                   <div>
-                                    <label className="block text-xs text-gray-500 mb-0.5">解答_画像 URL（任意）</label>
-                                    <input type="url" value={eda.解答画像 ?? ''}
-                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '解答画像', e.target.value)}
-                                      placeholder="https://..."
-                                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    />
+                                    <label className="block text-xs text-gray-500 mb-0.5">解答_画像（PNG）</label>
+                                    <div className="flex items-center gap-2">
+                                      <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border border-gray-300 transition">
+                                        📷 解答画像を選択
+                                        <input type="file" accept="image/png,.png"
+                                          onChange={e => handleImageUpload(daimon.大問番号, mon.monId, eda.edaId, 'answer', e)}
+                                          className="hidden" />
+                                      </label>
+                                      {eda.解答画像 && typeof eda.解答画像 === 'object' && (
+                                        <span className="text-xs text-green-600">✅ {eda.解答画像.fileName}</span>
+                                      )}
+                                    </div>
+                                    {eda.解答画像 && typeof eda.解答画像 === 'object' && eda.解答画像.dataUrl && (
+                                      <div className="mt-1 flex items-start gap-2">
+                                        <img src={eda.解答画像.dataUrl} alt="解答画像"
+                                          className="max-h-20 rounded border cursor-pointer"
+                                          onClick={() => setPreviewImage(eda.解答画像.dataUrl)} />
+                                        <button onClick={() => handleImageRemove(daimon.大問番号, mon.monId, eda.edaId, 'answer')}
+                                          className="text-xs text-red-500 hover:text-red-700">削除</button>
+                                      </div>
+                                    )}
                                   </div>
                                   <div>
                                     <label className="block text-xs text-gray-500 mb-0.5">解説</label>
@@ -699,12 +754,27 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
                                     />
                                   </div>
                                   <div>
-                                    <label className="block text-xs text-gray-500 mb-0.5">解説_画像 URL（任意）</label>
-                                    <input type="url" value={eda.解説画像 ?? ''}
-                                      onChange={e => updateEda(daimon.大問番号, mon.monId, eda.edaId, '解説画像', e.target.value)}
-                                      placeholder="https://..."
-                                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    />
+                                    <label className="block text-xs text-gray-500 mb-0.5">解説_画像（PNG）</label>
+                                    <div className="flex items-center gap-2">
+                                      <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border border-gray-300 transition">
+                                        📷 解説画像を選択
+                                        <input type="file" accept="image/png,.png"
+                                          onChange={e => handleImageUpload(daimon.大問番号, mon.monId, eda.edaId, 'explanation', e)}
+                                          className="hidden" />
+                                      </label>
+                                      {eda.解説画像 && typeof eda.解説画像 === 'object' && (
+                                        <span className="text-xs text-green-600">✅ {eda.解説画像.fileName}</span>
+                                      )}
+                                    </div>
+                                    {eda.解説画像 && typeof eda.解説画像 === 'object' && eda.解説画像.dataUrl && (
+                                      <div className="mt-1 flex items-start gap-2">
+                                        <img src={eda.解説画像.dataUrl} alt="解説画像"
+                                          className="max-h-20 rounded border cursor-pointer"
+                                          onClick={() => setPreviewImage(eda.解説画像.dataUrl)} />
+                                        <button onClick={() => handleImageRemove(daimon.大問番号, mon.monId, eda.edaId, 'explanation')}
+                                          className="text-xs text-red-500 hover:text-red-700">削除</button>
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="flex flex-wrap items-center gap-3">
                                     <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
@@ -799,7 +869,7 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
                                 </>
                               )}
 
-                              {/* 社会: 完答+順不同, 条件指定, 別解, 不可解答, 解説 */}
+                              {/* 社会: 完答+順不同, 条件指定, 別解, 不可解答, 解説, 画像 */}
                               {isShakai && (
                                 <>
                                   <div className="flex flex-wrap items-center gap-3">
@@ -847,10 +917,56 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
                                       placeholder="解説文を入力"
                                     />
                                   </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解答_画像（PNG）</label>
+                                    <div className="flex items-center gap-2">
+                                      <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border border-gray-300 transition">
+                                        📷 解答画像を選択
+                                        <input type="file" accept="image/png,.png"
+                                          onChange={e => handleImageUpload(daimon.大問番号, mon.monId, eda.edaId, 'answer', e)}
+                                          className="hidden" />
+                                      </label>
+                                      {eda.解答画像 && typeof eda.解答画像 === 'object' && (
+                                        <span className="text-xs text-green-600">✅ {eda.解答画像.fileName}</span>
+                                      )}
+                                    </div>
+                                    {eda.解答画像 && typeof eda.解答画像 === 'object' && eda.解答画像.dataUrl && (
+                                      <div className="mt-1 flex items-start gap-2">
+                                        <img src={eda.解答画像.dataUrl} alt="解答画像"
+                                          className="max-h-20 rounded border cursor-pointer"
+                                          onClick={() => setPreviewImage(eda.解答画像.dataUrl)} />
+                                        <button onClick={() => handleImageRemove(daimon.大問番号, mon.monId, eda.edaId, 'answer')}
+                                          className="text-xs text-red-500 hover:text-red-700">削除</button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解説_画像（PNG）</label>
+                                    <div className="flex items-center gap-2">
+                                      <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border border-gray-300 transition">
+                                        📷 解説画像を選択
+                                        <input type="file" accept="image/png,.png"
+                                          onChange={e => handleImageUpload(daimon.大問番号, mon.monId, eda.edaId, 'explanation', e)}
+                                          className="hidden" />
+                                      </label>
+                                      {eda.解説画像 && typeof eda.解説画像 === 'object' && (
+                                        <span className="text-xs text-green-600">✅ {eda.解説画像.fileName}</span>
+                                      )}
+                                    </div>
+                                    {eda.解説画像 && typeof eda.解説画像 === 'object' && eda.解説画像.dataUrl && (
+                                      <div className="mt-1 flex items-start gap-2">
+                                        <img src={eda.解説画像.dataUrl} alt="解説画像"
+                                          className="max-h-20 rounded border cursor-pointer"
+                                          onClick={() => setPreviewImage(eda.解説画像.dataUrl)} />
+                                        <button onClick={() => handleImageRemove(daimon.大問番号, mon.monId, eda.edaId, 'explanation')}
+                                          className="text-xs text-red-500 hover:text-red-700">削除</button>
+                                      </div>
+                                    )}
+                                  </div>
                                 </>
                               )}
 
-                              {/* 理科: 完答+順不同, 条件指定・要素, 採点基準テキスト, 解説 */}
+                              {/* 理科: 完答+順不同, 条件指定・要素, 採点基準テキスト, 解説, 画像 */}
                               {isRika && (
                                 <>
                                   <div className="flex flex-wrap items-center gap-3">
@@ -890,6 +1006,52 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
                                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                                       placeholder="解説文を入力"
                                     />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解答_画像（PNG）</label>
+                                    <div className="flex items-center gap-2">
+                                      <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border border-gray-300 transition">
+                                        📷 解答画像を選択
+                                        <input type="file" accept="image/png,.png"
+                                          onChange={e => handleImageUpload(daimon.大問番号, mon.monId, eda.edaId, 'answer', e)}
+                                          className="hidden" />
+                                      </label>
+                                      {eda.解答画像 && typeof eda.解答画像 === 'object' && (
+                                        <span className="text-xs text-green-600">✅ {eda.解答画像.fileName}</span>
+                                      )}
+                                    </div>
+                                    {eda.解答画像 && typeof eda.解答画像 === 'object' && eda.解答画像.dataUrl && (
+                                      <div className="mt-1 flex items-start gap-2">
+                                        <img src={eda.解答画像.dataUrl} alt="解答画像"
+                                          className="max-h-20 rounded border cursor-pointer"
+                                          onClick={() => setPreviewImage(eda.解答画像.dataUrl)} />
+                                        <button onClick={() => handleImageRemove(daimon.大問番号, mon.monId, eda.edaId, 'answer')}
+                                          className="text-xs text-red-500 hover:text-red-700">削除</button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-0.5">解説_画像（PNG）</label>
+                                    <div className="flex items-center gap-2">
+                                      <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border border-gray-300 transition">
+                                        📷 解説画像を選択
+                                        <input type="file" accept="image/png,.png"
+                                          onChange={e => handleImageUpload(daimon.大問番号, mon.monId, eda.edaId, 'explanation', e)}
+                                          className="hidden" />
+                                      </label>
+                                      {eda.解説画像 && typeof eda.解説画像 === 'object' && (
+                                        <span className="text-xs text-green-600">✅ {eda.解説画像.fileName}</span>
+                                      )}
+                                    </div>
+                                    {eda.解説画像 && typeof eda.解説画像 === 'object' && eda.解説画像.dataUrl && (
+                                      <div className="mt-1 flex items-start gap-2">
+                                        <img src={eda.解説画像.dataUrl} alt="解説画像"
+                                          className="max-h-20 rounded border cursor-pointer"
+                                          onClick={() => setPreviewImage(eda.解説画像.dataUrl)} />
+                                        <button onClick={() => handleImageRemove(daimon.大問番号, mon.monId, eda.edaId, 'explanation')}
+                                          className="text-xs text-red-500 hover:text-red-700">削除</button>
+                                      </div>
+                                    )}
                                   </div>
                                 </>
                               )}
@@ -955,6 +1117,20 @@ const ExamInputForm = ({ task, assignment, existingInput, onSave, onBack, sheets
           </button>
         </div>
       </div>
+
+      {/* 画像プレビューモーダル */}
+      {previewImage && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+          onClick={() => setPreviewImage(null)}>
+          <div className="relative max-w-3xl max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            <img src={previewImage} alt="プレビュー" className="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
+            <button onClick={() => setPreviewImage(null)}
+              className="absolute -top-3 -right-3 bg-white text-gray-600 hover:text-gray-900 rounded-full w-8 h-8 flex items-center justify-center shadow-lg text-lg font-bold">
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* トースト通知 */}
       {toast && (
