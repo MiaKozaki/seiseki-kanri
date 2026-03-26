@@ -290,25 +290,28 @@ const ProgressTab = ({ activeSubjects }) => {
       const verificationWaiting = pairs.filter(({ wfStatus }) => wfStatus === 'verification_waiting').length;
       const verificationReviewing = pairs.filter(({ wfStatus }) => wfStatus === 'verification_reviewing').length;
       const verificationCompleted = pairs.filter(({ wfStatus }) => wfStatus === 'verification_completed').length;
+      const pendingStorage = pairs.filter(({ wfStatus }) => wfStatus === 'pending_storage').length;
       const macroPending = pairs.filter(({ wfStatus }) => wfStatus === 'macro_pending').length;
       const macroCompleted = pairs.filter(({ wfStatus }) => wfStatus === 'macro_completed').length;
       const completedCount = verificationCompleted + macroCompleted;
       const completionRate = Math.round((completedCount / total) * 100);
       const totalHours = pairs.reduce((s, { task }) => s + (task.requiredHours || 0), 0);
-      const completedHours = pairs.filter(({ wfStatus }) => wfStatus === 'verification_completed' || wfStatus === 'macro_completed').reduce((s, { task }) => s + (task.requiredHours || 0), 0);
+      const completedHours = pairs.filter(({ wfStatus }) => wfStatus === 'verification_completed' || wfStatus === 'macro_completed' || wfStatus === 'pending_storage').reduce((s, { task }) => s + (task.requiredHours || 0), 0);
       const hoursRate = totalHours > 0 ? Math.round((completedHours / totalHours) * 100) : 0;
-      return { subject, total, pending, inProgress, verificationWaiting, verificationReviewing, verificationCompleted, macroPending, macroCompleted, completedCount, completionRate, totalHours, completedHours, hoursRate };
+      return { subject, total, pending, inProgress, verificationWaiting, verificationReviewing, verificationCompleted, pendingStorage, macroPending, macroCompleted, completedCount, completionRate, totalHours, completedHours, hoursRate };
     }).filter(Boolean);
   }, [filteredPairs, activeSubjects]);
 
   // ---- Pie chart data (workflow statuses) ----
   const pieData = useMemo(() => {
     return [
+      // フロー順（時計回り）: 未振り分け→作業中→検証待ち→検証中→検証完了→PJ格納待ち→マクロ未作成→作成完了
       { name: '未振り分け', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'pending').length, color: '#f59e0b' },
       { name: '作業中', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'in_progress').length, color: '#0ea5e9' },
       { name: '検証待ち', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'verification_waiting').length, color: '#f97316' },
       { name: '検証中', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'verification_reviewing').length, color: '#eab308' },
       { name: '検証完了', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'verification_completed').length, color: '#10b981' },
+      { name: 'PJ格納待ち', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'pending_storage').length, color: '#8b5cf6' },
       { name: 'マクロ未作成', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'macro_pending').length, color: '#ef4444' },
       { name: '作成完了', value: filteredPairs.filter(({ wfStatus }) => wfStatus === 'macro_completed').length, color: '#22c55e' },
     ].filter(d => d.value > 0);
@@ -519,6 +522,9 @@ const ProgressTab = ({ activeSubjects }) => {
                   {sp.macroPending > 0 && (
                     <div className="h-full transition-all" style={{ width: `${(sp.macroPending / sp.total) * 100}%`, backgroundColor: '#ef4444' }} />
                   )}
+                  {sp.pendingStorage > 0 && (
+                    <div className="h-full transition-all" style={{ width: `${(sp.pendingStorage / sp.total) * 100}%`, backgroundColor: '#8b5cf6' }} />
+                  )}
                   {sp.verificationCompleted > 0 && (
                     <div className="h-full transition-all" style={{ width: `${(sp.verificationCompleted / sp.total) * 100}%`, backgroundColor: '#10b981' }} />
                   )}
@@ -544,6 +550,11 @@ const ProgressTab = ({ activeSubjects }) => {
                   {sp.macroPending > 0 && (
                     <span className="flex items-center gap-1">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ef4444' }}></span>マクロ未作成 {sp.macroPending}
+                    </span>
+                  )}
+                  {sp.pendingStorage > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8b5cf6' }}></span>PJ格納待ち {sp.pendingStorage}
                     </span>
                   )}
                   {sp.verificationCompleted > 0 && (

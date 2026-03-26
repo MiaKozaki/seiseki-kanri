@@ -1059,8 +1059,8 @@ export const DataProvider = ({ children }) => {
       return 'macro_pending';
     }
 
-    // 格納待ち（承認済みだが未格納）
-    if (assignment.storageStatus === 'pending_storage') return 'verification_completed';
+    // PJ格納待ち（承認済みだが未格納）
+    if (assignment.storageStatus === 'pending_storage') return 'pending_storage';
 
     if (s === 'approved' || task.status === 'completed') return 'verification_completed';
     if (s === 'submitted' || task.status === 'submitted') {
