@@ -1048,7 +1048,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const [activeSection, setActiveSection] = useState(null);
 
   // Task form state
-  const [form, setForm] = useState({ name: '', schoolName: '', subject: '', year: String(new Date().getFullYear()), round: '第1回', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
+  const [form, setForm] = useState({ name: '', schoolName: '', subject: '', year: String(new Date().getFullYear()), round: '1', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState('');
   const [taskFiles, setTaskFiles] = useState([]);
@@ -1209,7 +1209,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
         updateTask(newTask.id, { taskAttachments: attachments });
       }
     }
-    setForm({ name: '', schoolName: '', subject: '', year: String(new Date().getFullYear()), round: '第1回', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
+    setForm({ name: '', schoolName: '', subject: '', year: String(new Date().getFullYear()), round: '1', workType: '', requiredHours: '', deadline: '', sheetsUrl: '', viking: false, splitByDaimon: false, daimons: [] });
     setTaskFiles([]);
     setTaskFileError('');
   };
@@ -1387,8 +1387,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadTaskTemplate = () => {
     const templateData = [
-      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '第1回', workType: '新年度試験種', requiredHours: 5, deadline: '2026-04-01' },
-      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '第1回', workType: 'タグ付け', requiredHours: 3, deadline: '2026-04-15' },
+      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '1', workType: '新年度試験種', requiredHours: 5, deadline: '2026-04-01' },
+      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '1', workType: 'タグ付け', requiredHours: 3, deadline: '2026-04-15' },
     ];
     const csv = toCSV(templateData, EXAM_TASK_CSV_COLUMNS);
     downloadCSV(csv, '試験種一括登録テンプレート.csv');
@@ -1468,16 +1468,16 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     setDaimonCsvImportDone(`${count}件の大問分割タスクを登録しました`);
     setDaimonCsvParsed(null);
     setDaimonCsvText('');
-    setMessage(`大問分割CSV一括登録: ${count}件のタスクを追加しました`);
+    setMessage(`大問情報一括登録: ${count}件のタスクを追加しました`);
     setTimeout(() => setMessage(''), 5000);
   };
 
   const handleDownloadDaimonTemplate = () => {
     const templateData = [
-      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '第1回', daimonName: '大問1', fieldName: '旅人算', hours: 2, deadline: '2026-04-01' },
-      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '第1回', daimonName: '大問2', fieldName: '食塩水', hours: 1.5, deadline: '2026-04-01' },
-      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '第1回', daimonName: '大問1', fieldName: '中和', hours: 3, deadline: '2026-04-15' },
-      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '第1回', daimonName: '大問2', fieldName: 'てこ', hours: 2, deadline: '2026-04-15' },
+      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '1', daimonName: '大問1', fieldName: '旅人算', hours: 2, deadline: '2026-04-01' },
+      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '1', daimonName: '大問2', fieldName: '食塩水', hours: 1.5, deadline: '2026-04-01' },
+      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '1', daimonName: '大問1', fieldName: '中和', hours: 3, deadline: '2026-04-15' },
+      { schoolName: '麻布中学', subject: '小学理科', year: '2026', round: '1', daimonName: '大問2', fieldName: 'てこ', hours: 2, deadline: '2026-04-15' },
     ];
     const csv = toCSV(templateData, DAIMON_TASK_CSV_COLUMNS);
     downloadCSV(csv, '大問分割タスク一括登録テンプレート.csv');
@@ -1594,8 +1594,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadShinnendoTemplate = () => {
     const templateData = [
-      { schoolName: '開成中学', subject: '小学理科', year: '2026', round: '第1回', requiredHours: 3, deadline: '2026-04-01' },
-      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '第1回', requiredHours: 2, deadline: '2026-04-01' },
+      { schoolName: '開成中学', subject: '小学理科', year: '2026', round: '1', requiredHours: 3, deadline: '2026-04-01' },
+      { schoolName: '開成中学', subject: '小学算数', year: '2026', round: '1', requiredHours: 2, deadline: '2026-04-01' },
     ];
     const csv = toCSV(templateData, NEW_YEAR_TASK_CSV_COLUMNS);
     downloadCSV(csv, '新年度試験種一括登録テンプレート.csv');
@@ -1714,7 +1714,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadCsvImportTemplate = () => {
     const templateData = [
-      { schoolName: schools[0]?.name || '開成中学', subject: '小学理科', year: '2026', round: '第1回', workType: workTypesList[0] || '新年度試験種', requiredHours: 3, deadline: '2026-04-01', viking: 'true' },
+      { schoolName: schools[0]?.name || '開成中学', subject: '小学理科', year: '2026', round: '1', workType: workTypesList[0] || '新年度試験種', requiredHours: 3, deadline: '2026-04-01', viking: 'true' },
       { schoolName: schools[0]?.name || '開成中学', subject: '小学算数', year: '2026', round: '第2回', workType: workTypesList[0] || '新年度試験種', requiredHours: 2, deadline: '2026-04-01', viking: 'false' },
     ];
     const csv = toCSV(templateData, CSV_IMPORT_TASK_COLUMNS);
@@ -1766,7 +1766,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     { key: 'list', icon: '\u{1F4CB}', title: '試験種一覧', desc: 'タスクの検索・フィルタ・管理' },
     { key: 'add', icon: '\u{2795}', title: '新規追加', desc: '試験種を個別に追加' },
     { key: 'csv-import', icon: '\u{1F4E5}', title: 'CSV一括登録', desc: 'CSVで試験種を一括登録' },
-    { key: 'daimon', icon: '\u{1F4C4}', title: '大問分割CSV登録', desc: '大問ごとに分割して登録' },
+    { key: 'daimon', icon: '\u{1F4C4}', title: '大問情報一括登録', desc: '大問ごとに分割して登録' },
     { key: 'pdf-upload', icon: '\u{1F4C4}', title: 'PDF一括アップロード', desc: 'ファイル名で登録済みタスクに自動紐付け' },
     { key: 'pdf-status', icon: '\u{1F4CA}', title: 'PDF登録ステータス', desc: '試験種ごとのPDF紐付け状況を確認' },
     { key: 'results', icon: '\u{1F4CA}', title: '実績', desc: '完了タスクの実績レポート' },
@@ -1885,7 +1885,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                   onChange={e => setForm({ ...form, year: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 >
-                  {[2024, 2025, 2026, 2027, 2028].map(y => (
+                  {[2025, 2026, 2027, 2028, 2029, 2030].map(y => (
                     <option key={y} value={String(y)}>{y}</option>
                   ))}
                 </select>
@@ -1897,7 +1897,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                   onChange={e => setForm({ ...form, round: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 >
-                  {['第1回', '第2回', '第3回', '第4回', '第5回'].map(r => (
+                  {['1', '2'].map(r => (
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
@@ -1973,7 +1973,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
               </label>
             </div>
             )}
-            {(form.subject === '小学理科' || form.subject === '小学算数') && form.workType === '新年度試験種' && (
+            {form.workType === '新年度試験種' && (
               <div className="border border-indigo-200 rounded-lg p-3 bg-indigo-50/50 space-y-3">
                 <div className="flex items-center gap-2">
                   <input
@@ -2261,10 +2261,10 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
         </div>
       )}
 
-      {/* ===== Section: 大問分割CSV登録 ===== */}
+      {/* ===== Section: 大問情報一括登録 ===== */}
       {activeSection === 'daimon' && (
         <div className="bg-white rounded-xl shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">大問分割CSV一括登録</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">大問情報一括登録</h3>
           <div className="flex items-center gap-2 mb-3">
             <button
               type="button"
@@ -7250,7 +7250,7 @@ const LeaderManualTab = () => {
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>タスク追加</strong>：科目、作業内容、必要工数、期限を入力して作成</li>
           <li><strong>CSV一括登録</strong>：タスクCSV / 試験種タスクCSVで一括投入</li>
-          <li><strong>大問分割CSV登録</strong>：学校名・科目・大問名・分野・工数・期限のCSVで大問単位に分割登録</li>
+          <li><strong>大問情報一括登録</strong>：学校名・科目・大問名・分野・工数・期限のCSVで大問単位に分割登録</li>
           <li><strong>タスク一覧</strong>：名前検索・ステータスフィルター・ソート</li>
           <li><strong>割当済み</strong>：割当タスクの確認、大問別作業時間表示、解除</li>
           <li><strong>実績</strong>：完了タスクの計画vs実績レポート、CSV出力</li>
@@ -7396,7 +7396,7 @@ const LeaderManualTab = () => {
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">3</span>
-            <p><strong>タスク作成</strong>：試験種管理 → タスク追加 / CSV一括登録 / 大問分割CSV登録</p>
+            <p><strong>タスク作成</strong>：試験種管理 → タスク追加 / CSV一括登録 / 大問情報一括登録</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">4</span>
