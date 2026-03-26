@@ -88,6 +88,10 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   const [localScores, setLocalScores] = useState({});
   const [evalSubject, setEvalSubject] = useState(null);
 
+  // --- Data collection period (データ収集期間) ---
+  const [evalPeriodFrom, setEvalPeriodFrom] = useState('');
+  const [evalPeriodTo, setEvalPeriodTo] = useState('');
+
   // --- Work time filters ---
   const [logFilterUser, setLogFilterUser] = useState('');
   const [logFilterSubject, setLogFilterSubject] = useState('');
@@ -117,6 +121,71 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
 
   // --- Classification constants ---
   const CLASSIFICATION_OPTIONS = ['通常作業者', '優良作業者', '要注意作業者', '新人'];
+
+  // ---- Period filter helper ----
+  const filterDataByPeriod = (allData, from, to) => {
+    if (!from && !to) return allData;
+    const filtered = { ...allData };
+    if (filtered.assignments) {
+      filtered.assignments = filtered.assignments.filter(a => {
+        const date = (a.submittedAt || a.assignedAt || '').slice(0, 10);
+        if (!date) return true;
+        if (from && date < from) return false;
+        if (to && date > to) return false;
+        return true;
+      });
+    }
+    if (filtered.rejections) {
+      filtered.rejections = filtered.rejections.filter(r => {
+        const date = (r.createdAt || '').slice(0, 10);
+        if (!date) return true;
+        if (from && date < from) return false;
+        if (to && date > to) return false;
+        return true;
+      });
+    }
+    if (filtered.timeLogs) {
+      filtered.timeLogs = filtered.timeLogs.filter(t => {
+        const date = (t.startedAt || t.startTime || '').slice(0, 10);
+        if (!date) return true;
+        if (from && date < from) return false;
+        if (to && date > to) return false;
+        return true;
+      });
+    }
+    return filtered;
+  };
+
+  const getFilteredData = () => filterDataByPeriod(getAllData(), evalPeriodFrom, evalPeriodTo);
+
+  const periodLabel = evalPeriodFrom || evalPeriodTo
+    ? `${evalPeriodFrom || '---'} 〜 ${evalPeriodTo || '---'}`
+    : '全期間';
+
+  const handlePeriodPreset = (preset) => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth(); // 0-indexed
+    if (preset === 'thisMonth') {
+      setEvalPeriodFrom(`${y}-${String(m + 1).padStart(2, '0')}-01`);
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      setEvalPeriodTo(`${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+    } else if (preset === 'lastMonth') {
+      const ly = m === 0 ? y - 1 : y;
+      const lm = m === 0 ? 12 : m;
+      setEvalPeriodFrom(`${ly}-${String(lm).padStart(2, '0')}-01`);
+      const lastDay = new Date(ly, lm, 0).getDate();
+      setEvalPeriodTo(`${ly}-${String(lm).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+    } else if (preset === 'last3Months') {
+      const fromDate = new Date(y, m - 2, 1);
+      setEvalPeriodFrom(`${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}-01`);
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      setEvalPeriodTo(`${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+    } else if (preset === 'all') {
+      setEvalPeriodFrom('');
+      setEvalPeriodTo('');
+    }
+  };
 
   // ---- Evaluation helpers ----
   const userEvals = allEvals.filter(e => e.userId === selectedUser);
@@ -471,6 +540,39 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
       {activeEvalSection === 'evaluation' && (
         <div className="bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">作業者評価の入力</h3>
+
+          {/* データ収集期間 */}
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-xs font-semibold text-blue-700">データ収集期間</span>
+              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{periodLabel}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input type="date" value={evalPeriodFrom} onChange={e => setEvalPeriodFrom(e.target.value)}
+                className="px-2 py-1.5 border border-blue-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+              <span className="text-xs text-gray-500">〜</span>
+              <input type="date" value={evalPeriodTo} onChange={e => setEvalPeriodTo(e.target.value)}
+                className="px-2 py-1.5 border border-blue-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+              <div className="flex gap-1 ml-2">
+                {[
+                  { key: 'thisMonth', label: '今月' },
+                  { key: 'lastMonth', label: '先月' },
+                  { key: 'last3Months', label: '直近3ヶ月' },
+                  { key: 'all', label: '全期間' },
+                ].map(p => (
+                  <button key={p.key} onClick={() => handlePeriodPreset(p.key)}
+                    className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                      p.key === 'all' && !evalPeriodFrom && !evalPeriodTo
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-blue-700 border-blue-300 hover:bg-blue-100'
+                    }`}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* 科目フィルタ */}
           <div className="flex gap-1 mb-3 flex-wrap">
             <button onClick={() => setEvalSubject(null)}
@@ -525,7 +627,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                     </thead>
                     <tbody>
                       {correctors.map(c => {
-                        const cMetrics = calcAllMetrics(c.id, evalSubject, getAllData());
+                        const cMetrics = calcAllMetrics(c.id, evalSubject, getFilteredData());
                         const cEvals = allEvals.filter(e => e.userId === c.id);
                         const avgScore = criteria.length > 0
                           ? criteria.reduce((sum, cr) => {
@@ -568,7 +670,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                 {getClassificationBadge(correctors.find(c => c.id === selectedUser)?.classification)}
               </div>
               {(() => {
-                const metrics = calcAllMetrics(selectedUser, evalSubject, getAllData());
+                const metrics = calcAllMetrics(selectedUser, evalSubject, getFilteredData());
                 return (
                   <>
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
@@ -669,10 +771,10 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                         {bp > 1 && <span className="block text-xs text-gray-400 font-normal">Lv.{currentLevel}</span>}
                       </span>
                       {c.autoMetric && (() => {
-                        const metrics = calcAllMetrics(selectedUser, evalSubject, getAllData());
+                        const metrics = calcAllMetrics(selectedUser, evalSubject, getFilteredData());
                         const allCorrectors = correctors;
                         const allVals = allCorrectors.map(cr => {
-                          const m = calcAllMetrics(cr.id, evalSubject, getAllData());
+                          const m = calcAllMetrics(cr.id, evalSubject, getFilteredData());
                           return c.autoMetric === 'rejection_rate' ? m.rejectionRate :
                                  c.autoMetric === 'severity_score' ? m.severityScore :
                                  c.autoMetric === 'work_time' ? m.averageWorkTime :
@@ -1272,10 +1374,32 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
         const allFeedbacks = getFeedbacks();
         const allRejections = getRejections();
 
+        // Period-filter helper for summary data
+        const periodFilterDate = (dateStr) => {
+          if (!dateStr) return true;
+          const d = dateStr.slice(0, 10);
+          if (evalPeriodFrom && d < evalPeriodFrom) return false;
+          if (evalPeriodTo && d > evalPeriodTo) return false;
+          return true;
+        };
+
+        const periodFilteredAssignments = (evalPeriodFrom || evalPeriodTo)
+          ? assignments.filter(a => periodFilterDate(a.submittedAt || a.assignedAt))
+          : assignments;
+        const periodFilteredFeedbacks = (evalPeriodFrom || evalPeriodTo)
+          ? allFeedbacks.filter(fb => periodFilterDate(fb.createdAt))
+          : allFeedbacks;
+        const periodFilteredRejections = (evalPeriodFrom || evalPeriodTo)
+          ? allRejections.filter(r => periodFilterDate(r.createdAt))
+          : allRejections;
+        const periodFilteredTimeLogs = (evalPeriodFrom || evalPeriodTo)
+          ? allTimeLogs.filter(l => periodFilterDate(l.startedAt || l.startTime))
+          : allTimeLogs;
+
         // Build summary rows for each corrector
         const summaryRows = correctors.map(c => {
           // Filter tasks by subject/workType
-          const userAssignments = assignments.filter(a => a.userId === c.id);
+          const userAssignments = periodFilteredAssignments.filter(a => a.userId === c.id);
           const userTaskIds = userAssignments.map(a => a.taskId);
           let userTasks = tasks.filter(t => userTaskIds.includes(t.id));
           if (summarySubject) userTasks = userTasks.filter(t => t.subject === summarySubject);
@@ -1293,8 +1417,8 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
           }).filter(s => s !== null);
           const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
-          // Work time from timeLogs
-          let userLogs = allTimeLogs.filter(l => l.userId === c.id);
+          // Work time from timeLogs (period-filtered)
+          let userLogs = periodFilteredTimeLogs.filter(l => l.userId === c.id);
           if (summarySubject || summaryWorkType) {
             userLogs = userLogs.filter(l => filteredTaskIds.has(l.taskId));
           }
@@ -1303,14 +1427,14 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
           // Completed tasks
           const completedCount = userTasks.filter(t => t.status === 'completed').length;
 
-          // FB count
-          let fbCount = allFeedbacks.filter(fb => fb.toUserId === c.id);
+          // FB count (period-filtered)
+          let fbCount = periodFilteredFeedbacks.filter(fb => fb.toUserId === c.id);
           if (summarySubject || summaryWorkType) {
             fbCount = fbCount.filter(fb => filteredTaskIds.has(fb.taskId));
           }
 
-          // Rejection count
-          let rejCount = allRejections.filter(r => r.userId === c.id);
+          // Rejection count (period-filtered)
+          let rejCount = periodFilteredRejections.filter(r => r.userId === c.id);
           if (summarySubject || summaryWorkType) {
             rejCount = rejCount.filter(r => filteredTaskIds.has(r.taskId));
           }
@@ -1403,6 +1527,38 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
             </div>
 
             <div className="p-5 bg-white space-y-4">
+              {/* データ収集期間 */}
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span className="text-xs font-semibold text-indigo-700">データ収集期間</span>
+                  <span className="text-xs text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">{periodLabel}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input type="date" value={evalPeriodFrom} onChange={e => setEvalPeriodFrom(e.target.value)}
+                    className="px-2 py-1.5 border border-indigo-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
+                  <span className="text-xs text-gray-500">〜</span>
+                  <input type="date" value={evalPeriodTo} onChange={e => setEvalPeriodTo(e.target.value)}
+                    className="px-2 py-1.5 border border-indigo-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
+                  <div className="flex gap-1 ml-2">
+                    {[
+                      { key: 'thisMonth', label: '今月' },
+                      { key: 'lastMonth', label: '先月' },
+                      { key: 'last3Months', label: '直近3ヶ月' },
+                      { key: 'all', label: '全期間' },
+                    ].map(p => (
+                      <button key={p.key} onClick={() => handlePeriodPreset(p.key)}
+                        className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                          p.key === 'all' && !evalPeriodFrom && !evalPeriodTo
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-100'
+                        }`}>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               {/* Filters */}
               <div className="flex items-center gap-3 flex-wrap">
                 <select
