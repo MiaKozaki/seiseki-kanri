@@ -2633,11 +2633,10 @@ export default function CorrectorDashboard() {
             const allAssignments = getAssignments(user.id);
             const activeTasks = getTasks();
             const qSettings = getQuestionSettings();
-            // ユーザーのアクティブなアサインから科目+作業種の組み合わせを取得
+            // ユーザーの全アサイン（完了含む）から科目+作業種の組み合わせを取得
             const activeSubjectWorkTypes = [];
             allAssignments.forEach(a => {
-              if (isFinished(a.status)) return;
-              const task = activeTasks.find(t => t.id === a.taskId);
+              const task = tasks.find(t => t.id === a.taskId) || activeTasks.find(t => t.id === a.taskId);
               if (!task) return;
               const key = `${task.subject || ''}__${task.workType || ''}`;
               if (!activeSubjectWorkTypes.find(x => x.key === key)) {
