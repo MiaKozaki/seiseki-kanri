@@ -1026,6 +1026,29 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
 };
 
 // ---- Task & Assignment Tab (試験種管理) ----
+// PDF ファイル名 → タスクの柔軟マッチング
+// 例: 開成_算数_2026_1.pdf → B96: 開成_小学算数_2026_1 にマッチ
+const SUBJECT_ALIASES = { '算数': '小学算数', '国語': '小学国語', '理科': '小学理科', '社会': '小学社会', '小学算数': '小学算数', '小学国語': '小学国語', '小学理科': '小学理科', '小学社会': '小学社会' };
+const matchPdfToTask = (fileName, tasks) => {
+  const baseName = fileName.replace(/\.[^.]+$/, '');
+  const parts = baseName.split('_');
+  if (parts.length < 3) return null;
+  const [fileSchool, fileSubject, fileYear, fileRound] = parts;
+  const normalizedSubject = SUBJECT_ALIASES[fileSubject] || fileSubject;
+  return tasks.find(t => {
+    // 学校名: コード部分を除いて部分一致（"開成" → "B96: 開成" にマッチ）
+    const taskSchool = (t.schoolName || t.name || '');
+    const schoolMatch = taskSchool.includes(fileSchool) || fileSchool.includes(taskSchool);
+    // 科目: エイリアス変換して一致
+    const subjectMatch = t.subject === normalizedSubject;
+    // 年度: 一致
+    const yearMatch = t.year === fileYear;
+    // 回数: あれば一致（なければ無視）
+    const roundMatch = !fileRound || !t.round || t.round === fileRound;
+    return schoolMatch && subjectMatch && yearMatch && roundMatch;
+  }) || null;
+};
+
 const TaskAndAssignmentTab = ({ activeSubjects }) => {
   const {
     getTasks, addTask, updateTask, deleteTask,
@@ -1539,17 +1562,23 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     setShinnendoPdfFiles(files);
     if (!shinnendoParsed || shinnendoParsed.valid.length === 0) return;
 
-    // Auto-match: filename pattern 学校名_科目_年度.pdf
+    // Auto-match: flexible filename pattern
     const matches = {};
     files.forEach((file, fileIdx) => {
-      const nameWithoutExt = file.name.replace(/\.[^.]+$/, '');
-      const parts = nameWithoutExt.split('_');
+      const baseName = file.name.replace(/\.[^.]+$/, '');
+      const parts = baseName.split('_');
       if (parts.length >= 3) {
-        const key = `${parts[0]}_${parts[1]}_${parts[2]}`;
-        // Find matching CSV row
-        const rowIdx = shinnendoParsed.valid.findIndex(r => r.matchKey === key);
+        const fileSchool = parts[0];
+        const fileSubject = SUBJECT_ALIASES[parts[1]] || parts[1];
+        const fileYear = parts[2];
+        const rowIdx = shinnendoParsed.valid.findIndex(r => {
+          const schoolMatch = (r.schoolName || '').includes(fileSchool) || fileSchool.includes(r.schoolName || '');
+          const subjectMatch = r.subject === fileSubject;
+          const yearMatch = r.year === fileYear;
+          return schoolMatch && subjectMatch && yearMatch;
+        });
         if (rowIdx >= 0) {
-          matches[key] = fileIdx;
+          matches[shinnendoParsed.valid[rowIdx].matchKey] = fileIdx;
         }
       }
     });
@@ -1660,16 +1689,23 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     setCsvImportPdfFiles(files);
     if (!csvImportParsed || csvImportParsed.valid.length === 0) return;
 
-    // Auto-match: filename pattern 学校名_科目_年度.pdf
+    // Auto-match: flexible filename pattern
     const matches = {};
     files.forEach((file, fileIdx) => {
-      const nameWithoutExt = file.name.replace(/\.[^.]+$/, '');
-      const parts = nameWithoutExt.split('_');
+      const baseName = file.name.replace(/\.[^.]+$/, '');
+      const parts = baseName.split('_');
       if (parts.length >= 3) {
-        const key = `${parts[0]}_${parts[1]}_${parts[2]}`;
-        const rowIdx = csvImportParsed.valid.findIndex(r => r.matchKey === key);
+        const fileSchool = parts[0];
+        const fileSubject = SUBJECT_ALIASES[parts[1]] || parts[1];
+        const fileYear = parts[2];
+        const rowIdx = csvImportParsed.valid.findIndex(r => {
+          const schoolMatch = (r.schoolName || '').includes(fileSchool) || fileSchool.includes(r.schoolName || '');
+          const subjectMatch = r.subject === fileSubject;
+          const yearMatch = r.year === fileYear;
+          return schoolMatch && subjectMatch && yearMatch;
+        });
         if (rowIdx >= 0) {
-          matches[key] = fileIdx;
+          matches[csvImportParsed.valid[rowIdx].matchKey] = fileIdx;
         }
       }
     });
@@ -2691,8 +2727,9 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
         <div className="bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-2">PDF一括アップロード</h3>
           <p className="text-xs text-gray-500 mb-4">
-            ファイル名の形式: <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">学校名_科目_年度.pdf</code><br />
-            登録済みのタスクに自動的に紐付けます。
+            ファイル名の形式: <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">学校名_科目_年度_回数.pdf</code><br />
+            例: <code className="bg-gray-100 px-1 rounded">開成_算数_2026_1.pdf</code> → 「B96: 開成_小学算数_2026_1」に自動マッチ<br />
+            科目は「算数」「理科」等の短縮名でもOKです。
           </p>
           <input
             type="file"
@@ -2705,13 +2742,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
               let matched = 0;
               let unmatched = [];
               for (const file of files) {
-                const baseName = file.name.replace(/\.pdf$/i, '');
-                const parts = baseName.split('_');
-                // 学校名_科目_年度 でマッチ
-                const task = allTasks.find(t => {
-                  const taskKey = [t.schoolName, t.subject, t.year].filter(Boolean).join('_');
-                  return taskKey && baseName.startsWith(taskKey);
-                });
+                const task = matchPdfToTask(file.name, allTasks);
                 if (task) {
                   try {
                     const meta = await saveTaskAttachment({ taskId: task.id, fileName: file.name, fileSize: file.size, fileType: file.type, blob: file });
