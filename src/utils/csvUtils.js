@@ -609,6 +609,8 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
 
     const daimonId = (row['大問ID'] || '').trim();
     const takosLink = (row['takosリンク'] || '').trim();
+    if (!daimonId) rowErrors.push('大問IDは必須です');
+    if (!takosLink) rowErrors.push('takosリンクは必須です');
 
     if (rowErrors.length > 0) {
       errors.push({ line: lineNum, message: rowErrors.join('；'), row });
