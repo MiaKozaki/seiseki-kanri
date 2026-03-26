@@ -1454,7 +1454,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
     daimonCsvParsed.valid.forEach(row => {
       const key = `${row.schoolName}__${row.subject}__${row.year}__${row.round}`;
       if (!groupMap[key]) groupMap[key] = { schoolName: row.schoolName, subject: row.subject, year: row.year, round: row.round, daimons: [] };
-      groupMap[key].daimons.push({ name: row.daimonName, fieldId: row.fieldId || null });
+      groupMap[key].daimons.push({ name: row.daimonName, fieldId: row.fieldId || null, daimonId: row.daimonId || '', takosLink: row.takosLink || '' });
     });
 
     let taskCount = 0;
@@ -1516,11 +1516,11 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
 
   const handleDownloadDaimonTemplate = () => {
     const templateData = [
-      { schoolName: 'B96: 開成', subject: '小学理科', year: '2026', round: '1', daimonName: '大問1', fieldName: '中和' },
-      { schoolName: 'B96: 開成', subject: '小学理科', year: '2026', round: '1', daimonName: '大問2', fieldName: 'てこ' },
-      { schoolName: 'B96: 開成', subject: '小学算数', year: '2026', round: '1', daimonName: '大問1', fieldName: '旅人算' },
-      { schoolName: 'B16: 麻布', subject: '小学国語', year: '2026', round: '1', daimonName: '大問1', fieldName: '' },
-      { schoolName: 'B16: 麻布', subject: '小学国語', year: '2026', round: '1', daimonName: '大問2', fieldName: '' },
+      { schoolName: 'B96: 開成', subject: '小学理科', year: '2026', round: '1', daimonName: '大問1', fieldName: '中和', daimonId: 'Q001', takosLink: 'https://takos.example.com/q001' },
+      { schoolName: 'B96: 開成', subject: '小学理科', year: '2026', round: '1', daimonName: '大問2', fieldName: 'てこ', daimonId: 'Q002', takosLink: 'https://takos.example.com/q002' },
+      { schoolName: 'B96: 開成', subject: '小学算数', year: '2026', round: '1', daimonName: '大問1', fieldName: '旅人算', daimonId: 'Q003', takosLink: '' },
+      { schoolName: 'B16: 麻布', subject: '小学国語', year: '2026', round: '1', daimonName: '大問1', fieldName: '', daimonId: '', takosLink: '' },
+      { schoolName: 'B16: 麻布', subject: '小学国語', year: '2026', round: '1', daimonName: '大問2', fieldName: '', daimonId: '', takosLink: '' },
     ];
     const csv = toCSV(templateData, DAIMON_TASK_CSV_COLUMNS);
     downloadCSV(csv, '大問情報一括登録テンプレート.csv');
@@ -2338,7 +2338,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                   分野は小学算数・小学理科では入力推奨、小学国語・小学社会では空欄可です。
                 </p>
                 <p className="text-xs text-gray-400">
-                  ヘッダ行: 学校名,科目,年度,回数,大問名,分野
+                  ヘッダ行: 学校名,科目,年度,回数,大問名,分野,大問ID,takosリンク
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -2355,7 +2355,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                   onChange={e => handleDaimonCsvParse(e.target.value)}
                   rows={6}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-purple-500 outline-none"
-                  placeholder={`学校名,科目,年度,回数,大問名,分野\nB96: 開成,小学理科,2026,1,大問1,中和\nB96: 開成,小学理科,2026,1,大問2,てこ\nB16: 麻布,小学国語,2026,1,大問1,\nB16: 麻布,小学国語,2026,1,大問2,`}
+                  placeholder={`学校名,科目,年度,回数,大問名,分野,大問ID,takosリンク\nB96: 開成,小学理科,2026,1,大問1,中和,Q001,https://takos.example.com/q001\nB96: 開成,小学理科,2026,1,大問2,てこ,Q002,https://takos.example.com/q002\nB16: 麻布,小学国語,2026,1,大問1,,,\nB16: 麻布,小学国語,2026,1,大問2,,,`}
                 />
 
                 {daimonCsvParsed && (
@@ -2385,6 +2385,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                               <th className="px-2 py-1 text-left border border-gray-200">回数</th>
                               <th className="px-2 py-1 text-left border border-gray-200">大問名</th>
                               <th className="px-2 py-1 text-left border border-gray-200">分野</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">大問ID</th>
+                              <th className="px-2 py-1 text-left border border-gray-200">takosリンク</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2400,6 +2402,8 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                                   <td className="px-2 py-1 border border-gray-200">{row.round}</td>
                                   <td className="px-2 py-1 border border-gray-200">{row.daimonName}</td>
                                   <td className="px-2 py-1 border border-gray-200">{row.fieldName || <span className="text-gray-300">-</span>}</td>
+                                  <td className="px-2 py-1 border border-gray-200">{row.daimonId || <span className="text-gray-300">-</span>}</td>
+                                  <td className="px-2 py-1 border border-gray-200">{row.takosLink ? <a href={row.takosLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline truncate block max-w-[200px]">{row.takosLink}</a> : <span className="text-gray-300">-</span>}</td>
                                 </tr>
                               );
                             })}
@@ -7304,7 +7308,7 @@ const LeaderManualTab = () => {
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>タスク追加</strong>：科目、作業内容、必要工数、期限を入力して作成</li>
           <li><strong>CSV一括登録</strong>：タスクCSV / 試験種タスクCSVで一括投入</li>
-          <li><strong>大問情報一括登録</strong>：学校名・科目・年度・回数・大問名・分野のCSVで各試験種の大問構成を登録</li>
+          <li><strong>大問情報一括登録</strong>：学校名・科目・年度・回数・大問名・分野・大問ID・takosリンクのCSVで各試験種の大問構成を登録</li>
           <li><strong>タスク一覧</strong>：名前検索・ステータスフィルター・ソート</li>
           <li><strong>割当済み</strong>：割当タスクの確認、大問別作業時間表示、解除</li>
           <li><strong>実績</strong>：完了タスクの計画vs実績レポート、CSV出力</li>

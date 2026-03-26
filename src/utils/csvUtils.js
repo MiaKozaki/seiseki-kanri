@@ -607,6 +607,9 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
       }
     }
 
+    const daimonId = (row['大問ID'] || '').trim();
+    const takosLink = (row['takosリンク'] || '').trim();
+
     if (rowErrors.length > 0) {
       errors.push({ line: lineNum, message: rowErrors.join('；'), row });
     } else {
@@ -618,6 +621,8 @@ export const validateDaimonTaskCSV = (rows, schools, getFieldsFn) => {
         daimonName,
         fieldName,
         fieldId,
+        daimonId,
+        takosLink,
         _line: lineNum,
       });
     }
@@ -633,6 +638,8 @@ export const DAIMON_TASK_CSV_COLUMNS = [
   { key: 'round', header: '回数' },
   { key: 'daimonName', header: '大問名' },
   { key: 'fieldName', header: '分野' },
+  { key: 'daimonId', header: '大問ID' },
+  { key: 'takosLink', header: 'takosリンク' },
 ];
 
 /**
