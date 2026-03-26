@@ -20,7 +20,7 @@ import LeaderManualTab from '../components/leader/LeaderManualTab.jsx';
 
 const TABS = [
   { label: '概要', icon: '📊' },
-  { label: '試験種管理', icon: '📋' },
+  { label: '試験種登録', icon: '📋' },
   { label: '振り分け', icon: '🔀' },
   { label: '作業者管理', icon: '👥' },
   { label: '工数分析', icon: '📈' },
