@@ -127,7 +127,9 @@
       "Bash(/Users/mia/Desktop/seiseki-kanri/node_modules/.bin/vite build:*)",
       "Bash(npx -y acorn-jsx --ecma2020 src/pages/LeaderDashboard.jsx)",
       "Bash(echo $?)",
-      "Bash(ls /Users/mia/.fnm/node-versions/*/installation/bin/node)"
+      "Bash(ls /Users/mia/.fnm/node-versions/*/installation/bin/node)",
+      "Bash(ls /Users/mia/Desktop/seiseki-kanri/node_modules/.bin/../../../.nvm/versions/node/*/bin/node)",
+      "Bash(/usr/bin/env -S bash -c 'export PATH=\"\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\"; type node 2>&1')"
     ]
   }
 }

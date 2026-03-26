@@ -6319,7 +6319,7 @@ const RecruitmentTab = ({ activeSubjects }) => {
 
 // ---- Master Data Tab ----
 const MasterDataTab = ({ activeSubjects }) => {
-  const { getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType, getManuals, addManual, updateManual, deleteManual } = useData();
+  const { getRejectionCategories, addRejectionCategory, updateRejectionCategory, deleteRejectionCategory, getRejectionSeverities, addRejectionSeverity, updateRejectionSeverity, deleteRejectionSeverity, getVerificationItems, addVerificationItem, updateVerificationItem, deleteVerificationItem, getFields, addField, updateField, deleteField, getWorkTypes, addWorkType, deleteWorkType, getManuals, addManual, updateManual, deleteManual, getExternalWorkSettings, addExternalWorkSetting, removeExternalWorkSetting } = useData();
   const workTypesList = getWorkTypes().map(wt => wt.name);
   const [catForm, setCatForm] = useState({ name: '', description: '', subject: null, workType: null });
   const [sevForm, setSevForm] = useState({ name: '', level: 1, description: '', color: '#f59e0b' });
@@ -6405,6 +6405,7 @@ const MasterDataTab = ({ activeSubjects }) => {
     { key: 'field', icon: '\u{1F4DA}', title: '\u5206\u91CE\u30DE\u30B9\u30BF', desc: '\u7406\u79D1\u30FB\u7B97\u6570\u306E\u5206\u91CE\u7BA1\u7406' },
     { key: 'worktype', icon: '\u{1F527}', title: '\u4F5C\u696D\u7A2E\u30DE\u30B9\u30BF', desc: '\u4F5C\u696D\u7A2E\uFF08\u4F5C\u696D\u5185\u5BB9\uFF09\u306E\u7BA1\u7406' },
     { key: 'manual', icon: '\u{1F4D6}', title: '\u4F5C\u696D\u8005\u5411\u3051\u30DE\u30CB\u30E5\u30A2\u30EB', desc: 'URL\u30FB\u30D5\u30A1\u30A4\u30EB\u30FB\u30C6\u30AD\u30B9\u30C8\u306E\u30DE\u30CB\u30E5\u30A2\u30EB\u7BA1\u7406' },
+    { key: 'externalwork', icon: '\u{1F4BB}', title: '\u5916\u90E8\u4F5C\u696D\u8A2D\u5B9A', desc: '\u624B\u52D5\u30BF\u30A4\u30DE\u30FC\u304C\u5FC5\u8981\u306A\u79D1\u76EE\u00D7\u4F5C\u696D\u7A2E\u306E\u8A2D\u5B9A' },
   ];
 
   return (
@@ -7317,6 +7318,72 @@ const MasterDataTab = ({ activeSubjects }) => {
             );
           });
         })()}
+      </div>
+      )}
+
+      {activeMasterSection === 'externalwork' && (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">外部作業設定</h4>
+        <p className="text-xs text-gray-500 mb-4">
+          チェックを入れた科目×作業種の組み合わせは「外部作業」として扱われ、添削者側で手動タイマーが表示されます。
+          Word編集など、アプリ外での作業が必要なタスクに使用してください。
+        </p>
+        {(() => {
+          const ewSettings = getExternalWorkSettings();
+          const workTypeNames = getWorkTypes().map(wt => wt.name);
+          return (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600 border border-gray-200">科目 ＼ 作業種</th>
+                    {workTypeNames.map(wt => (
+                      <th key={wt} className="text-center px-3 py-2 text-xs font-semibold text-gray-600 border border-gray-200 whitespace-nowrap">{wt}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {SUBJECTS_LIST.map(subject => (
+                    <tr key={subject} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 whitespace-nowrap">{subject}</td>
+                      {workTypeNames.map(wt => {
+                        const checked = ewSettings.some(s => s.subject === subject && s.workType === wt);
+                        return (
+                          <td key={wt} className="text-center px-3 py-2 border border-gray-200">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                if (checked) {
+                                  removeExternalWorkSetting(subject, wt);
+                                } else {
+                                  addExternalWorkSetting(subject, wt);
+                                }
+                              }}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+        {getExternalWorkSettings().length > 0 && (
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-xs font-semibold text-blue-700 mb-1">現在の外部作業設定:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {getExternalWorkSettings().map(s => (
+                <span key={s.id} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                  {s.subject} / {s.workType}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       )}
 

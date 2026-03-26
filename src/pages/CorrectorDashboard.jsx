@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useData, isFinished } from '../contexts/DataContext.jsx';
 import { downloadExamExcel } from '../utils/excelExport.js';
@@ -986,6 +986,7 @@ export default function CorrectorDashboard() {
     getFeedbacks,
     getManuals,
     getReviewMemos,
+    isExternalWork,
   } = useData();
   const [activeTab, setActiveTab] = useState(0);
   const [capForm, setCapForm] = useState({ startDate: '', endDate: '', hoursPerDay: 8, note: '' });
@@ -1043,6 +1044,90 @@ export default function CorrectorDashboard() {
   // 入力フォームビュー
   const [inputViewTaskId, setInputViewTaskId] = useState(null);
   const openInputView = (taskId) => setInputViewTaskId(taskId);
+
+  // 手動タイマー（外部作業用）
+  const [manualTimerTaskId, setManualTimerTaskId] = useState(null);
+  const [manualTimerStartTime, setManualTimerStartTime] = useState(null);
+  const [manualTimerElapsed, setManualTimerElapsed] = useState(0); // seconds
+  const [manualTimerPaused, setManualTimerPaused] = useState(false);
+  const [manualTimerCompleted, setManualTimerCompleted] = useState(false);
+  const manualTimerPausedElapsed = useRef(0);
+  const manualTimerIntervalRef = useRef(null);
+
+  // 手動タイマー: 毎秒更新
+  useEffect(() => {
+    if (manualTimerIntervalRef.current) {
+      clearInterval(manualTimerIntervalRef.current);
+      manualTimerIntervalRef.current = null;
+    }
+    if (manualTimerStartTime && !manualTimerPaused && !manualTimerCompleted) {
+      manualTimerIntervalRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsed = manualTimerPausedElapsed.current + Math.floor((now - manualTimerStartTime) / 1000);
+        setManualTimerElapsed(elapsed);
+      }, 1000);
+    }
+    return () => {
+      if (manualTimerIntervalRef.current) {
+        clearInterval(manualTimerIntervalRef.current);
+      }
+    };
+  }, [manualTimerStartTime, manualTimerPaused, manualTimerCompleted]);
+
+  const startManualTimer = useCallback((taskId) => {
+    setManualTimerTaskId(taskId);
+    setManualTimerStartTime(Date.now());
+    setManualTimerElapsed(0);
+    setManualTimerPaused(false);
+    setManualTimerCompleted(false);
+    manualTimerPausedElapsed.current = 0;
+    // ステータスをin_progressに変更
+    const assignment = getAssignments(user.id).find(a => a.taskId === taskId);
+    if (assignment && (assignment.status === 'assigned' || assignment.status === 'rejected')) {
+      updateAssignment(assignment.id, { status: 'in_progress' });
+    }
+  }, [getAssignments, updateAssignment, user.id]);
+
+  const pauseManualTimer = useCallback(() => {
+    if (manualTimerStartTime && !manualTimerPaused) {
+      manualTimerPausedElapsed.current = manualTimerElapsed;
+      setManualTimerPaused(true);
+      setManualTimerStartTime(null);
+    }
+  }, [manualTimerStartTime, manualTimerPaused, manualTimerElapsed]);
+
+  const resumeManualTimer = useCallback(() => {
+    if (manualTimerPaused) {
+      setManualTimerStartTime(Date.now());
+      setManualTimerPaused(false);
+    }
+  }, [manualTimerPaused]);
+
+  const completeManualTimer = useCallback(() => {
+    if (manualTimerStartTime && !manualTimerPaused) {
+      manualTimerPausedElapsed.current = manualTimerElapsed;
+    }
+    setManualTimerCompleted(true);
+    setManualTimerPaused(false);
+    setManualTimerStartTime(null);
+  }, [manualTimerStartTime, manualTimerPaused, manualTimerElapsed]);
+
+  const resetManualTimer = useCallback(() => {
+    setManualTimerTaskId(null);
+    setManualTimerStartTime(null);
+    setManualTimerElapsed(0);
+    setManualTimerPaused(false);
+    setManualTimerCompleted(false);
+    manualTimerPausedElapsed.current = 0;
+  }, []);
+
+  const formatTimerDisplay = (totalSeconds) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    if (h > 0) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
 
   // 業務募集タブ
   const [applyingId, setApplyingId] = useState(null);
@@ -1222,7 +1307,13 @@ export default function CorrectorDashboard() {
       // Update assignment
       stopActiveTimer(user.id);
       // タイマーから実績工数を自動計算（0.5時間単位、最低0.5時間）
-      const totalSeconds = getTaskTotalTime(taskId) || 0;
+      // 外部作業の場合は手動タイマーの経過時間を使用
+      let totalSeconds;
+      if (task && isExternalWork(task.subject, task.workType) && manualTimerTaskId === taskId && manualTimerCompleted) {
+        totalSeconds = manualTimerElapsed;
+      } else {
+        totalSeconds = getTaskTotalTime(taskId) || 0;
+      }
       const autoHours = Math.max(0.5, Math.round((totalSeconds / 3600) * 2) / 2);
       // チェックリスト結果を含める
       const clResults = Object.keys(checklistResults).length > 0
@@ -1240,6 +1331,10 @@ export default function CorrectorDashboard() {
       setSubmitForm({ actualHours: '', note: '', files: [] });
       setExpandedTaskId(null);
       setInlineChecklistResults({});
+      // 手動タイマーリセット
+      if (manualTimerTaskId === taskId) {
+        resetManualTimer();
+      }
     } finally {
       setIsSubmitBusy(false);
     }
@@ -1835,6 +1930,19 @@ export default function CorrectorDashboard() {
                                   </div>
                                 );
                               })()}
+
+                              {/* 手動タイマー表示（外部作業） */}
+                              {isExternalWork(task.subject, task.workType) && manualTimerTaskId === task.id && (
+                                <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                                  <p className="text-[10px] text-orange-600 font-semibold mb-1">外部作業タイマー</p>
+                                  <p className={`text-lg font-mono font-bold text-center ${manualTimerPaused ? 'text-yellow-600' : manualTimerCompleted ? 'text-green-600' : 'text-orange-600'}`}>
+                                    {formatTimerDisplay(manualTimerElapsed)}
+                                  </p>
+                                  <p className="text-[10px] text-center text-gray-500 mt-0.5">
+                                    {manualTimerCompleted ? '作業完了' : manualTimerPaused ? '一時停止中' : '計測中...'}
+                                  </p>
+                                </div>
+                              )}
                             </div>
 
                             {/* アクションボタン（右側） */}
@@ -1850,22 +1958,75 @@ export default function CorrectorDashboard() {
                                     📊 スプシで開く
                                   </a>
                                 )}
-                                <button
-                                  onClick={() => openInputView(task.id)}
-                                  className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg transition font-medium"
-                                >
-                                  📝 作業開始
-                                </button>
-                                <button
-                                  onClick={() => toggleTaskExpand(task.id)}
-                                  className={`text-xs px-3 py-1.5 rounded-lg transition font-medium ${
-                                    expandedTaskId === task.id
-                                      ? 'bg-gray-200 text-gray-700'
-                                      : 'bg-green-600 hover:bg-green-700 text-white'
-                                  }`}
-                                >
-                                  {expandedTaskId === task.id ? '閉じる' : '提出する'}
-                                </button>
+                                {isExternalWork(task.subject, task.workType) ? (
+                                  <>
+                                    {/* 外部作業: 手動タイマー */}
+                                    {manualTimerTaskId !== task.id && (
+                                      <button
+                                        onClick={() => startManualTimer(task.id)}
+                                        className="text-xs bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition font-medium"
+                                      >
+                                        作業開始
+                                      </button>
+                                    )}
+                                    {manualTimerTaskId === task.id && !manualTimerCompleted && (
+                                      <>
+                                        {!manualTimerPaused ? (
+                                          <button
+                                            onClick={pauseManualTimer}
+                                            className="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg transition font-medium"
+                                          >
+                                            一時停止
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={resumeManualTimer}
+                                            className="text-xs bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition font-medium"
+                                          >
+                                            再開
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={completeManualTimer}
+                                          className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition font-medium"
+                                        >
+                                          作業完了
+                                        </button>
+                                      </>
+                                    )}
+                                    {manualTimerTaskId === task.id && manualTimerCompleted && (
+                                      <button
+                                        onClick={() => toggleTaskExpand(task.id)}
+                                        className={`text-xs px-3 py-1.5 rounded-lg transition font-medium ${
+                                          expandedTaskId === task.id
+                                            ? 'bg-gray-200 text-gray-700'
+                                            : 'bg-green-600 hover:bg-green-700 text-white'
+                                        }`}
+                                      >
+                                        {expandedTaskId === task.id ? '閉じる' : '提出する'}
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => openInputView(task.id)}
+                                      className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg transition font-medium"
+                                    >
+                                      📝 作業開始
+                                    </button>
+                                    <button
+                                      onClick={() => toggleTaskExpand(task.id)}
+                                      className={`text-xs px-3 py-1.5 rounded-lg transition font-medium ${
+                                        expandedTaskId === task.id
+                                          ? 'bg-gray-200 text-gray-700'
+                                          : 'bg-green-600 hover:bg-green-700 text-white'
+                                      }`}
+                                    >
+                                      {expandedTaskId === task.id ? '閉じる' : '提出する'}
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             )}
                             {/* 完了/承認済みのスプシリンク */}

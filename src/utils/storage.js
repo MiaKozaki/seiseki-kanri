@@ -489,6 +489,9 @@ export const INITIAL_DATA = {
   manuals: [],
   questions: [],
   questionSettings: [],
+  externalWorkSettings: [
+    { id: 'ew1', subject: '小学国語', workType: '新年度試験種', createdAt: '2026-01-01T00:00:00.000Z' },
+  ],
 };
 
 export const SUBJECTS_LIST = ['小学国語', '小学算数', '小学理科', '小学社会'];
@@ -834,6 +837,7 @@ export const initStorage = () => {
     if (!data.reviewMemos) { data.reviewMemos = []; updated = true; }
     if (!data.questions) { data.questions = []; updated = true; }
     if (!data.questionSettings) { data.questionSettings = []; updated = true; }
+    if (!data.externalWorkSettings) { data.externalWorkSettings = INITIAL_DATA.externalWorkSettings || []; updated = true; }
     if (updated) localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 };

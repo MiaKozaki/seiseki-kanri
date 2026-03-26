@@ -1357,6 +1357,24 @@ export const DataProvider = ({ children }) => {
   // ---- autoAssign用: 一括データ取得 + 結果反映 ----
   const getAllData = () => data || getAll();
 
+  // ---- External Work Settings (外部作業設定) ----
+  const getExternalWorkSettings = () => d('externalWorkSettings') || [];
+  const isExternalWork = (subject, workType) => {
+    return (d('externalWorkSettings') || []).some(s => s.subject === subject && s.workType === workType);
+  };
+  const addExternalWorkSetting = (subject, workType) => {
+    const existing = (d('externalWorkSettings') || []).find(s => s.subject === subject && s.workType === workType);
+    if (existing) return existing;
+    const item = { id: generateId(), subject, workType, createdAt: new Date().toISOString() };
+    updateCollection('externalWorkSettings', [...(d('externalWorkSettings') || []), item]);
+    forceRefresh();
+    return item;
+  };
+  const removeExternalWorkSetting = (subject, workType) => {
+    updateCollection('externalWorkSettings', (d('externalWorkSettings') || []).filter(s => !(s.subject === subject && s.workType === workType)));
+    forceRefresh();
+  };
+
   const applyAutoAssignResult = (result) => {
     updateMultipleCollections({
       assignments: result.assignments,
@@ -1404,6 +1422,7 @@ export const DataProvider = ({ children }) => {
       getNotifications, markNotificationRead, markAllNotificationsRead,
       getQuestions, addQuestion, answerQuestion, getQuestionSettings, updateQuestionSetting,
       startTimer, stopTimer, stopActiveTimer, getTimeLogs, getActiveTimer, getTaskTotalTime, getDaimonTotalTime,
+      getExternalWorkSettings, isExternalWork, addExternalWorkSetting, removeExternalWorkSetting,
     }}>
       {children}
     </DataContext.Provider>
