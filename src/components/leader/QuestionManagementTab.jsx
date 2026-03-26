@@ -74,7 +74,7 @@ const QuestionManagementTab = ({ activeSubjects }) => {
   };
 
   const sections = [
-    { key: 'list', icon: '💬', title: '質問一覧', desc: '添削者からの質問を確認・回答', badge: unresolvedCount },
+    { key: 'list', icon: '💬', title: '質問一覧', desc: '作業者からの質問を確認・回答', badge: unresolvedCount },
     { key: 'settings', icon: '⚙️', title: '受付設定', desc: '科目×作業内容ごとの質問受付ON/OFF' },
   ];
 
@@ -214,7 +214,7 @@ const QuestionManagementTab = ({ activeSubjects }) => {
                           {/* Original message */}
                           <div className="p-3 bg-gray-50 rounded-xl">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-medium text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">添削者</span>
+                              <span className="text-xs font-medium text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">作業者</span>
                               <span className="text-xs text-gray-600">{userNameMap[q.fromUserId] || '不明'}</span>
                               <span className="text-xs text-gray-400">{new Date(q.createdAt).toLocaleString('ja-JP')}</span>
                             </div>
@@ -228,7 +228,7 @@ const QuestionManagementTab = ({ activeSubjects }) => {
                                 <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
                                   r.userRole === 'leader' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
                                 }`}>
-                                  {r.userRole === 'leader' ? 'リーダー' : '添削者'}
+                                  {r.userRole === 'leader' ? 'リーダー' : '作業者'}
                                 </span>
                                 <span className="text-xs text-gray-600">{r.userName || userNameMap[r.userId] || '不明'}</span>
                                 <span className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleString('ja-JP')}</span>

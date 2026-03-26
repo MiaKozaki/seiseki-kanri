@@ -12,7 +12,7 @@ const LeaderManualTab = () => {
     { key: 'overview', icon: '📊', title: '概要', desc: 'KPIサマリー' },
     { key: 'tasks', icon: '📋', title: '試験種管理', desc: 'タスク追加・CSV一括登録・大問分割' },
     { key: 'assign', icon: '🔀', title: '振り分け', desc: '自動/手動振り分け・漏れチェック' },
-    { key: 'users', icon: '👥', title: '作業者管理', desc: '添削者追加・CSV一括登録・分野研修' },
+    { key: 'users', icon: '👥', title: '作業者管理', desc: '作業者追加・CSV一括登録・分野研修' },
     { key: 'analysis', icon: '📈', title: '工数分析', desc: '棒グラフ・月間工数履歴' },
     { key: 'processing', icon: '✅', title: '進捗管理', desc: '検証・差し戻し・格納確認' },
     { key: 'recruit', icon: '📢', title: '業務募集', desc: 'VIKING形式タスク' },
@@ -26,7 +26,7 @@ const LeaderManualTab = () => {
       <div className="text-sm text-gray-600 space-y-2">
         <p>ダッシュボードのトップ画面です。</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>KPIサマリー</strong>：添削者数、タスク総数、未割当、遅延リスク、検証待ち、完了数、工数合計</li>
+          <li><strong>KPIサマリー</strong>：作業者数、タスク総数、未割当、遅延リスク、検証待ち、完了数、工数合計</li>
           <li><strong>タスクステータス分布</strong>：円グラフで割当状況を可視化</li>
           <li><strong>科目別 完了予測</strong>：残り工数、利用可能工数、完了見込み日</li>
           <li><strong>タスク進捗予測テーブル</strong>：担当者、残り工数、予測完了日、期限、状態の一覧</li>
@@ -51,28 +51,28 @@ const LeaderManualTab = () => {
         <p>タスクの振り分けを行います。</p>
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>自動振り分け</strong>：科目+作業内容フィルタで対象を絞り、プレビュー後に確定</li>
-          <li><strong>手動振り分け</strong>：個別タスクを指定して添削者にアサイン</li>
+          <li><strong>手動振り分け</strong>：個別タスクを指定して作業者にアサイン</li>
           <li><strong>振り分け漏れチェック</strong>：未割当タスクの確認</li>
         </ul>
       </div>
     ),
     users: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>添削者の追加・編集・削除を行います。</p>
+        <p>作業者の追加・編集・削除を行います。</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>添削者追加</strong>：氏名、メール、管理ID（N+8桁）、担当科目を入力。パスワードは自動生成</li>
+          <li><strong>作業者追加</strong>：氏名、メール、管理ID（N+8桁）、担当科目を入力。パスワードは自動生成</li>
           <li><strong>CSV一括登録</strong>：管理ID、氏名、担当科目のCSVで一括投入。テンプレートCSVもダウンロード可能</li>
-          <li><strong>分野研修クリア管理</strong>：添削者ごとの分野研修クリア状況を管理。CSV一括インポートにも対応</li>
+          <li><strong>分野研修クリア管理</strong>：作業者ごとの分野研修クリア状況を管理。CSV一括インポートにも対応</li>
           <li><strong>PWリセット</strong>：パスワードを再発行（初回ログイン時に変更必須）</li>
-          <li><strong>担当科目編集</strong>：添削者の担当科目を変更</li>
+          <li><strong>担当科目編集</strong>：作業者の担当科目を変更</li>
         </ul>
       </div>
     ),
     analysis: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>添削者ごとの工数状況を確認します。</p>
+        <p>作業者ごとの工数状況を確認します。</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>棒グラフ</strong>：各添削者の登録工数 vs 割当工数</li>
+          <li><strong>棒グラフ</strong>：各作業者の登録工数 vs 割当工数</li>
           <li><strong>月間工数履歴</strong>：月ごとの工数推移をフィルタ付きで確認</li>
           <li><strong>キャパシティ管理</strong>：空き工数の把握</li>
         </ul>
@@ -80,12 +80,12 @@ const LeaderManualTab = () => {
     ),
     processing: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>添削者の提出物を検証・管理します。</p>
+        <p>作業者の提出物を検証・管理します。</p>
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>検証チェックリスト</strong>：提出物のチェック項目を確認</li>
           <li><strong>ファイルプレビュー</strong>：添付ファイルの確認・ダウンロード</li>
           <li><strong>承認</strong>：内容に問題なければ承認 → タスク完了</li>
-          <li><strong>差し戻し自動化</strong>：カテゴリ・重大度を選択して差し戻し → 添削者に自動通知</li>
+          <li><strong>差し戻し自動化</strong>：カテゴリ・重大度を選択して差し戻し → 作業者に自動通知</li>
           <li><strong>格納確認 → takos放出</strong>：格納確認後のフロー</li>
         </ul>
       </div>
@@ -95,17 +95,17 @@ const LeaderManualTab = () => {
         <p>VIKING形式のタスク募集を管理します。</p>
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>募集作成</strong>：科目、タイトル、説明、必要工数、期限を入力して募集を開始</li>
-          <li><strong>応募管理</strong>：添削者からの応募を確認し、承認または却下</li>
+          <li><strong>応募管理</strong>：作業者からの応募を確認し、承認または却下</li>
           <li>VIKINGタスクでは分野制限が適用されます</li>
         </ul>
       </div>
     ),
     eval: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>添削者のスター評価と作業時間分析を行います。</p>
+        <p>作業者のスター評価と作業時間分析を行います。</p>
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>評価基準</strong>：評価基準の管理。自動メトリクス（差し戻し率、重大度、作業時間等）も対応</li>
-          <li><strong>添削者評価</strong>：スライダーで評価。科目フィルター・自動計算メトリクス付き</li>
+          <li><strong>作業者評価</strong>：スライダーで評価。科目フィルター・自動計算メトリクス付き</li>
           <li><strong>作業時間一覧</strong>：タイムログを一覧表示。作業者・科目・日付でフィルター</li>
           <li><strong>個人別時間</strong>：合計時間・タスク数・効率%を確認</li>
           <li><strong>科目・大問別</strong>：科目別合計時間の割合、大問別の時間内訳</li>
@@ -114,7 +114,7 @@ const LeaderManualTab = () => {
     ),
     merge: (
       <div className="text-sm text-gray-600 space-y-2">
-        <p>添削者が提出したExcelファイルを統合します。</p>
+        <p>作業者が提出したExcelファイルを統合します。</p>
         <ul className="list-disc pl-5 space-y-1">
           <li>複数の添付ファイルを1つのExcelにまとめてダウンロード</li>
         </ul>
@@ -181,7 +181,7 @@ const LeaderManualTab = () => {
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">2</span>
-            <p><strong>作業者登録</strong>：添削者のアカウントを作成（管理ID・担当科目対応、CSV一括登録可）</p>
+            <p><strong>作業者登録</strong>：作業者のアカウントを作成（管理ID・担当科目対応、CSV一括登録可）</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">3</span>

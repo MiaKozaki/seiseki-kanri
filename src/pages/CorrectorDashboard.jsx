@@ -17,7 +17,7 @@ const parseFbMessage = (message) => {
 };
 
 // Component to render structured FB message
-// hideDetail: 添削者向け表示ではカテゴリ項目のみ表示し、詳細は非公開
+// hideDetail: 作業者向け表示ではカテゴリ項目のみ表示し、詳細は非公開
 const StructuredFbDisplay = ({ message, hideDetail = true }) => {
   const parsed = parseFbMessage(message);
   if (!parsed) {
@@ -1608,7 +1608,7 @@ export default function CorrectorDashboard() {
             </div>
             <div>
               <p className="font-semibold text-gray-800 text-sm">{user.name}</p>
-              <p className="text-xs text-gray-400">添削者</p>
+              <p className="text-xs text-gray-400">作業者</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -2943,7 +2943,7 @@ export default function CorrectorDashboard() {
           return (
             <div className="space-y-4 max-w-4xl mx-auto">
               <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-1">📖 添削者用マニュアル</h2>
+                <h2 className="text-lg font-bold text-gray-800 mb-1">📖 作業者用マニュアル</h2>
                 <p className="text-sm text-gray-500">四谷大塚制作アプリの使い方ガイドです。各項目をクリックして詳細を確認できます。</p>
               </div>
 

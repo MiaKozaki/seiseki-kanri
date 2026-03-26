@@ -177,7 +177,7 @@ const AssignmentTab = ({ activeSubjects }) => {
       }
     });
 
-    // 5. 工数未登録の添削者
+    // 5. 工数未登録の作業者
     correctors.forEach(c => {
       const hasFutureCap = capacities.some(cap => cap.userId === c.id && cap.endDate >= today);
       if (!hasFutureCap) {
@@ -419,7 +419,7 @@ const AssignmentTab = ({ activeSubjects }) => {
                   <p className="text-sm font-medium text-gray-800 mb-1">{task.name}</p>
                   <p className="text-xs text-gray-500 mb-2">{task.subject}{task.workType ? ` · ${task.workType}` : ''} · {task.requiredHours}h · 期限: {task.deadline}</p>
                   {eligible.length === 0 ? (
-                    <p className="text-xs text-red-500">担当可能な添削者がいません</p>
+                    <p className="text-xs text-red-500">担当可能な作業者がいません</p>
                   ) : (
                     <div className="flex gap-2">
                       <select
@@ -427,7 +427,7 @@ const AssignmentTab = ({ activeSubjects }) => {
                         onChange={e => setManualSelect(prev => ({ ...prev, [task.id]: e.target.value }))}
                         className="flex-1 text-sm px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                       >
-                        <option value="">添削者を選択...</option>
+                        <option value="">作業者を選択...</option>
                         {eligible.map(c => {
                           const totalCap = capacities.filter(cap => cap.userId === c.id).reduce((s, cap) => s + cap.totalHours, 0);
                           const usedHours = assignments.filter(a => a.userId === c.id && !isFinished(a.status)).reduce((s, a) => s + a.assignedHours, 0);

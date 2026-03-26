@@ -4,8 +4,8 @@
  */
 import React, { useState, useMemo } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  ComposedChart, Line, ReferenceLine, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  ComposedChart, Line, ReferenceLine, Cell, Bar,
 } from 'recharts';
 import { useData, isFinished } from '../../contexts/DataContext.jsx';
 import { SUBJECTS_LIST, WORK_TYPES_LIST } from '../../utils/storage.js';
@@ -109,17 +109,6 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
 
   const dailyData = buildDailyData(capacities, tasks);
   const insufficientDays = dailyData.filter(d => !d.充足 && d.必要作業工数 > 0).length;
-
-  const correctorData = correctors.map(c => {
-    const available = capacities.filter(cap => cap.userId === c.id).reduce((s, cap) => s + cap.totalHours, 0);
-    const assigned = assignments.filter(a => a.userId === c.id && !isFinished(a.status)).reduce((s, a) => s + a.assignedHours, 0);
-    return {
-      name: c.name.replace(' ', '\n'),
-      登録工数: available,
-      割当工数: assigned,
-      空き工数: Math.max(0, available - assigned),
-    };
-  });
 
   const [historyRange, setHistoryRange] = useState({ startDate: '', endDate: '' });
   const [showHistory, setShowHistory] = useState(false);
@@ -273,71 +262,10 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
         )}
       </div>
 
-      {/* ===== 添削者別グラフ ===== */}
-      <div className="bg-white rounded-xl shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-1">添削者別 工数状況</h3>
-        <p className="text-xs text-gray-400 mb-4">登録工数・割当工数・空き工数の比較</p>
-        {correctorData.length === 0 ? (
-          <p className="text-gray-400 text-sm text-center py-8">データがありません</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={correctorData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} unit="h" width={36} />
-              <Tooltip formatter={(v) => `${v}時間`} />
-              <Legend />
-              <Bar dataKey="登録工数" fill="#93c5fd" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="割当工数" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="空き工数" fill="#bbf7d0" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* ===== 添削者別詳細 ===== */}
-      <div className="bg-white rounded-xl shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">添削者別 工数詳細</h3>
-        <div className="space-y-3">
-          {correctors.map(c => {
-            const data = correctorData.find(d => d.name === c.name.replace(' ', '\n'));
-            if (!data) return null;
-            const pct = data.登録工数 > 0 ? Math.min(100, Math.round((data.割当工数 / data.登録工数) * 100)) : 0;
-            return (
-              <div key={c.id} className="p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between mb-1.5">
-                  <div>
-                    <span className="text-sm font-medium text-gray-800">{c.name}</span>
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {(c.subjects ?? []).length === 0
-                        ? <span className="text-xs text-gray-300">科目未設定</span>
-                        : (c.subjects ?? []).map(s => (
-                          <span key={s} className="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">{s}</span>
-                        ))}
-                    </div>
-                  </div>
-                  <span className="text-xs text-gray-500">{data.割当工数}h / {data.登録工数}h</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-blue-500'}`}
-                    style={{ width: `${pct}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-xs text-gray-400">稼働率: {pct}%</span>
-                  <span className="text-xs text-green-600 font-medium">空き: {data.空き工数}h</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       {/* ===== 科目別 工数サマリー ===== */}
       <div className="bg-white rounded-xl shadow-sm p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-1">科目別 工数サマリー</h3>
-        <p className="text-xs text-gray-400 mb-4">担当可能な添削者の工数 vs 必要作業工数</p>
+        <p className="text-xs text-gray-400 mb-4">担当可能な作業者の工数 vs 必要作業工数</p>
         <div className="space-y-3">
           {subjectSummary.map(row => {
             const pct = row.totalCap > 0 ? Math.min(100, Math.round((row.requiredH / row.totalCap) * 100)) : 0;
@@ -512,43 +440,48 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
 // ---- 月間工数履歴セクション ----
 const MacroIncentiveSection = ({ tasks, assignments, users }) => {
   const now = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  // Default date range: current month
+  const defaultStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const defaultEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  const [dateFrom, setDateFrom] = useState(defaultStart);
+  const [dateTo, setDateTo] = useState(defaultEnd);
   const [filterSubject, setFilterSubject] = useState('');
   const [filterWorkType, setFilterWorkType] = useState('');
   const [filterUserId, setFilterUserId] = useState('');
 
   const correctors = useMemo(() => users.filter(u => u.role === 'corrector'), [users]);
 
-  const monthOptions = useMemo(() => {
-    const months = [];
-    for (let i = -6; i <= 1; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-    }
-    return months;
-  }, []);
+  const subjectFilterOptions = useMemo(() => [...SUBJECTS_LIST, 'マクロ'], []);
 
   const incentiveData = useMemo(() => {
-    const [year, month] = selectedMonth.split('-').map(Number);
-    const startOfMonth = new Date(year, month - 1, 1).toISOString();
-    const endOfMonth = new Date(year, month, 0, 23, 59, 59).toISOString();
+    const startISO = dateFrom ? new Date(dateFrom + 'T00:00:00').toISOString() : '';
+    const endISO = dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : '';
 
     // Build a task lookup map with subject/workType filters applied
     const taskMap = {};
     tasks.forEach(t => {
-      if (filterSubject && t.subject !== filterSubject) return;
+      if (filterSubject === 'マクロ') {
+        // マクロ filter: match tasks where workType is マクロ
+        if (t.workType !== 'マクロ') return;
+      } else if (filterSubject) {
+        if (t.subject !== filterSubject) return;
+      }
       if (filterWorkType && t.workType !== filterWorkType) return;
       taskMap[t.id] = t;
     });
 
-    // All completed assignments within the selected month matching task filters
+    // All completed assignments within the date range matching task filters
     const completedAssignments = assignments.filter(a => {
       if (!taskMap[a.taskId]) return false;
       if (!isFinished(a.status)) return false;
       if (filterUserId && a.userId !== filterUserId) return false;
       const dateField = a.reviewedAt || a.submittedAt || a.storedAt;
       if (!dateField) return false;
-      return dateField >= startOfMonth && dateField <= endOfMonth;
+      if (startISO && dateField < startISO) return false;
+      if (endISO && dateField > endISO) return false;
+      return true;
     });
 
     // Aggregate per user
@@ -563,7 +496,7 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
     });
 
     return Object.values(userMap).sort((a, b) => b.totalHours - a.totalHours);
-  }, [selectedMonth, tasks, assignments, users, filterSubject, filterWorkType, filterUserId]);
+  }, [dateFrom, dateTo, tasks, assignments, users, filterSubject, filterWorkType, filterUserId]);
 
   const totalTasks = incentiveData.reduce((s, d) => s + d.taskCount, 0);
   const totalHours = incentiveData.reduce((s, d) => s + d.totalHours, 0);
@@ -575,24 +508,22 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
       <div className="flex items-center justify-between mb-3">
         <div>
           <h3 className="text-sm font-semibold text-gray-700">月間工数履歴</h3>
-          <p className="text-xs text-gray-400 mt-0.5">完了タスクの月別実績集計</p>
+          <p className="text-xs text-gray-400 mt-0.5">完了タスクの期間別実績集計</p>
         </div>
-        <select
-          value={selectedMonth}
-          onChange={e => setSelectedMonth(e.target.value)}
-          className={selectClass}
-        >
-          {monthOptions.map(m => (
-            <option key={m} value={m}>{m.replace('-', '年')}月</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className={selectClass} />
+          <span className="text-xs text-gray-400">〜</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className={selectClass} />
+        </div>
       </div>
 
       {/* Filter dropdowns */}
       <div className="flex flex-wrap gap-2 mb-4">
         <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} className={selectClass}>
           <option value="">全科目</option>
-          {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+          {subjectFilterOptions.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={filterWorkType} onChange={e => setFilterWorkType(e.target.value)} className={selectClass}>
           <option value="">全作業内容</option>

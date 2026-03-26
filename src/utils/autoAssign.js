@@ -2,7 +2,7 @@ import { generateId } from './storage.js';
 import { isFinished } from '../contexts/DataContext.jsx';
 
 /**
- * 添削者のタスクに対するスコアを計算する
+ * 作業者のタスクに対するスコアを計算する
  * 評価スコア × 0.7 + 空き工数マッチ × 0.3
  */
 const calcScore = (corrector, task, evaluations, criteria, allAssignments, capacities) => {

@@ -1314,7 +1314,7 @@ export const DataProvider = ({ children }) => {
     const newNotifications = leaders.map(leader => ({
       id: generateId(),
       userId: leader.id,
-      message: `${fromUser?.name || '添削者'}から質問があります: [${question.subject}${question.workType ? ' · ' + question.workType : ''}] ${question.message.substring(0, 50)}${question.message.length > 50 ? '...' : ''}`,
+      message: `${fromUser?.name || '作業者'}から質問があります: [${question.subject}${question.workType ? ' · ' + question.workType : ''}] ${question.message.substring(0, 50)}${question.message.length > 50 ? '...' : ''}`,
       type: 'question',
       relatedId: question.id,
       read: false,
@@ -1340,11 +1340,11 @@ export const DataProvider = ({ children }) => {
       replies: [...(q.replies || []), reply],
     } : q);
     updateCollection('questions', updated);
-    // 通知: 添削者が返信 → リーダーに通知 / リーダーが返信 → 質問者に通知
+    // 通知: 作業者が返信 → リーダーに通知 / リーダーが返信 → 質問者に通知
     const question = updated.find(q => q.id === questionId);
     if (question) {
       if (userRole === 'corrector') {
-        // 添削者が返信 → リーダー全員に通知
+        // 作業者が返信 → リーダー全員に通知
         const leaders = d('users').filter(u => u.role === 'leader');
         const newNotifications = leaders.map(leader => ({
           id: generateId(),

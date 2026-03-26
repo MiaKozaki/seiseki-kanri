@@ -393,9 +393,9 @@ const UserManagementTab = ({ activeSubjects }) => {
       {/* ===== Section: 作業者一覧 ===== */}
       {activeUserSection === 'list' && (
       <div className="bg-white rounded-xl shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">添削者一覧（{correctors.length}人）</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">作業者一覧（{correctors.length}人）</h3>
         {correctors.length === 0 ? (
-          <p className="text-gray-400 text-sm text-center py-6">添削者がいません</p>
+          <p className="text-gray-400 text-sm text-center py-6">作業者がいません</p>
         ) : (
           <div className="space-y-3">
             {correctors.map(c => {

@@ -35,7 +35,7 @@ const OverviewTab = ({ activeSubjects }) => {
   const atRiskCount = predictions.filter(p => p.status === 'overdue' || p.status === 'at_risk' || p.status === 'insufficient').length;
 
   const stats = [
-    { label: '添削者数', value: correctors.length, unit: '人', color: 'bg-purple-50 text-purple-700 border-purple-100' },
+    { label: '作業者数', value: correctors.length, unit: '人', color: 'bg-purple-50 text-purple-700 border-purple-100' },
     { label: 'タスク総数', value: tasks.length, unit: '件', color: 'bg-blue-50 text-blue-700 border-blue-100' },
     { label: '未割当タスク', value: pendingTasks, unit: '件', color: 'bg-amber-50 text-amber-700 border-amber-100' },
     { label: '遅延リスク', value: atRiskCount, unit: '件', color: atRiskCount > 0 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100' },

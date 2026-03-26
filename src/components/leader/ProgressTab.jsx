@@ -80,13 +80,6 @@ const StructuredFbDisplay = ({ message }) => {
   );
 };
 
-const STATUS_COLOR_PRESETS = [
-  '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
-  '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
-  '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
-  '#ec4899', '#f43f5e', '#78716c', '#64748b', '#334155',
-];
-
 // ---- ファイルプレビューパネル ----
 const FilePreviewPanel = ({ attachments }) => {
   const [activeFileIdx, setActiveFileIdx] = React.useState(0);
@@ -175,7 +168,7 @@ const ProgressTab = ({ activeSubjects }) => {
     getRejectionCategories, getRejectionSeverities, getRejections, addRejection,
     getVerificationItems, getVerificationResults, initVerificationResults, toggleVerificationResult,
     updateAssignment, confirmStorage, markAsStored,
-    getWorkflowStatuses, addWorkflowStatus, updateWorkflowStatus, deleteWorkflowStatus, resolveWorkflowStatus,
+    getWorkflowStatuses, resolveWorkflowStatus,
     getFeedbacks, addFeedback,
     getWorkTypes,
     getReviewMemos, addReviewMemo,
@@ -213,21 +206,11 @@ const ProgressTab = ({ activeSubjects }) => {
   const [feedbackChecks, setFeedbackChecks] = useState({});
   const [feedbackDetail, setFeedbackDetail] = useState('');
   const [showTaskDetail, setShowTaskDetail] = useState(false);
-  const [showStatusConfig, setShowStatusConfig] = useState(false);
-
   // ---- Memo state ----
   const [memoText, setMemoText] = useState('');
   const [memoShared, setMemoShared] = useState(false);
   const [memoType, setMemoType] = useState('review');
 
-  // Status config panel state
-  const [cfgSubject, setCfgSubject] = useState(null);
-  const [cfgWorkType, setCfgWorkType] = useState(null);
-  const [newStatusLabel, setNewStatusLabel] = useState('');
-  const [newStatusColor, setNewStatusColor] = useState('#3b82f6');
-  const [editingStatusId, setEditingStatusId] = useState(null);
-  const [editLabel, setEditLabel] = useState('');
-  const [editColor, setEditColor] = useState('');
 
   // ---- Workflow statuses ----
   const workflowStatuses = getWorkflowStatuses();
@@ -381,34 +364,6 @@ const ProgressTab = ({ activeSubjects }) => {
   };
 
   // ---- Status config helpers ----
-  const cfgStatuses = getWorkflowStatuses(cfgSubject, cfgWorkType);
-
-  const handleAddStatus = () => {
-    if (!newStatusLabel.trim()) return;
-    const maxSort = cfgStatuses.reduce((m, s) => Math.max(m, s.sortOrder), 0);
-    addWorkflowStatus({
-      subject: cfgSubject,
-      workType: cfgWorkType,
-      name: newStatusLabel.trim().toLowerCase().replace(/\s+/g, '_'),
-      label: newStatusLabel.trim(),
-      color: newStatusColor,
-      sortOrder: maxSort + 1,
-    });
-    setNewStatusLabel('');
-    setNewStatusColor('#3b82f6');
-  };
-
-  const handleReorder = (id, direction) => {
-    const sorted = [...cfgStatuses].sort((a, b) => a.sortOrder - b.sortOrder);
-    const idx = sorted.findIndex(s => s.id === id);
-    if (idx < 0) return;
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= sorted.length) return;
-    const orderA = sorted[idx].sortOrder;
-    const orderB = sorted[swapIdx].sortOrder;
-    updateWorkflowStatus(sorted[idx].id, { sortOrder: orderB });
-    updateWorkflowStatus(sorted[swapIdx].id, { sortOrder: orderA });
-  };
 
   return (
     <div className="space-y-4">
@@ -1438,111 +1393,6 @@ const ProgressTab = ({ activeSubjects }) => {
         )}
       </div>
 
-      {/* ===== 5. Status Config Panel ===== */}
-      <div className="bg-white rounded-xl shadow-sm">
-        <button
-          onClick={() => setShowStatusConfig(!showStatusConfig)}
-          className="w-full flex items-center justify-between p-4 text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors"
-        >
-          <span>ワークフローステータス設定</span>
-          <span className="text-gray-400 text-xs">{showStatusConfig ? '▲ 閉じる' : '▼ 設定を開く'}</span>
-        </button>
-
-        {showStatusConfig && (
-          <div className="px-5 pb-5 space-y-4">
-            {/* Subject x WorkType selector */}
-            <div className="flex gap-3 flex-wrap">
-              <div>
-                <label className="block text-xs text-gray-500 mb-0.5">科目</label>
-                <select value={cfgSubject ?? ''} onChange={e => setCfgSubject(e.target.value || null)}
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option value="">デフォルト（全科目共通）</option>
-                  {SUBJECTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-0.5">業務内容</label>
-                <select value={cfgWorkType ?? ''} onChange={e => setCfgWorkType(e.target.value || null)}
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option value="">全て</option>
-                  {workTypesList.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Current statuses list */}
-            <div className="space-y-1">
-              {cfgStatuses.map((ws, idx) => (
-                <div key={ws.id} className="flex items-center gap-2 p-2 rounded-lg border border-gray-100 bg-gray-50">
-                  <span className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: ws.color }}></span>
-
-                  {editingStatusId === ws.id ? (
-                    <>
-                      <input type="text" value={editLabel} onChange={e => setEditLabel(e.target.value)}
-                        className="text-xs border border-gray-300 rounded px-1.5 py-1 flex-1" />
-                      <div className="flex gap-1 shrink-0">
-                        {STATUS_COLOR_PRESETS.slice(0, 10).map(c => (
-                          <button key={c} onClick={() => setEditColor(c)}
-                            className={`w-4 h-4 rounded-full border-2 ${editColor === c ? 'border-gray-800' : 'border-transparent'}`}
-                            style={{ backgroundColor: c }} />
-                        ))}
-                      </div>
-                      <button onClick={() => {
-                        updateWorkflowStatus(ws.id, { label: editLabel, color: editColor });
-                        setEditingStatusId(null);
-                      }}
-                        className="text-xs text-blue-600 hover:text-blue-800">保存</button>
-                      <button onClick={() => setEditingStatusId(null)}
-                        className="text-xs text-gray-400 hover:text-gray-600">取消</button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-sm text-gray-800 flex-1">{ws.label}</span>
-                      {ws.isDefault && <span className="text-[10px] text-gray-400">デフォルト</span>}
-                      <button onClick={() => handleReorder(ws.id, 'up')} disabled={idx === 0}
-                        className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-30">↑</button>
-                      <button onClick={() => handleReorder(ws.id, 'down')} disabled={idx === cfgStatuses.length - 1}
-                        className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-30">↓</button>
-                      {!ws.isDefault && (
-                        <>
-                          <button onClick={() => { setEditingStatusId(ws.id); setEditLabel(ws.label); setEditColor(ws.color); }}
-                            className="text-xs text-blue-500 hover:text-blue-700">編集</button>
-                          <button onClick={() => { if (window.confirm(`「${ws.label}」を削除しますか？`)) deleteWorkflowStatus(ws.id); }}
-                            className="text-xs text-red-400 hover:text-red-600">削除</button>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Add new status */}
-            <div className="flex items-end gap-2 flex-wrap p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <div>
-                <label className="block text-xs text-gray-500 mb-0.5">新しいステータス</label>
-                <input type="text" value={newStatusLabel} onChange={e => setNewStatusLabel(e.target.value)}
-                  placeholder="ステータス名"
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-0.5">色</label>
-                <div className="flex gap-1">
-                  {STATUS_COLOR_PRESETS.map(c => (
-                    <button key={c} onClick={() => setNewStatusColor(c)}
-                      className={`w-5 h-5 rounded-full border-2 transition ${newStatusColor === c ? 'border-gray-800 scale-110' : 'border-transparent'}`}
-                      style={{ backgroundColor: c }} />
-                  ))}
-                </div>
-              </div>
-              <button onClick={handleAddStatus} disabled={!newStatusLabel.trim()}
-                className="text-xs px-4 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition font-medium">
-                追加
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 };

@@ -101,7 +101,7 @@ export default function LoginPage() {
                   className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 transition text-xs text-gray-600 flex items-center gap-2"
                 >
                   <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${acc.role === 'leader' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                    {acc.role === 'leader' ? 'リーダー' : '添削者'}
+                    {acc.role === 'leader' ? 'リーダー' : '作業者'}
                   </span>
                   {acc.label}
                 </button>

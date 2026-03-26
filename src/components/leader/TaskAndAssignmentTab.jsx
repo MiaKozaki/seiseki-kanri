@@ -1011,7 +1011,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
               />
               <label htmlFor="viking-check" className="text-sm font-medium text-gray-700">
                 🛡 VIKINGタスク
-                <span className="ml-1 text-gray-400 font-normal">（添削者が自分で取れるタスク）</span>
+                <span className="ml-1 text-gray-400 font-normal">（作業者が自分で取れるタスク）</span>
               </label>
             </div>
             )}
@@ -1126,7 +1126,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 問題ファイル添付（PDF等）
-                <span className="ml-1 text-gray-400 font-normal">（任意）添削者に共有するファイル</span>
+                <span className="ml-1 text-gray-400 font-normal">（任意）作業者に共有するファイル</span>
               </label>
               <input
                 type="file"
@@ -2136,7 +2136,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                       <p className="text-sm font-medium text-gray-800 mb-1">{task.name}</p>
                       <p className="text-xs text-gray-500 mb-2">{task.subject}{task.workType ? ` · ${task.workType}` : ''} · {task.requiredHours}h · 期限: {task.deadline}</p>
                       {eligible.length === 0 ? (
-                        <p className="text-xs text-red-500">担当可能な添削者がいません</p>
+                        <p className="text-xs text-red-500">担当可能な作業者がいません</p>
                       ) : (
                         <div className="flex gap-2">
                           <select
@@ -2144,7 +2144,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                             onChange={e => setManualSelect(prev => ({ ...prev, [task.id]: e.target.value }))}
                             className="flex-1 text-sm px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                           >
-                            <option value="">添削者を選択...</option>
+                            <option value="">作業者を選択...</option>
                             {eligible.map(c => {
                               const totalCap = capacities.filter(cap => cap.userId === c.id).reduce((s, cap) => s + cap.totalHours, 0);
                               const usedHours = assignments.filter(a => a.userId === c.id && !isFinished(a.status)).reduce((s, a) => s + a.assignedHours, 0);

@@ -1016,7 +1016,7 @@ const MasterDataTab = ({ activeSubjects }) => {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h4 className="text-sm font-semibold text-gray-700 mb-3">外部作業設定</h4>
         <p className="text-xs text-gray-500 mb-4">
-          チェックを入れた科目×作業種の組み合わせは「外部作業」として扱われ、添削者側で手動タイマーが表示されます。
+          チェックを入れた科目×作業種の組み合わせは「外部作業」として扱われ、作業者側で手動タイマーが表示されます。
           Word編集など、アプリ外での作業が必要なタスクに使用してください。
         </p>
         {(() => {
