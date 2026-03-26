@@ -15,15 +15,15 @@ npm run dev  # → http://localhost:5173
 ```
 
 ## テストアカウント（パスワード共通: password）
-| ロール | ログインID | メール | 担当科目 |
-|--------|-----------|--------|----------|
-| リーダー | L001 | leader@test.com | 算数, マクロ |
-| リーダー | L002 | sato-leader@test.com | 国語, 社会 |
-| リーダー | L003 | suzuki-leader@test.com | 理科 |
-| 添削者 | T001 | yamada@test.com | 国語, 算数 |
-| 添削者 | T002 | suzuki@test.com | 算数, 理科 |
-| 添削者 | T003 | sato@test.com | 国語, 社会 |
-| 添削者 | T004 | mtanaka@test.com | 理科, 社会, 国語 |
+| ロール | 管理ID | メール | 担当科目 |
+|--------|--------|--------|----------|
+| リーダー | 100001 | leader@test.com | 算数, マクロ |
+| リーダー | 100002 | sato-leader@test.com | 国語, 社会 |
+| リーダー | 100003 | suzuki-leader@test.com | 理科 |
+| 添削者 | 200001 | yamada@test.com | 国語, 算数 |
+| 添削者 | 200002 | suzuki@test.com | 算数, 理科 |
+| 添削者 | 200003 | sato@test.com | 国語, 社会 |
+| 添削者 | 200004 | mtanaka@test.com | 理科, 社会, 国語 |
 
 ## ディレクトリ構成
 ```

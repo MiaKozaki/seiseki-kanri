@@ -16,10 +16,10 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
-  const login = (loginId, password) => {
+  const login = (managementId, password) => {
     const users = get('users');
     const found = users.find(
-      u => u.loginId === loginId && u.password === btoa(password)
+      u => u.managementId === managementId && u.password === btoa(password)
     );
     if (!found) throw new Error('IDまたはパスワードが正しくありません');
     const userObj = { ...found };

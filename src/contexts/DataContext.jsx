@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { get, save, getAll, generateId, generateInitialPassword, generateLoginId } from '../utils/storage.js';
+import { get, save, getAll, generateId, generateInitialPassword, generateManagementId } from '../utils/storage.js';
 import { deleteAttachmentsByAssignment } from '../utils/fileStorage.js';
 
 const DataContext = createContext(null);
@@ -65,7 +65,7 @@ export const DataProvider = ({ children }) => {
     const newUser = {
       ...userData,
       id: generateId(),
-      loginId: userData.loginId || generateLoginId(userData.role || 'corrector'),
+      managementId: userData.managementId || generateManagementId(userData.role || 'corrector'),
       password: btoa(tempPassword),
       mustChangePassword: true,
       createdAt: new Date().toISOString(),

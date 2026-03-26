@@ -521,7 +521,7 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
     const user = allUsers.find(u => u.id === c.userId);
     return {
       userName: user?.name ?? '不明',
-      userLoginId: user?.loginId ?? '',
+      userManagementId: user?.managementId ?? '',
       startDate: c.startDate,
       endDate: c.endDate,
       hoursPerDay: c.hoursPerDay,
@@ -539,7 +539,7 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
       subject: task?.subject || '',
       workType: task?.workType || '',
       correctorName: user?.name || '',
-      correctorLoginId: user?.loginId || '',
+      correctorManagementId: user?.managementId || '',
       assignedHours: a.assignedHours || '',
       actualHours: a.actualHours || '',
       status: a.status,
@@ -816,7 +816,7 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
                     ) : capacityHistoryData.map((c, i) => (
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
                         <td className="py-2 px-2">{c.userName}</td>
-                        <td className="py-2 px-2 font-mono text-blue-600">{c.userLoginId}</td>
+                        <td className="py-2 px-2 font-mono text-blue-600">{c.userManagementId}</td>
                         <td className="py-2 px-2">{c.startDate} 〜 {c.endDate}</td>
                         <td className="py-2 px-2 text-right">{c.hoursPerDay}</td>
                         <td className="py-2 px-2 text-right font-medium">{c.totalHours}</td>
@@ -940,7 +940,7 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
     completedAssignments.forEach(a => {
       if (!userMap[a.userId]) {
         const u = users.find(u => u.id === a.userId);
-        userMap[a.userId] = { name: u?.name || '不明', loginId: u?.loginId || '', taskCount: 0, totalHours: 0 };
+        userMap[a.userId] = { name: u?.name || '不明', managementId: u?.managementId || '', taskCount: 0, totalHours: 0 };
       }
       userMap[a.userId].taskCount += 1;
       userMap[a.userId].totalHours += (a.actualHours || a.assignedHours || 0);
@@ -984,7 +984,7 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
         </select>
         <select value={filterUserId} onChange={e => setFilterUserId(e.target.value)} className={selectClass}>
           <option value="">全作業者</option>
-          {correctors.map(c => <option key={c.id} value={c.id}>{c.name}（{c.loginId}）</option>)}
+          {correctors.map(c => <option key={c.id} value={c.id}>{c.name}（{c.managementId}）</option>)}
         </select>
       </div>
 
@@ -996,7 +996,7 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-2 px-2 text-gray-500 font-medium">作業者名</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium">ログインID</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium">管理ID</th>
                 <th className="text-right py-2 px-2 text-gray-500 font-medium">完了タスク数</th>
                 <th className="text-right py-2 px-2 text-gray-500 font-medium">合計工数(h)</th>
               </tr>
@@ -1005,7 +1005,7 @@ const MacroIncentiveSection = ({ tasks, assignments, users }) => {
               {incentiveData.map((row, i) => (
                 <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
                   <td className="py-2 px-2 font-medium text-gray-800">{row.name}</td>
-                  <td className="py-2 px-2 font-mono text-blue-600">{row.loginId}</td>
+                  <td className="py-2 px-2 font-mono text-blue-600">{row.managementId}</td>
                   <td className="py-2 px-2 text-right">{row.taskCount}</td>
                   <td className="py-2 px-2 text-right font-medium">{row.totalHours}h</td>
                 </tr>
@@ -1806,7 +1806,7 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
         subject: task?.subject || '',
         workType: task?.workType || '',
         correctorName: u?.name || '',
-        correctorLoginId: u?.loginId || '',
+        correctorManagementId: u?.managementId || '',
         assignedHours: a.assignedHours || '',
         actualHours: a.actualHours || '',
         status: a.status,
@@ -4229,7 +4229,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
         const ev = uEvals.find(e => e.criteriaId === crit.id);
         data.push({
           userName: c.name,
-          userLoginId: c.loginId || '',
+          userManagementId: c.managementId || '',
           criteriaName: crit.name,
           score: ev?.score ?? '',
           maxScore: crit.maxScore,
@@ -5133,26 +5133,28 @@ const UserManagementTab = ({ activeSubjects }) => {
   const correctors = getCorrectors();
 
   const [activeUserSection, setActiveUserSection] = useState(null);
-  const [form, setForm] = useState({ name: '', email: '', loginId: '', employeeId: '', subjects: [] });
+  const [form, setForm] = useState({ name: '', email: '', managementId: '', employeeId: '', subjects: [] });
   const [editId, setEditId] = useState(null);
   const [editSubjectsId, setEditSubjectsId] = useState(null);
   const [selectedSubjects, setSelectedSubjects] = useState([]);
   const [error, setError] = useState('');
   const [generatedPw, setGeneratedPw] = useState(null);
   const [generatedPwUser, setGeneratedPwUser] = useState('');
-  const [generatedPwLoginId, setGeneratedPwLoginId] = useState('');
+  const [generatedPwManagementId, setGeneratedPwLoginId] = useState('');
   const [fieldCsvPreview, setFieldCsvPreview] = useState(null);
   const [expandedFieldUserId, setExpandedFieldUserId] = useState(null);
 
   const handleExportCSV = () => {
-    const data = correctors.map(c => ({
-      name: c.name,
-      employeeId: c.employeeId || '',
-      loginId: c.loginId || '',
-      email: c.email || '',
-      role: c.role === 'leader' ? 'リーダー' : '添削者',
-      subjects: (c.subjects || []).join('；'),
-    }));
+    const data = correctors.map(c => {
+      const row = {
+        managementId: c.managementId || '',
+        name: c.name,
+      };
+      (SUBJECTS_LIST || []).forEach(s => {
+        row[`subject_${s}`] = (c.subjects || []).includes(s) ? '可' : '';
+      });
+      return row;
+    });
     const csv = toCSV(data, USER_CSV_COLUMNS);
     downloadCSV(csv, `作業者一覧_${new Date().toISOString().slice(0, 10)}.csv`);
   };
@@ -5179,20 +5181,20 @@ const UserManagementTab = ({ activeSubjects }) => {
       const result = addUser({
         name: u.name,
         employeeId: u.employeeId || null,
-        loginId: u.loginId || undefined,
+        managementId: u.managementId || undefined,
         email: u.email,
         role: u.role,
         subjects: u.subjects,
       });
       if (result) {
         count++;
-        passwords.push({ name: u.name, loginId: result.loginId, pw: result._tempPassword });
+        passwords.push({ name: u.name, managementId: result.managementId, pw: result._tempPassword });
       }
     });
     setCsvPreview(null);
     setCsvErrors([]);
     if (count > 0) {
-      setGeneratedPw(passwords.map(p => `${p.name}(${p.loginId}): ${p.pw}`).join('\n'));
+      setGeneratedPw(passwords.map(p => `${p.name}(${p.managementId}): ${p.pw}`).join('\n'));
       setGeneratedPwUser(`${count}名のインポート`);
     }
   };
@@ -5206,20 +5208,20 @@ const UserManagementTab = ({ activeSubjects }) => {
     } else {
       const existing = getCorrectors().find(u => u.email === form.email);
       if (existing) { setError('このメールアドレスは既に使用されています'); return; }
-      if (form.loginId) {
+      if (form.managementId) {
         const allUsers = getCorrectors().concat(getUsers().filter(u => u.role === 'leader'));
-        const dupLoginId = allUsers.find(u => u.loginId === form.loginId);
-        if (dupLoginId) { setError('このログインIDは既に使用されています'); return; }
+        const dupManagementId = allUsers.find(u => u.managementId === form.managementId);
+        if (dupManagementId) { setError('この管理IDは既に使用されています'); return; }
       }
       if (form.employeeId && !/^N\d{8}$/.test(form.employeeId)) {
         setError('管理IDは N+8桁の数字 (例: N00000001) の形式にしてください'); return;
       }
-      const result = addUser({ ...form, employeeId: form.employeeId || null, loginId: form.loginId || undefined, role: 'corrector', subjects: form.subjects || [] });
+      const result = addUser({ ...form, employeeId: form.employeeId || null, managementId: form.managementId || undefined, role: 'corrector', subjects: form.subjects || [] });
       setGeneratedPw(result._tempPassword);
       setGeneratedPwUser(form.name);
-      setGeneratedPwLoginId(result.loginId);
+      setGeneratedPwLoginId(result.managementId);
     }
-    setForm({ name: '', email: '', loginId: '', employeeId: '', subjects: [] });
+    setForm({ name: '', email: '', managementId: '', employeeId: '', subjects: [] });
   };
 
   const handleResetPassword = (userId, userName) => {
@@ -5299,8 +5301,8 @@ const UserManagementTab = ({ activeSubjects }) => {
               maxLength={9}
             />
             <input
-              type="text" placeholder="ログインID（空欄で自動生成）" value={form.loginId}
-              onChange={e => setForm({ ...form, loginId: e.target.value })}
+              type="text" placeholder="管理ID（空欄で自動生成）" value={form.managementId}
+              onChange={e => setForm({ ...form, managementId: e.target.value })}
               className="flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
@@ -5328,7 +5330,7 @@ const UserManagementTab = ({ activeSubjects }) => {
               {editId ? '更新' : '追加'}
             </button>
             {editId && (
-              <button type="button" onClick={() => { setEditId(null); setForm({ name: '', email: '', loginId: '', employeeId: '', subjects: [] }); }}
+              <button type="button" onClick={() => { setEditId(null); setForm({ name: '', email: '', managementId: '', employeeId: '', subjects: [] }); }}
                 className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg transition">
                 キャンセル
               </button>
@@ -5344,7 +5346,7 @@ const UserManagementTab = ({ activeSubjects }) => {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-semibold text-amber-800">
-                  {generatedPwUser}{generatedPwLoginId ? ` (${generatedPwLoginId})` : ''} の初期パスワード
+                  {generatedPwUser}{generatedPwManagementId ? ` (${generatedPwManagementId})` : ''} の初期パスワード
                 </p>
                 <p className="text-lg font-mono font-bold text-amber-900 mt-1 select-all">{generatedPw}</p>
                 <p className="text-xs text-amber-600 mt-1">
@@ -5380,11 +5382,10 @@ const UserManagementTab = ({ activeSubjects }) => {
             📥 CSV インポート
           </button>
           <button onClick={() => {
-            const templateData = [
-              { name: '\u5C71\u7530 \u592A\u90CE', employeeId: 'N00000001', loginId: 'T001', email: 'yamada@test.com', role: '\u6DFB\u524A\u8005', subjects: '\u56FD\u8A9E\uFF1B\u7B97\u6570' },
-              { name: '\u9234\u6728 \u82B1\u5B50', employeeId: 'N00000002', loginId: '', email: 'suzuki@test.com', role: '\u6DFB\u524A\u8005', subjects: '\u7406\u79D1' },
-            ];
-            const csv = toCSV(templateData, USER_CSV_COLUMNS);
+            const row1 = { managementId: '200001', name: '山田 太郎' };
+            const row2 = { managementId: '200002', name: '鈴木 花子' };
+            SUBJECTS_LIST.forEach(s => { row1[`subject_${s}`] = s === '小学国語' || s === '小学算数' ? '可' : ''; row2[`subject_${s}`] = s === '小学理科' ? '可' : ''; });
+            const csv = toCSV([row1, row2], USER_CSV_COLUMNS);
             downloadCSV(csv, '作業者一括登録テンプレート.csv');
           }}
             className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg transition">
@@ -5398,7 +5399,7 @@ const UserManagementTab = ({ activeSubjects }) => {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-semibold text-amber-800">
-                  {generatedPwUser}{generatedPwLoginId ? ` (${generatedPwLoginId})` : ''} の初期パスワード
+                  {generatedPwUser}{generatedPwManagementId ? ` (${generatedPwManagementId})` : ''} の初期パスワード
                 </p>
                 <p className="text-lg font-mono font-bold text-amber-900 mt-1 select-all">{generatedPw}</p>
                 <p className="text-xs text-amber-600 mt-1">
@@ -5428,7 +5429,7 @@ const UserManagementTab = ({ activeSubjects }) => {
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {csvPreview.map((u, i) => (
                 <div key={i} className="text-xs flex items-center gap-2 bg-white rounded p-2">
-                  <span className="font-mono text-purple-600">{u.loginId || '自動'}</span>
+                  <span className="font-mono text-purple-600">{u.managementId || '自動'}</span>
                   {u.employeeId && <span className="font-mono text-green-600">{u.employeeId}</span>}
                   <span className="font-medium">{u.name}</span>
                   <span className="text-gray-400">{u.email}</span>
@@ -5469,7 +5470,7 @@ const UserManagementTab = ({ activeSubjects }) => {
         >
           📥 分野クリアCSVインポート
         </button>
-        <p className="text-xs text-gray-400 mt-2">CSVフォーマット: 1列目にログインIDまたは氏名、2列目以降に分野名をヘッダに記載し、クリア済みセルに「○」「1」等を入力</p>
+        <p className="text-xs text-gray-400 mt-2">CSVフォーマット: 1列目に管理IDまたは氏名、2列目以降に分野名をヘッダに記載し、クリア済みセルに「○」「1」等を入力</p>
 
         {fieldCsvPreview && (
           <div className="mt-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
@@ -5523,11 +5524,11 @@ const UserManagementTab = ({ activeSubjects }) => {
                 <div key={c.id} className="p-3 border border-gray-200 rounded-xl">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-sm font-semibold text-gray-800">{c.name} <span className="text-xs font-mono text-blue-500">{c.loginId}</span>{c.employeeId && <span className="text-xs font-mono text-green-600 ml-1">{c.employeeId}</span>}</p>
+                      <p className="text-sm font-semibold text-gray-800">{c.name} <span className="text-xs font-mono text-blue-500">{c.managementId}</span>{c.employeeId && <span className="text-xs font-mono text-green-600 ml-1">{c.employeeId}</span>}</p>
                       <p className="text-xs text-gray-400">{c.email}</p>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => { setEditId(c.id); setForm({ name: c.name, email: c.email, loginId: c.loginId || '', employeeId: c.employeeId || '' }); }}
+                      <button onClick={() => { setEditId(c.id); setForm({ name: c.name, email: c.email, managementId: c.managementId || '', employeeId: c.employeeId || '' }); }}
                         className="text-xs text-blue-500 hover:bg-blue-50 px-2 py-1 rounded transition">編集</button>
                       <button onClick={() => handleResetPassword(c.id, c.name)}
                         className="text-xs text-amber-500 hover:bg-amber-50 px-2 py-1 rounded transition">PW リセット</button>
@@ -7330,7 +7331,7 @@ const LeaderManualTab = () => {
         <p>添削者の追加・編集・削除を行います。</p>
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>添削者追加</strong>：氏名、メール、管理ID（N+8桁）、担当科目を入力。パスワードは自動生成</li>
-          <li><strong>CSV一括登録</strong>：氏名、管理ID、ログインID、メール、ロール、担当科目のCSVで一括投入。テンプレートCSVもダウンロード可能</li>
+          <li><strong>CSV一括登録</strong>：管理ID、氏名、担当科目のCSVで一括投入。テンプレートCSVもダウンロード可能</li>
           <li><strong>分野研修クリア管理</strong>：添削者ごとの分野研修クリア状況を管理。CSV一括インポートにも対応</li>
           <li><strong>PWリセット</strong>：パスワードを再発行（初回ログイン時に変更必須）</li>
           <li><strong>担当科目編集</strong>：添削者の担当科目を変更</li>

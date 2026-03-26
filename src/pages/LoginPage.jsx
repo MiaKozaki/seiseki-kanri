@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 
 export default function LoginPage() {
-  const [loginId, setLoginId] = useState('');
+  const [managementId, setManagementId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -13,7 +13,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      login(loginId, password);
+      login(managementId, password);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -23,10 +23,10 @@ export default function LoginPage() {
 
   const quickLogin = (e, pwd) => {
     e.preventDefault();
-    setLoginId(e.target.dataset.loginid);
+    setManagementId(e.target.dataset.managementid);
     setPassword(pwd);
     try {
-      login(e.target.dataset.loginid, pwd);
+      login(e.target.dataset.managementid, pwd);
     } catch {}
   };
 
@@ -45,14 +45,14 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                ログインID
+                管理ID
               </label>
               <input
                 type="text"
-                value={loginId}
-                onChange={e => setLoginId(e.target.value)}
+                value={managementId}
+                onChange={e => setManagementId(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-sm"
-                placeholder="例: L001, T001"
+                placeholder="例: 100001, 200001"
                 required
               />
             </div>
@@ -90,13 +90,13 @@ export default function LoginPage() {
             <p className="text-xs font-semibold text-gray-500 mb-2">テスト用アカウント（クリックでログイン）</p>
             <div className="space-y-1">
               {[
-                { label: 'リーダー田中 (L001)', loginId: 'L001', role: 'leader' },
-                { label: '山田太郎 (T001)', loginId: 'T001', role: 'corrector' },
-                { label: '鈴木花子 (T002)', loginId: 'T002', role: 'corrector' },
+                { label: 'リーダー田中 (100001)', managementId: '100001', role: 'leader' },
+                { label: '山田太郎 (200001)', managementId: '200001', role: 'corrector' },
+                { label: '鈴木花子 (200002)', managementId: '200002', role: 'corrector' },
               ].map(acc => (
                 <button
-                  key={acc.loginId}
-                  data-loginid={acc.loginId}
+                  key={acc.managementId}
+                  data-managementid={acc.managementId}
                   onClick={e => quickLogin(e, 'password')}
                   className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 transition text-xs text-gray-600 flex items-center gap-2"
                 >

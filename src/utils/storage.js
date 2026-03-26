@@ -4,81 +4,81 @@ const STORAGE_KEY = 'seiseki_kanri_v1';
 export const INITIAL_DATA = {
   users: [
     {
-      id: 'u1', name: 'リーダー田中', email: 'leader@test.com', loginId: 'L001',
+      id: 'u1', name: 'リーダー田中', email: 'leader@test.com', managementId: '100001',
       password: 'cGFzc3dvcmQ=', role: 'leader', subjects: [],
       createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
-      id: 'u6', name: '佐藤リーダー', email: 'sato-leader@test.com', loginId: 'L002',
+      id: 'u6', name: '佐藤リーダー', email: 'sato-leader@test.com', managementId: '100002',
       password: 'cGFzc3dvcmQ=', role: 'leader', subjects: ['小学国語', '小学社会'],
       createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
-      id: 'u7', name: '鈴木リーダー', email: 'suzuki-leader@test.com', loginId: 'L003',
+      id: 'u7', name: '鈴木リーダー', email: 'suzuki-leader@test.com', managementId: '100003',
       password: 'cGFzc3dvcmQ=', role: 'leader', subjects: ['小学理科'],
       createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
-      id: 'u2', name: '山田 太郎', email: 'yamada@test.com', loginId: 'T001',
+      id: 'u2', name: '山田 太郎', email: 'yamada@test.com', managementId: '200001',
       password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数'],
       employeeId: 'N00000001', createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
-      id: 'u3', name: '鈴木 花子', email: 'suzuki@test.com', loginId: 'T002',
+      id: 'u3', name: '鈴木 花子', email: 'suzuki@test.com', managementId: '200002',
       password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科', '小学国語', '小学社会'],
       employeeId: 'N00000002', createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
-      id: 'u4', name: '佐藤 一郎', email: 'sato@test.com', loginId: 'T003',
+      id: 'u4', name: '佐藤 一郎', email: 'sato@test.com', managementId: '200003',
       password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学社会'],
       employeeId: 'N00000003', createdAt: '2025-01-01T00:00:00.000Z'
     },
     {
-      id: 'u5', name: '田中 美咲', email: 'mtanaka@test.com', loginId: 'T004',
+      id: 'u5', name: '田中 美咲', email: 'mtanaka@test.com', managementId: '200004',
       password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会', '小学国語'],
       employeeId: 'N00000004', createdAt: '2025-01-01T00:00:00.000Z'
     },
-    // === デモ用追加添削者 (40名: u8-u47, T005-T044) ===
-    { id: 'u8', name: '高橋 翔太', email: 'takahashi@test.com', loginId: 'T005', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u9', name: '伊藤 健一', email: 'ito@test.com', loginId: 'T006', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u10', name: '渡辺 大輔', email: 'watanabe@test.com', loginId: 'T007', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u11', name: '中村 直美', email: 'nakamura@test.com', loginId: 'T008', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u12', name: '小林 恵子', email: 'kobayashi@test.com', loginId: 'T009', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u13', name: '加藤 裕子', email: 'kato@test.com', loginId: 'T010', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u14', name: '吉田 陽子', email: 'yoshida@test.com', loginId: 'T011', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u15', name: '松本 美紀', email: 'matsumoto@test.com', loginId: 'T012', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u16', name: '井上 拓也', email: 'inoue@test.com', loginId: 'T013', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会', '小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u17', name: '木村 和也', email: 'kimura@test.com', loginId: 'T014', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: [], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u18', name: '林 真一', email: 'hayashi@test.com', loginId: 'T015', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u19', name: '清水 智子', email: 'shimizu@test.com', loginId: 'T016', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u20', name: '山口 由美', email: 'yamaguchi@test.com', loginId: 'T017', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u21', name: '阿部 幸子', email: 'abe@test.com', loginId: 'T018', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u22', name: '森 明美', email: 'mori@test.com', loginId: 'T019', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u23', name: '池田 洋子', email: 'ikeda@test.com', loginId: 'T020', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u24', name: '橋本 雄太', email: 'hashimoto@test.com', loginId: 'T021', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u25', name: '石川 誠', email: 'ishikawa@test.com', loginId: 'T022', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u26', name: '前田 浩二', email: 'maeda@test.com', loginId: 'T023', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u27', name: '藤田 愛', email: 'fujita@test.com', loginId: 'T024', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u28', name: '小川 彩', email: 'ogawa@test.com', loginId: 'T025', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u29', name: '岡田 舞', email: 'okada@test.com', loginId: 'T026', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u30', name: '後藤 遥', email: 'goto@test.com', loginId: 'T027', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u31', name: '長谷川 萌', email: 'hasegawa@test.com', loginId: 'T028', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会', '小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u32', name: '村上 亮', email: 'murakami@test.com', loginId: 'T029', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: [], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u33', name: '近藤 駿', email: 'kondo@test.com', loginId: 'T030', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u34', name: '石井 蓮', email: 'ishii@test.com', loginId: 'T031', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u35', name: '斉藤 結衣', email: 'saito2@test.com', loginId: 'T032', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u36', name: '坂本 咲良', email: 'sakamoto@test.com', loginId: 'T033', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u37', name: '遠藤 凛', email: 'endo@test.com', loginId: 'T034', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u38', name: '青木 悠真', email: 'aoki@test.com', loginId: 'T035', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u39', name: '藤井 颯太', email: 'fujii@test.com', loginId: 'T036', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u40', name: '西村 大翔', email: 'nishimura@test.com', loginId: 'T037', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u41', name: '福田 陽菜', email: 'fukuda@test.com', loginId: 'T038', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u42', name: '太田 美月', email: 'ota@test.com', loginId: 'T039', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u43', name: '三浦 花音', email: 'miura@test.com', loginId: 'T040', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u44', name: '岡本 優花', email: 'okamoto@test.com', loginId: 'T041', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u45', name: '松田 涼太', email: 'matsuda@test.com', loginId: 'T042', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u46', name: '中川 蒼', email: 'nakagawa@test.com', loginId: 'T043', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会', '小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
-    { id: 'u47', name: '原田 楓', email: 'harada@test.com', loginId: 'T044', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: [], createdAt: '2025-01-01T00:00:00.000Z' },
+    // === デモ用追加添削者 (40名: u8-u47, 200005-200044) ===
+    { id: 'u8', name: '高橋 翔太', email: 'takahashi@test.com', managementId: '200005', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u9', name: '伊藤 健一', email: 'ito@test.com', managementId: '200006', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u10', name: '渡辺 大輔', email: 'watanabe@test.com', managementId: '200007', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u11', name: '中村 直美', email: 'nakamura@test.com', managementId: '200008', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u12', name: '小林 恵子', email: 'kobayashi@test.com', managementId: '200009', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u13', name: '加藤 裕子', email: 'kato@test.com', managementId: '200010', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u14', name: '吉田 陽子', email: 'yoshida@test.com', managementId: '200011', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u15', name: '松本 美紀', email: 'matsumoto@test.com', managementId: '200012', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u16', name: '井上 拓也', email: 'inoue@test.com', managementId: '200013', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会', '小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u17', name: '木村 和也', email: 'kimura@test.com', managementId: '200014', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: [], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u18', name: '林 真一', email: 'hayashi@test.com', managementId: '200015', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u19', name: '清水 智子', email: 'shimizu@test.com', managementId: '200016', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u20', name: '山口 由美', email: 'yamaguchi@test.com', managementId: '200017', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u21', name: '阿部 幸子', email: 'abe@test.com', managementId: '200018', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u22', name: '森 明美', email: 'mori@test.com', managementId: '200019', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u23', name: '池田 洋子', email: 'ikeda@test.com', managementId: '200020', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u24', name: '橋本 雄太', email: 'hashimoto@test.com', managementId: '200021', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u25', name: '石川 誠', email: 'ishikawa@test.com', managementId: '200022', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u26', name: '前田 浩二', email: 'maeda@test.com', managementId: '200023', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u27', name: '藤田 愛', email: 'fujita@test.com', managementId: '200024', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u28', name: '小川 彩', email: 'ogawa@test.com', managementId: '200025', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u29', name: '岡田 舞', email: 'okada@test.com', managementId: '200026', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u30', name: '後藤 遥', email: 'goto@test.com', managementId: '200027', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u31', name: '長谷川 萌', email: 'hasegawa@test.com', managementId: '200028', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会', '小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u32', name: '村上 亮', email: 'murakami@test.com', managementId: '200029', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: [], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u33', name: '近藤 駿', email: 'kondo@test.com', managementId: '200030', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u34', name: '石井 蓮', email: 'ishii@test.com', managementId: '200031', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u35', name: '斉藤 結衣', email: 'saito2@test.com', managementId: '200032', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u36', name: '坂本 咲良', email: 'sakamoto@test.com', managementId: '200033', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u37', name: '遠藤 凛', email: 'endo@test.com', managementId: '200034', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u38', name: '青木 悠真', email: 'aoki@test.com', managementId: '200035', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u39', name: '藤井 颯太', email: 'fujii@test.com', managementId: '200036', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u40', name: '西村 大翔', email: 'nishimura@test.com', managementId: '200037', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u41', name: '福田 陽菜', email: 'fukuda@test.com', managementId: '200038', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u42', name: '太田 美月', email: 'ota@test.com', managementId: '200039', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u43', name: '三浦 花音', email: 'miura@test.com', managementId: '200040', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学国語', '小学算数', '小学理科'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u44', name: '岡本 優花', email: 'okamoto@test.com', managementId: '200041', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学算数'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u45', name: '松田 涼太', email: 'matsuda@test.com', managementId: '200042', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学理科', '小学社会'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u46', name: '中川 蒼', email: 'nakagawa@test.com', managementId: '200043', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: ['小学社会', '小学国語'], createdAt: '2025-01-01T00:00:00.000Z' },
+    { id: 'u47', name: '原田 楓', email: 'harada@test.com', managementId: '200044', password: 'cGFzc3dvcmQ=', role: 'corrector', subjects: [], createdAt: '2025-01-01T00:00:00.000Z' },
   ],
   schools: [
     { id: 's1', name: '〇〇中学校' },
@@ -505,16 +505,16 @@ export const generateInitialPassword = () => {
   return pw;
 };
 
-export const generateLoginId = (role) => {
+export const generateManagementId = (role) => {
   const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
   const users = data.users || [];
-  const prefix = role === 'leader' ? 'L' : 'T';
+  const base = role === 'leader' ? 100000 : 200000;
   const existing = users
-    .filter(u => u.loginId && u.loginId.startsWith(prefix))
-    .map(u => parseInt(u.loginId.slice(1), 10))
+    .filter(u => u.managementId && parseInt(u.managementId, 10) >= base && parseInt(u.managementId, 10) < base + 100000)
+    .map(u => parseInt(u.managementId, 10))
     .filter(n => !isNaN(n));
-  const next = existing.length > 0 ? Math.max(...existing) + 1 : 1;
-  return `${prefix}${String(next).padStart(3, '0')}`;
+  const next = existing.length > 0 ? Math.max(...existing) + 1 : base + 1;
+  return String(next);
 };
 
 export const initStorage = () => {
@@ -527,14 +527,14 @@ export const initStorage = () => {
     if (!data.timeLogs) { data.timeLogs = []; updated = true; }
     if (!data.recruitments) { data.recruitments = []; updated = true; }
     if (!data.applications) { data.applications = []; updated = true; }
-    // loginId migration
-    if (data.users && data.users.some(u => !u.loginId)) {
-      let leaderIdx = 1, correctorIdx = 1;
+    // managementId migration (from loginId or missing)
+    if (data.users && data.users.some(u => !u.managementId)) {
+      let leaderIdx = 100001, correctorIdx = 200001;
       data.users = data.users.map(u => {
-        if (u.loginId) return u;
-        const prefix = u.role === 'leader' ? 'L' : 'T';
-        const idx = u.role === 'leader' ? leaderIdx++ : correctorIdx++;
-        return { ...u, loginId: `${prefix}${String(idx).padStart(3, '0')}` };
+        if (u.managementId) return u;
+        const id = u.role === 'leader' ? String(leaderIdx++) : String(correctorIdx++);
+        const { loginId, ...rest } = u;
+        return { ...rest, managementId: id };
       });
       updated = true;
     }

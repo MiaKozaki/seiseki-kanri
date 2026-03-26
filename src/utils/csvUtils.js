@@ -129,45 +129,42 @@ export const importCSVFile = () => {
 };
 
 /**
- * ユーザーCSVのバリデーション
- * 必須: 氏名
- * オプション: ログインID, メールアドレス, ロール, 担当科目
+ * ユーザーCSVのバリデーション（カラム別科目フォーマット）
+ * CSVフォーマット: 管理ID,氏名,小学算数,小学国語,小学理科,小学社会
+ * 科目列に「可」があればその科目を担当
  */
 export const validateUserCSV = (rows) => {
   const valid = [];
   const errors = [];
+
+  if (rows.length === 0) return { valid, errors };
+
+  // ヘッダから科目カラムを特定（管理ID・氏名以外のカラム）
+  const allKeys = Object.keys(rows[0]);
+  const fixedKeys = ['管理ID', '氏名'];
+  const subjectColumns = allKeys.filter(k => !fixedKeys.includes(k.trim()));
 
   rows.forEach((row, i) => {
     const lineNum = i + 2;
     const name = (row['氏名'] || '').trim();
     if (!name) { errors.push(`${lineNum}行目: 氏名が空です`); return; }
 
-    const role = (row['ロール'] || 'corrector').trim().toLowerCase();
-    if (!['leader', 'corrector', 'リーダー', '添削者'].includes(role)) {
-      errors.push(`${lineNum}行目: ロールは leader/corrector/リーダー/添削者 のいずれかにしてください`);
-      return;
-    }
+    const managementId = (row['管理ID'] || '').trim() || null;
 
-    const normalizedRole = (role === 'リーダー' || role === 'leader') ? 'leader' : 'corrector';
-
-    const subjectsRaw = row['担当科目'] || '';
-    const subjects = subjectsRaw
-      .split(/[;；、,・]/)
-      .map(s => s.trim())
-      .filter(Boolean);
-
-    const employeeId = (row['管理ID'] || '').trim() || null;
-    if (employeeId && !/^N\d{8}$/.test(employeeId)) {
-      errors.push(`${lineNum}行目: 管理IDは N+8桁の数字 (例: N00000001) の形式にしてください`);
-      return;
-    }
+    // 科目カラムから担当科目を抽出
+    const subjects = [];
+    subjectColumns.forEach(col => {
+      const val = (row[col] || '').trim();
+      if (val === '可' || val === '○' || val === '1' || val === 'o' || val === 'O' || val === 'yes' || val === 'Yes' || val === 'YES' || val === 'true') {
+        subjects.push(col.trim());
+      }
+    });
 
     valid.push({
       name,
-      employeeId,
-      loginId: (row['ログインID'] || '').trim() || null,
-      email: (row['メールアドレス'] || '').trim() || '',
-      role: normalizedRole,
+      managementId,
+      email: '',
+      role: 'corrector',
       subjects,
     });
   });
@@ -177,7 +174,7 @@ export const validateUserCSV = (rows) => {
 
 /**
  * 分野研修クリアCSVのバリデーション
- * CSVフォーマット: ヘッダ行の1列目が「ログインID」or「氏名」、残りの列が分野名
+ * CSVフォーマット: ヘッダ行の1列目が「管理ID」or「氏名」、残りの列が分野名
  * データ行: 1列目がユーザー識別子、残りの列に「○」「1」「✓」等があればクリア済み
  *
  * @param {Object[]} rows - parseCSVで得られたオブジェクト配列
@@ -211,11 +208,11 @@ export const validateFieldClearanceCSV = (rows, fields, users) => {
     fieldMap.set(f.name.trim(), f);
   });
 
-  // ユーザー検索ヘルパー: loginId → name の順で照合
+  // ユーザー検索ヘルパー: managementId → name の順で照合
   const findUser = (identifier) => {
     if (!identifier) return null;
     const trimmed = identifier.trim();
-    return users.find(u => u.loginId === trimmed) ||
+    return users.find(u => u.managementId === trimmed) ||
            users.find(u => u.name === trimmed) ||
            null;
   };
@@ -368,12 +365,9 @@ export const TASK_IMPORT_CSV_COLUMNS = [
 // ---------- カラム定義 ----------
 
 export const USER_CSV_COLUMNS = [
+  { key: 'managementId', header: '管理ID' },
   { key: 'name', header: '氏名' },
-  { key: 'employeeId', header: '管理ID' },
-  { key: 'loginId', header: 'ログインID' },
-  { key: 'email', header: 'メールアドレス' },
-  { key: 'role', header: 'ロール' },
-  { key: 'subjects', header: '担当科目' },
+  ...SUBJECTS_LIST.map(s => ({ key: `subject_${s}`, header: s })),
 ];
 
 export const ASSIGNMENT_CSV_COLUMNS = [
@@ -381,7 +375,7 @@ export const ASSIGNMENT_CSV_COLUMNS = [
   { key: 'subject', header: '科目' },
   { key: 'workType', header: '業務種別' },
   { key: 'correctorName', header: '担当者' },
-  { key: 'correctorLoginId', header: '担当者ID' },
+  { key: 'correctorManagementId', header: '担当者ID' },
   { key: 'assignedHours', header: '割当工数' },
   { key: 'actualHours', header: '実績工数' },
   { key: 'status', header: 'ステータス' },
@@ -391,7 +385,7 @@ export const ASSIGNMENT_CSV_COLUMNS = [
 
 export const CAPACITY_CSV_COLUMNS = [
   { key: 'userName', header: '作業者名' },
-  { key: 'userLoginId', header: '作業者ID' },
+  { key: 'userManagementId', header: '作業者ID' },
   { key: 'startDate', header: '開始日' },
   { key: 'endDate', header: '終了日' },
   { key: 'hoursPerDay', header: '日あたり工数' },
@@ -401,7 +395,7 @@ export const CAPACITY_CSV_COLUMNS = [
 
 export const EVALUATION_CSV_COLUMNS = [
   { key: 'userName', header: '作業者名' },
-  { key: 'userLoginId', header: '作業者ID' },
+  { key: 'userManagementId', header: '作業者ID' },
   { key: 'criteriaName', header: '評価基準' },
   { key: 'score', header: 'スコア' },
   { key: 'maxScore', header: '最大スコア' },
