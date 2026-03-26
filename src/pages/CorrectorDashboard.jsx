@@ -1075,6 +1075,23 @@ export default function CorrectorDashboard() {
     setSubmitForm({ actualHours: '', note: '', files: [] });
   };
 
+  // ファイル自動リネーム
+  const generateFileName = (task, originalExt) => {
+    const schoolName = (task.schoolName || '').replace(/^[A-Z0-9]+:\s*/, '');
+    const parts = [schoolName, task.subject, task.year, task.round];
+    if (task.parentDaimonName) {
+      parts.push(task.parentDaimonName);
+    }
+    return parts.filter(Boolean).join('_') + originalExt;
+  };
+
+  const getSubmittingTask = () => {
+    if (!submittingId) return null;
+    const assignment = getAssignments(user.id).find(a => a.id === submittingId);
+    if (!assignment) return null;
+    return getTasks().find(t => t.id === assignment.taskId) || null;
+  };
+
   // ファイル添付ハンドラ
   const handleFileAdd = (e) => {
     const newFiles = Array.from(e.target.files);
@@ -1095,7 +1112,19 @@ export default function CorrectorDashboard() {
     }
     if (errors.length > 0) alert('添付エラー:\n' + errors.join('\n'));
     if (validFiles.length > 0) {
-      setSubmitForm(prev => ({ ...prev, files: [...prev.files, ...validFiles] }));
+      const task = getSubmittingTask();
+      const renamedFiles = task ? validFiles.map((file, idx) => {
+        const ext = '.' + file.name.split('.').pop();
+        let newName = generateFileName(task, ext);
+        // 複数ファイルの場合、2つ目以降に連番を付与
+        const existingCount = submitForm.files.length + idx;
+        if (existingCount > 0) {
+          const baseName = newName.replace(ext, '');
+          newName = baseName + '_' + (existingCount + 1) + ext;
+        }
+        return new File([file], newName, { type: file.type });
+      }) : validFiles;
+      setSubmitForm(prev => ({ ...prev, files: [...prev.files, ...renamedFiles] }));
     }
     e.target.value = '';
   };
@@ -1910,6 +1939,11 @@ export default function CorrectorDashboard() {
                                 {/* ファイル添付 */}
                                 <div>
                                   <label className="block text-xs text-gray-500 mb-1">ファイル添付（任意・Excel/Word・最大5MB/件）</label>
+                                  {task && (
+                                    <p className="text-xs text-blue-600 mb-1.5">
+                                      ファイル名は自動的に「{generateFileName(task, '.xlsx')}」に変更されます
+                                    </p>
+                                  )}
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <label className="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition border border-gray-300">
                                       ファイルを選択

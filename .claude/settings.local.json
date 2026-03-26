@@ -126,7 +126,8 @@
       "Bash(grep -E \"bin/node$\")",
       "Bash(/Users/mia/Desktop/seiseki-kanri/node_modules/.bin/vite build:*)",
       "Bash(npx -y acorn-jsx --ecma2020 src/pages/LeaderDashboard.jsx)",
-      "Bash(echo $?)"
+      "Bash(echo $?)",
+      "Bash(ls /Users/mia/.fnm/node-versions/*/installation/bin/node)"
     ]
   }
 }
