@@ -107,7 +107,16 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
     return { subject, capable: capable.length, totalCap, assignedH, freeH: Math.max(0, totalCap - assignedH), requiredH };
   });
 
-  const dailyData = buildDailyData(capacities, tasks);
+  const allDailyData = buildDailyData(capacities, tasks);
+
+  // 日別工数表示期間フィルタ
+  const [dailyDateFrom, setDailyDateFrom] = useState('');
+  const [dailyDateTo, setDailyDateTo] = useState('');
+  const dailyData = allDailyData.filter(d => {
+    if (dailyDateFrom && d.date < dailyDateFrom) return false;
+    if (dailyDateTo && d.date > dailyDateTo) return false;
+    return true;
+  });
   const insufficientDays = dailyData.filter(d => !d.充足 && d.必要作業工数 > 0).length;
 
   const [historyRange, setHistoryRange] = useState({ startDate: '', endDate: '' });
@@ -272,6 +281,19 @@ const CapacityAnalysisTab = ({ activeSubjects }) => {
               工数不足: {insufficientDays}日
             </span>
           )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mb-3 mt-2">
+          <span className="text-xs text-gray-500">表示期間:</span>
+          <input type="date" value={dailyDateFrom} onChange={e => setDailyDateFrom(e.target.value)}
+            className="text-xs border border-gray-300 rounded-lg px-2 py-1" />
+          <span className="text-xs text-gray-400">〜</span>
+          <input type="date" value={dailyDateTo} onChange={e => setDailyDateTo(e.target.value)}
+            className="text-xs border border-gray-300 rounded-lg px-2 py-1" />
+          {(dailyDateFrom || dailyDateTo) && (
+            <button onClick={() => { setDailyDateFrom(''); setDailyDateTo(''); }}
+              className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-2 py-1 rounded-lg">リセット</button>
+          )}
+          <span className="text-xs text-gray-400 ml-auto">{dailyData.length}日間</span>
         </div>
 
         {dailyData.length === 0 ? (
