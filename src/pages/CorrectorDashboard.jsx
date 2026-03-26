@@ -2951,136 +2951,296 @@ export default function CorrectorDashboard() {
         {/* ===== Tab 5: 使い方 ===== */}
         {activeTab === 5 && (() => {
           const correctorSections = [
-            { key: 'capacity', icon: '⏱️', title: '工数登録', desc: '作業可能な期間と時間の登録' },
-            { key: 'tasks', icon: '📋', title: '担当業務', desc: 'タスク一覧・提出・ファイル添付' },
-            { key: 'recruit', icon: '📢', title: '業務募集', desc: 'VIKINGタスクの取得' },
-            { key: 'notify', icon: '🔔', title: '通知', desc: '承認・差し戻し・FB通知' },
-            { key: 'feedback', icon: '💬', title: 'フィードバック', desc: 'リーダーからのFB表示' },
+            { key: 'intro',    icon: '🏠', title: 'はじめに',   desc: 'ログイン方法・画面構成' },
+            { key: 'capacity', icon: '⏱️', title: '工数登録',   desc: 'カレンダー形式の入力・一括入力' },
+            { key: 'tasks',    icon: '📋', title: '担当業務',   desc: 'タスク一覧・入力フォーム・タイマー・提出' },
+            { key: 'recruit',  icon: '📢', title: '業務募集',   desc: 'VIKINGタスクの取得・分野制限' },
+            { key: 'notify',   icon: '🔔', title: '通知',       desc: '承認・差し戻し・FB通知の見方' },
+            { key: 'question', icon: '❓', title: '質問',       desc: 'リーダーへの質問・スレッド形式' },
           ];
 
-          const correctorContent = {
+          const correctorDetailContent = {
+            intro: (
+              <div className="text-sm text-gray-700 space-y-4">
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">ログイン方法</h4>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>ログイン画面で <strong>管理ID（N+8桁の数字）</strong> とパスワードを入力します。</li>
+                    <li>初回ログイン時は仮パスワードが設定されています。ログイン後にパスワード変更を求められます。</li>
+                    <li>ログインすると作業者ダッシュボードが表示されます。</li>
+                  </ol>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">画面構成（6タブ）</h4>
+                  <p>画面上部のタブで各機能にアクセスできます。</p>
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    {[
+                      '工数登録 - 作業可能時間の登録',
+                      '担当業務 - タスク一覧・作業・提出',
+                      '業務募集 - VIKINGタスクの取得',
+                      '通知 - 承認/差し戻し/FB通知',
+                      '質問 - リーダーへの質問送信',
+                      '使い方 - このガイド',
+                    ].map((item, i) => (
+                      <div key={i} className="text-xs bg-gray-50 rounded px-2 py-1.5">
+                        <span className="font-medium text-blue-700">{i + 1}.</span> {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+                  <strong>パスワード変更</strong>：画面右上のユーザーメニューからいつでもパスワードを変更できます。
+                </div>
+              </div>
+            ),
             capacity: (
-              <div className="text-sm text-gray-600 space-y-2">
-                <p>自分が作業可能な期間と時間を登録します。</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li><strong>開始日・終了日</strong>：作業できる期間を指定</li>
-                  <li><strong>1日あたりの作業可能時間</strong>：1日に何時間作業できるかを入力</li>
-                  <li><strong>メモ</strong>：「午後のみ対応可能」などの補足情報（任意）</li>
-                </ul>
-                <p className="mt-2">登録すると画面上部に「登録済み工数」「割当工数」「空き工数」が表示されます。</p>
-                <div className="mt-3 p-3 bg-amber-50 rounded-lg text-xs text-amber-700">
-                  <strong>⚠️ 注意</strong>：工数を登録しないと、リーダーからタスクを割り当ててもらえません。必ず作業可能な期間を登録しましょう。
+              <div className="text-sm text-gray-700 space-y-4">
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">工数登録とは</h4>
+                  <p>自分が作業可能な期間と時間をリーダーに伝えるための機能です。工数を登録しないと、リーダーからタスクを割り当ててもらえません。</p>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">カレンダー形式の入力方法</h4>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li><strong>開始日・終了日</strong>を選択して作業可能な期間を指定</li>
+                    <li><strong>1日あたりの作業可能時間</strong>を入力（例：3時間）</li>
+                    <li><strong>メモ</strong>に補足情報を記入（任意、例：「午後のみ対応可能」）</li>
+                    <li>「登録」ボタンで保存</li>
+                  </ol>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">一括入力</h4>
+                  <p>複数の期間をまとめて登録できます。期間が重複しないように注意してください。</p>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">画面上部の表示</h4>
+                  <p>登録すると画面上部に以下が表示されます。</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li><strong>登録済み工数</strong>：登録した合計の作業可能時間</li>
+                    <li><strong>割当工数</strong>：リーダーから割り当てられたタスクの合計工数</li>
+                    <li><strong>空き工数</strong>：まだ余裕のある工数</li>
+                  </ul>
+                </div>
+                <div className="p-3 bg-amber-50 rounded-lg text-xs text-amber-700">
+                  <strong>重要</strong>：工数を登録しないとリーダーからタスクを割り当ててもらえません。作業可能な期間が決まったら早めに登録しましょう。
                 </div>
               </div>
             ),
             tasks: (
-              <div className="text-sm text-gray-600 space-y-2">
-                <p>リーダーから割り当てられたタスクの一覧と、作業の流れを確認できます。</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li><strong>タスク一覧</strong>：割当済み・作業中・提出済み・差し戻し・完了のステータスで管理</li>
-                  <li><strong>提出</strong>：提出前チェックリストを確認してから提出。ファイル添付にも対応</li>
-                  <li><strong>ファイル添付</strong>：Excelファイル等を添付して提出可能</li>
-                  <li><strong>差し戻し対応</strong>：差し戻し理由を確認し、修正して再提出</li>
-                </ul>
-                <div className="mt-3 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-                  <strong>💡 作業フロー</strong>：「提出する」をクリック → チェックリスト確認 → ファイル添付 → 提出 → リーダー検証 → 承認 or 差し戻し
+              <div className="text-sm text-gray-700 space-y-4">
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">タスク一覧</h4>
+                  <p>リーダーから割り当てられたタスクの一覧が表示されます。</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li><strong>割当済み</strong>：まだ作業を開始していないタスク</li>
+                    <li><strong>作業中</strong>：作業を開始したタスク</li>
+                    <li><strong>提出済み</strong>：提出してリーダーの検証待ち</li>
+                    <li><strong>差し戻し</strong>：修正が必要なタスク</li>
+                    <li><strong>完了</strong>：承認済みのタスク</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">入力フォーム（算数/理科/社会）</h4>
+                  <p>「新年度試験種」かつ「小学算数/小学理科/小学社会」のタスクでは専用の入力フォームが表示されます。</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li><strong>構成タブ</strong>：年度・学校名・回数・大問の基本情報を入力</li>
+                    <li><strong>内容タブ</strong>：各大問の問・枝問・模範解答・配点を入力</li>
+                    <li><strong>大問タイマー</strong>：大問ごとに作業時間を自動計測</li>
+                  </ul>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    <div className="bg-gray-50 rounded-lg p-2.5">
+                      <span className="font-semibold text-blue-700">算数</span>：年度, 学校名, 回数, 大問, 満点, 試験時間
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-2.5">
+                      <span className="font-semibold text-blue-700">理科</span>：年度, 学校名, 回数, 大問, 満点, テーマ, 試験時間
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-2.5">
+                      <span className="font-semibold text-blue-700">社会</span>：年度, 学校名, 回数, 大問, 満点（試験時間なし）
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-2.5">
+                      <span className="font-semibold text-blue-700">国語</span>：年度, 学校名, 回数, 大問, 満点, 文種, 出典, 著者
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">外部作業タイマー</h4>
+                  <p>入力フォーム対象外のタスク（マクロタスク等）では外部作業タイマーを使用します。</p>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>「タイマー開始」をクリックして作業開始</li>
+                    <li>一時停止・再開が可能</li>
+                    <li>作業完了後に「完了」をクリック</li>
+                    <li>作業時間が自動記録されます</li>
+                  </ol>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">ファイル提出</h4>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>Excelファイル等を「ファイル添付」エリアにドラッグ＆ドロップまたは選択</li>
+                    <li>複数ファイルの添付が可能</li>
+                    <li>添付後に「提出」ボタンをクリック</li>
+                  </ol>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">提出前チェックリスト</h4>
+                  <p>提出ボタンをクリックすると、チェックリストが表示されます。必須項目を全てチェックしてから提出できます。</p>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">提出の修正（差し戻し対応）</h4>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>差し戻し理由を通知タブまたはタスク詳細で確認</li>
+                    <li>修正内容を入力・ファイルを再添付</li>
+                    <li>再度「提出」で再提出</li>
+                  </ol>
+                </div>
+                <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+                  <strong>マニュアル</strong>：担当業務タブの下部にリーダーが登録したマニュアル（科目別）が表示されます。作業前に確認しましょう。
                 </div>
               </div>
             ),
             recruit: (
-              <div className="text-sm text-gray-600 space-y-2">
-                <p>VIKING形式の業務募集タスクを取得できます。</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>自分の担当科目・クリア済み分野に合った募集のみ表示されます（分野制限あり）</li>
-                  <li>「取得する」ボタンでタスクを自分にアサイン</li>
-                  <li>リーダーが募集を締め切ると取得できなくなります</li>
-                </ul>
+              <div className="text-sm text-gray-700 space-y-4">
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">VIKINGタスクの取得方法</h4>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>「業務募集」タブを開く</li>
+                    <li>募集中のタスクが一覧表示されます</li>
+                    <li>取得したいタスクの「取得する」ボタンをクリック</li>
+                    <li>タスクが自分に割り当てられ、「担当業務」タブに表示されます</li>
+                  </ol>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">分野制限について</h4>
+                  <p>VIKINGタスクには分野制限が適用されます。</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>自分の担当科目に合った募集のみ表示されます</li>
+                    <li>分野研修をクリアした分野のタスクのみ取得可能です</li>
+                    <li>分野研修のクリア状況はリーダーが管理しています</li>
+                  </ul>
+                </div>
+                <div className="p-3 bg-amber-50 rounded-lg text-xs text-amber-700">
+                  <strong>注意</strong>：リーダーが募集を締め切ると取得できなくなります。早めに確認しましょう。
+                </div>
               </div>
             ),
             notify: (
-              <div className="text-sm text-gray-600 space-y-2">
-                <p>リーダーからの通知を確認できます。</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li><strong>承認通知</strong>：タスクが承認された時</li>
-                  <li><strong>差し戻し通知</strong>：差し戻し理由も表示されます</li>
-                  <li><strong>FB通知</strong>：リーダーからのフィードバック</li>
-                  <li><strong>割当通知</strong>：新しいタスクが割り当てられた時</li>
-                </ul>
-                <p>「既読」ボタンで個別に、「すべて既読」で一括で既読にできます。</p>
+              <div className="text-sm text-gray-700 space-y-4">
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">通知の種類</h4>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li><strong>割当通知</strong>：新しいタスクが割り当てられた時</li>
+                    <li><strong>承認通知</strong>：提出したタスクが承認された時</li>
+                    <li><strong>差し戻し通知</strong>：修正が必要な場合（差し戻し理由も表示されます）</li>
+                    <li><strong>FB通知</strong>：リーダーからのフィードバック</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">通知の操作</h4>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>「既読」ボタンで個別に既読にできます</li>
+                    <li>「すべて既読」で一括既読にできます</li>
+                    <li>未読通知がある場合、タブに通知バッジが表示されます</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">差し戻し通知の対応</h4>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>差し戻し理由（カテゴリ・重大度・コメント）を確認</li>
+                    <li>「担当業務」タブに移動して該当タスクを修正</li>
+                    <li>修正完了後に再提出</li>
+                  </ol>
+                </div>
               </div>
             ),
-            feedback: (
-              <div className="text-sm text-gray-600 space-y-2">
-                <p>リーダーからのフィードバックを確認できます。</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>差し戻し時のコメントやカテゴリ・重大度</li>
-                  <li>過去のフィードバック履歴の参照</li>
-                </ul>
+            question: (
+              <div className="text-sm text-gray-700 space-y-4">
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">リーダーへの質問送信</h4>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>「質問」タブを開く</li>
+                    <li>件名と質問内容を入力</li>
+                    <li>「送信」ボタンで質問を送信</li>
+                  </ol>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 mb-2">スレッド形式のやりとり</h4>
+                  <p>送信した質問に対してリーダーから回答が届くと、スレッド形式で表示されます。</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>質問一覧から質問をクリックするとスレッドが開きます</li>
+                    <li>追加の質問がある場合はスレッド内で続けて送信できます</li>
+                    <li>回答があると通知タブにも表示されます</li>
+                  </ul>
+                </div>
               </div>
             ),
           };
 
+          // Section-based navigation (card grid → detail view with back button)
+          const [manualActiveSection, setManualActiveSection] = [
+            openManualSections._activeManualSection || null,
+            (key) => setOpenManualSections(prev => ({ ...prev, _activeManualSection: key }))
+          ];
+
+          if (manualActiveSection) {
+            const sectionInfo = correctorSections.find(s => s.key === manualActiveSection);
+            return (
+              <div className="space-y-4 max-w-4xl mx-auto">
+                <button
+                  onClick={() => setManualActiveSection(null)}
+                  className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium transition"
+                >
+                  <span>←</span> マニュアルトップに戻る
+                </button>
+                <div className="bg-white rounded-xl border border-gray-200 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xl">{sectionInfo.icon}</span>
+                    <h2 className="text-lg font-bold text-gray-800">{sectionInfo.title}</h2>
+                  </div>
+                  {correctorDetailContent[manualActiveSection]}
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div className="space-y-4 max-w-4xl mx-auto">
               <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-1">📖 作業者用マニュアル</h2>
-                <p className="text-sm text-gray-500">四谷大塚制作アプリの使い方ガイドです。各項目をクリックして詳細を確認できます。</p>
+                <h2 className="text-lg font-bold text-gray-800 mb-1">作業者用マニュアル</h2>
+                <p className="text-sm text-gray-500">制作アプリの使い方ガイドです。各項目をクリックして詳細を確認できます。</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {correctorSections.map(({ key, icon, title, desc }) => (
-                  <section
+                  <button
                     key={key}
-                    className="bg-white rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all"
-                    onClick={() => toggleManualSection(key)}
+                    className="text-left bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all group"
+                    onClick={() => setManualActiveSection(key)}
                   >
-                    <div className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">{icon}</span>
-                          <h3 className="text-sm font-bold text-gray-800">{title}</h3>
-                        </div>
-                        <span className="text-gray-400 text-xs ml-2 shrink-0">{openManualSections[key] ? '▼' : '▶'}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1 ml-7">{desc}</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-base">{icon}</span>
+                      <h3 className="text-sm font-bold text-gray-800 group-hover:text-blue-700 transition">{title}</h3>
                     </div>
-                    <div
-                      className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                        openManualSections[key] ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
-                      }`}
-                    >
-                      <div className="px-4 pb-4 pt-2 border-t border-gray-100">
-                        {correctorContent[key]}
-                      </div>
-                    </div>
-                  </section>
+                    <p className="text-xs text-gray-500 ml-7">{desc}</p>
+                  </button>
                 ))}
               </div>
 
-              {/* 基本的な作業フロー - full width */}
+              {/* 基本的な作業フロー */}
               <section className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl border border-blue-200 p-5">
-                <h3 className="text-sm font-bold text-blue-800 mb-3">🔄 基本的な作業フロー</h3>
+                <h3 className="text-sm font-bold text-blue-800 mb-3">基本的な作業フロー</h3>
                 <div className="text-sm text-gray-700 space-y-2">
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">1</span>
-                    <p><strong>工数登録</strong>：作業可能な期間と時間を登録する</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">2</span>
-                    <p><strong>タスク確認</strong>：担当業務タブでアサインされたタスクを確認 / 業務募集からVIKINGタスクを取得</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">3</span>
-                    <p><strong>作業・提出</strong>：「提出する」をクリックしてタスクを展開（タイマー自動開始）</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">4</span>
-                    <p><strong>提出</strong>：提出前チェックリストを確認 → ファイル添付 → 提出</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">5</span>
-                    <p><strong>確認</strong>：通知タブで承認/差し戻し/FBの結果を確認</p>
-                  </div>
+                  {[
+                    { step: 1, title: '工数登録', desc: '作業可能な期間と時間を登録する' },
+                    { step: 2, title: 'タスク確認', desc: '担当業務タブでアサインされたタスクを確認 / 業務募集からVIKINGタスクを取得' },
+                    { step: 3, title: '作業開始', desc: '「提出する」をクリックしてタスクを展開（入力フォーム or 外部作業タイマー）' },
+                    { step: 4, title: '入力・作成', desc: '入力フォームで大問・小問を入力 / 外部作業タイマーで作業時間を記録' },
+                    { step: 5, title: '提出', desc: '提出前チェックリストを確認 → ファイル添付 → 提出' },
+                    { step: 6, title: '結果確認', desc: '通知タブで承認/差し戻し/FBの結果を確認。差し戻しの場合は修正して再提出' },
+                  ].map(({ step, title, desc }) => (
+                    <div key={step} className="flex items-start gap-3">
+                      <span className="bg-blue-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">{step}</span>
+                      <p><strong>{title}</strong>：{desc}</p>
+                    </div>
+                  ))}
                 </div>
               </section>
             </div>

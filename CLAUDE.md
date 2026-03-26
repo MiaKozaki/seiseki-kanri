@@ -27,11 +27,22 @@ src/
     DataContext.jsx               # 全データCRUD
   components/
     leader/
-      AssignmentTab.jsx           # 振り分けタブ
-      ProgressTab.jsx             # 進捗管理タブ
+      OverviewTab.jsx             # 概要（KPIサマリー）
+      TaskAndAssignmentTab.jsx    # 試験種管理（タスクCRUD、CSV/PDF一括登録）
+      AssignmentTab.jsx           # 振り分け（自動/手動アサイン、剥がし）
+      UserManagementTab.jsx       # 作業者管理（追加/削除、CSV、分野クリア）
+      CapacityAnalysisTab.jsx     # 工数分析（グラフ、CSV出力）
+      ProgressTab.jsx             # 進捗管理（検証、格納、マクロ放出）
+      RecruitmentTab.jsx          # 業務募集
+      CorrectorEvaluationTab.jsx  # 作業者評価（評価/FB/作業時間/分類）
+      FileMergeTab.jsx            # ファイル統合
+      MasterDataTab.jsx           # マスタ管理（差し戻し/チェックリスト/分野/外部作業/マニュアル）
+      QuestionManagementTab.jsx   # 質問管理（スレッド形式）
+      AiManagementTab.jsx         # AI管理（AIモデル/使用記録/CSV出力）
+      LeaderManualTab.jsx         # 使い方ガイド
   pages/
     LoginPage.jsx                 # ログイン画面
-    LeaderDashboard.jsx           # リーダー用（12タブ）
+    LeaderDashboard.jsx           # リーダー用（13タブ）
     CorrectorDashboard.jsx        # 作業者用（6タブ）
   utils/
     storage.js                    # localStorage操作 + 初期データ + マイグレーション
@@ -51,12 +62,12 @@ src/
 2. 試験種管理 - タスク一覧・追加・削除・CSV一括登録・PDF一括アップロード
 3. 振り分け - 自動/手動アサイン・振り分け解除（剥がし）
 4. 作業者管理 - ユーザー追加・削除・CSV登録・分野研修クリア管理
-5. 工数分析 - 日別チャート・月間工数履歴・インセンティブ
+5. 工数分析 - 日別チャート・月間工数履歴・CSV出力（4種類）
 6. 進捗管理 - タスク進捗・検証・差し戻し・格納確認・マクロタスク自動生成
 7. 業務募集 - 作業者向け業務公開・VIKING管理
 8. 作業者評価 - 評価基準管理・スコア入力・作業時間分析・FB集約・素点（basePoints）システム・作業者分類・評価まとめ
 9. ファイル統合 - Excel結合ツール
-10. マスタ - 差し戻しカテゴリ・チェックリスト・分野・外部作業設定・マニュアル管理
+10. マスタ - 差し戻しカテゴリ・チェックリスト・分野・外部作業設定・業務種別・マニュアル管理
 11. 質問管理 - 作業者からの質問対応（スレッド形式）
 12. AI管理 - AI使用記録の集約・分析・CSV出力・AIモデル管理
 13. 使い方 - ヘルプガイド
@@ -72,6 +83,12 @@ src/
 ## 科目一覧・業務種別
 - 科目: 小学国語, 小学算数, 小学理科, 小学社会
 - 業務種別: 新年度試験種, タグ付け, 解答出し, 部分点, tensakitインポート, takos作成, マクロ
+
+## 完全ワークフロー
+```
+試験種登録 → 振り分け → 作業者が作成 → 提出 → リーダー検証 → 承認
+→ PJ格納確認 → 格納済み → マクロVIKINGタスク自動生成（大問単位）
+```
 
 ## 入力フォーム表示条件
 - 入力フォーム（大問・満点等の入力UI）は **新年度試験種 かつ 小学算数/小学理科/小学社会** のみ
@@ -125,6 +142,9 @@ src/
 - `questionSettings` - 質問設定
 - `externalWorkSettings` - 外部作業設定（科目×業務種別で外部作業フラグ管理）
 - `reviewMemos` - レビューメモ
+- `aiModels` - AIモデルマスタ（モデル名、バージョン情報）
+- `aiUsageLogs` - AI使用記録（userId, modelId, taskId, purpose, timestamp）
+- `aiUsageSettings` - AI使用記録設定
 
 ## 主な機能
 - **自動振り分け**: 工数・科目・評価に基づく自動アサイン
@@ -132,21 +152,21 @@ src/
 - **検証フロー**: 提出 → 検証 → 承認/差し戻し
 - **差し戻し管理**: カテゴリ・重大度付き差し戻し
 - **作業時間管理**: 大問別タイマー、外部作業タイマー
-- **分野システム**: 作業者の得意分野管理
+- **分野システム**: 作業者の得意分野管理（理科12分野、算数30分野）
 - **マクロフロー**: 業務種別「マクロ」のワークフロー
 - **外部作業タイマー**: 外部ツールでの作業時間追跡
 - **評価システム**: 手動評価 + 自動メトリクス（差し戻し率・重大度・作業時間等）、素点（basePoints）による段階評価
 - **Excel出力**: 科目別テンプレートでの構成・内容シート出力（理科用フォント・テキスト変換対応）
 - **CSV入出力**: タスク・ユーザー・工数・評価の一括CSV登録・出力
 - **ファイル統合**: 複数Excelファイルの結合
-- **業務募集**: リーダーが業務を公開、作業者が応募
+- **業務募集**: リーダーが業務を公開、作業者が応募（VIKING形式）
 - **質問管理**: 作業者↔リーダー間の質問・回答（スレッド形式）
 - **AI使用記録**: 作業者が使用したAI（ChatGPT/Gemini/Claude等）とバージョンの記録・集約・CSV出力
 
 ## 注意事項
 - データはブラウザのlocalStorageに保存。**ブラウザをまたいでデータは共有されない**
 - ファイル添付はIndexedDBに保存
-- デプロイ先: GitHub Pages（`bun run build` → `bunx gh-pages -d dist`）
+- デプロイ先: GitHub Pages（`npm run build` → `npx gh-pages -d dist`）
 - パスワードはbtoa()でエンコード（本番用途には不向き、デモ用）
 - 初期データは空（デモデータなし）。ユーザー・学校・タスク等は管理画面から登録
 

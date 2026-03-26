@@ -141,7 +141,9 @@
       "Bash(PATH=\"$HOME/.local/share/mise/installs/node/22.14.0/bin:$PATH\" npx vite build)",
       "Bash(echo \"PATH=$PATH\")",
       "Bash(./node_modules/.bin/vite build:*)",
-      "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/bin:$PATH\")"
+      "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/bin:$PATH\")",
+      "Bash(export PATH=\"$HOME/.bun/bin:$HOME/.nvm/versions/node/*/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\")",
+      "Bash(export PATH=\"$HOME/.bun/bin:/usr/bin:$PATH\")"
     ]
   }
 }
