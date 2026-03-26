@@ -1033,61 +1033,87 @@ const TaskAndAssignmentTab = ({ activeSubjects }) => {
                 {form.splitByDaimon && (
                   <div className="space-y-2">
                     {form.daimons.map((d, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                        <input
-                          type="text"
-                          placeholder="大問名 (例: 大問1)"
-                          value={d.name}
-                          onChange={e => {
-                            const updated = [...form.daimons];
-                            updated[i] = { ...updated[i], name: e.target.value };
-                            setForm({ ...form, daimons: updated });
-                          }}
-                          className="flex-1 min-w-[100px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                        />
-                        {getFields(form.subject).length > 0 && (
-                        <select
-                          value={d.fieldId}
-                          onChange={e => {
-                            const updated = [...form.daimons];
-                            updated[i] = { ...updated[i], fieldId: e.target.value };
-                            setForm({ ...form, daimons: updated });
-                          }}
-                          className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                        >
-                          <option value="">分野を選択</option>
-                          {getFields(form.subject).map(f => (
-                            <option key={f.id} value={f.id}>{f.name}</option>
-                          ))}
-                        </select>
-                        )}
-                        <input
-                          type="number"
-                          placeholder="工数"
-                          value={d.requiredHours}
-                          onChange={e => {
-                            const updated = [...form.daimons];
-                            updated[i] = { ...updated[i], requiredHours: e.target.value };
-                            setForm({ ...form, daimons: updated });
-                          }}
-                          min="0" max="500"
-                          className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = form.daimons.filter((_, idx) => idx !== i);
-                            setForm({ ...form, daimons: updated });
-                          }}
-                          className="text-red-400 hover:text-red-600 text-lg font-bold px-1"
-                        >
-                          ×
-                        </button>
+                      <div key={i} className="p-2 bg-white border border-indigo-100 rounded-lg space-y-2">
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="text"
+                            placeholder="大問名 (例: 大問1)"
+                            value={d.name}
+                            onChange={e => {
+                              const updated = [...form.daimons];
+                              updated[i] = { ...updated[i], name: e.target.value };
+                              setForm({ ...form, daimons: updated });
+                            }}
+                            className="flex-1 min-w-[80px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                          {getFields(form.subject).length > 0 && (
+                          <select
+                            value={d.fieldId}
+                            onChange={e => {
+                              const updated = [...form.daimons];
+                              updated[i] = { ...updated[i], fieldId: e.target.value };
+                              setForm({ ...form, daimons: updated });
+                            }}
+                            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                          >
+                            <option value="">分野を選択</option>
+                            {getFields(form.subject).sort((a, b) => a.sortOrder - b.sortOrder).map(f => (
+                              <option key={f.id} value={f.id}>{f.category ? `[${f.category}] ` : ''}{f.name}</option>
+                            ))}
+                          </select>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = form.daimons.filter((_, idx) => idx !== i);
+                              setForm({ ...form, daimons: updated });
+                            }}
+                            className="text-red-400 hover:text-red-600 text-lg font-bold px-1"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="text"
+                            placeholder="大問ID"
+                            value={d.daimonId || ''}
+                            onChange={e => {
+                              const updated = [...form.daimons];
+                              updated[i] = { ...updated[i], daimonId: e.target.value };
+                              setForm({ ...form, daimons: updated });
+                            }}
+                            className="flex-1 min-w-[80px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                          <input
+                            type="url"
+                            placeholder="takosリンク"
+                            value={d.takosLink || ''}
+                            onChange={e => {
+                              const updated = [...form.daimons];
+                              updated[i] = { ...updated[i], takosLink: e.target.value };
+                              setForm({ ...form, daimons: updated });
+                            }}
+                            className="flex-1 min-w-[120px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                          <input
+                            type="number"
+                            placeholder="工数"
+                            value={d.requiredHours || ''}
+                            onChange={e => {
+                              const updated = [...form.daimons];
+                              updated[i] = { ...updated[i], requiredHours: e.target.value };
+                              setForm({ ...form, daimons: updated });
+                            }}
+                            min="0" max="500"
+                            className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                        </div>
                       </div>
                     ))}
                     <button
                       type="button"
-                      onClick={() => setForm({ ...form, daimons: [...form.daimons, { name: '', fieldId: '', requiredHours: '' }] })}
+                      onClick={() => setForm({ ...form, daimons: [...form.daimons, { name: '', fieldId: '', daimonId: '', takosLink: '', requiredHours: '' }] })}
                       className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
                     >
                       + 大問を追加
