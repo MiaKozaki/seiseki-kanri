@@ -341,9 +341,9 @@ export const INITIAL_DATA = {
   ],
   examInputs: [],
   evaluationCriteria: [
-    { id: 'ec1', name: '添削精度', description: '採点・添削の正確さ', maxScore: 5, subject: null, autoMetric: null },
-    { id: 'ec2', name: '処理速度', description: '単位時間あたりの処理件数', maxScore: 5, subject: null, autoMetric: null },
-    { id: 'ec3', name: '経験年数', description: '添削業務の経験年数', maxScore: 5, subject: null, autoMetric: null },
+    { id: 'ec1', name: '添削精度', description: '採点・添削の正確さ', maxScore: 5, basePoints: 1, subject: null, autoMetric: null },
+    { id: 'ec2', name: '処理速度', description: '単位時間あたりの処理件数', maxScore: 5, basePoints: 1, subject: null, autoMetric: null },
+    { id: 'ec3', name: '経験年数', description: '添削業務の経験年数', maxScore: 5, basePoints: 1, subject: null, autoMetric: null },
   ],
   evaluations: [
     { id: 'ev1', userId: 'u2', criteriaId: 'ec1', score: 4, note: '精度高い', updatedAt: '2026-01-15T00:00:00.000Z', subject: null, autoScore: null, isOverridden: false },
@@ -566,6 +566,13 @@ export const initStorage = () => {
     if (data.evaluationCriteria && data.evaluationCriteria.length > 0 && data.evaluationCriteria[0].subject === undefined) {
       data.evaluationCriteria = data.evaluationCriteria.map(c => ({
         ...c, subject: c.subject ?? null, autoMetric: c.autoMetric ?? null,
+      }));
+      updated = true;
+    }
+    // evaluationCriteria basePoints migration
+    if (data.evaluationCriteria && data.evaluationCriteria.length > 0 && data.evaluationCriteria[0].basePoints === undefined) {
+      data.evaluationCriteria = data.evaluationCriteria.map(c => ({
+        ...c, basePoints: c.basePoints ?? 1,
       }));
       updated = true;
     }

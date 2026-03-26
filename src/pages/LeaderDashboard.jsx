@@ -4158,7 +4158,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   const [activeEvalSection, setActiveEvalSection] = useState(null);
   const [worktimeTab, setWorktimeTab] = useState(0); // inner tabs for worktime section
   const [selectedUser, setSelectedUser] = useState(correctors[0]?.id ?? '');
-  const [critForm, setCritForm] = useState({ name: '', description: '', maxScore: 5, subject: null, autoMetric: null });
+  const [critForm, setCritForm] = useState({ name: '', description: '', maxScore: 5, basePoints: 1, subject: null, autoMetric: null });
   const [editCritId, setEditCritId] = useState(null);
   const [localScores, setLocalScores] = useState({});
   const [evalSubject, setEvalSubject] = useState(null);
@@ -4220,12 +4220,12 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
   const handleCritSubmit = (e) => {
     e.preventDefault();
     if (editCritId) {
-      updateEvaluationCriteria(editCritId, { ...critForm, maxScore: Number(critForm.maxScore) });
+      updateEvaluationCriteria(editCritId, { ...critForm, maxScore: Number(critForm.maxScore), basePoints: Number(critForm.basePoints) || 1 });
       setEditCritId(null);
     } else {
-      addEvaluationCriteria({ ...critForm, maxScore: Number(critForm.maxScore) });
+      addEvaluationCriteria({ ...critForm, maxScore: Number(critForm.maxScore), basePoints: Number(critForm.basePoints) || 1 });
     }
-    setCritForm({ name: '', description: '', maxScore: 5, subject: null, autoMetric: null });
+    setCritForm({ name: '', description: '', maxScore: 5, basePoints: 1, subject: null, autoMetric: null });
   };
 
   const evalChartData = criteria.map(c => ({
@@ -4241,12 +4241,16 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
       const uEvals = allEvals.filter(e => e.userId === c.id);
       criteria.forEach(crit => {
         const ev = uEvals.find(e => e.criteriaId === crit.id);
+        const bp = crit.basePoints || 1;
+        const scoreVal = ev?.score ?? '';
         data.push({
           userName: c.name,
           userManagementId: c.managementId || '',
           criteriaName: crit.name,
-          score: ev?.score ?? '',
+          score: scoreVal,
           maxScore: crit.maxScore,
+          basePoints: bp,
+          level: bp > 1 && scoreVal !== '' ? Math.round(Number(scoreVal) / bp) : '',
           note: ev?.note || '',
         });
       });
@@ -4465,6 +4469,14 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
               className="flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             />
             <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500">素点</span>
+              <input
+                type="number" min="1" max="100" value={critForm.basePoints}
+                onChange={e => setCritForm({ ...critForm, basePoints: e.target.value })}
+                className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div className="flex items-center gap-1">
               <span className="text-xs text-gray-500">最大</span>
               <input
                 type="number" min="1" max="100" value={critForm.maxScore}
@@ -4473,6 +4485,13 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
               />
               <span className="text-xs text-gray-500">点</span>
             </div>
+            {critForm.basePoints > 1 && (
+              <div className="flex items-center">
+                <span className="text-xs text-gray-400">
+                  ({Math.floor(Number(critForm.maxScore) / Number(critForm.basePoints))}段階: {Array.from({length: Math.floor(Number(critForm.maxScore) / Number(critForm.basePoints))}, (_, i) => (i + 1) * Number(critForm.basePoints)).join(', ')})
+                </span>
+              </div>
+            )}
             <select value={critForm.subject || ''} onChange={e => setCritForm({ ...critForm, subject: e.target.value || null })}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
               <option value="">全科目共通</option>
@@ -4493,7 +4512,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
               {editCritId ? '更新' : '追加'}
             </button>
             {editCritId && (
-              <button type="button" onClick={() => { setEditCritId(null); setCritForm({ name: '', description: '', maxScore: 5, subject: null, autoMetric: null }); }}
+              <button type="button" onClick={() => { setEditCritId(null); setCritForm({ name: '', description: '', maxScore: 5, basePoints: 1, subject: null, autoMetric: null }); }}
                 className="text-sm text-gray-500 border border-gray-200 px-3 py-2 rounded-lg transition">
                 キャンセル
               </button>
@@ -4504,6 +4523,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
               <div key={c.id} className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm">
                 <span className="font-medium text-gray-700">{c.name}</span>
                 <span className="text-gray-400 text-xs">({c.description}) / {c.maxScore}点</span>
+                {(c.basePoints || 1) > 1 && <span className="text-xs ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">素点{c.basePoints}</span>}
                 {c.subject && <span className="text-xs ml-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">{c.subject}</span>}
                 {c.autoMetric && <span className="text-xs ml-1 px-1.5 py-0.5 rounded bg-green-100 text-green-600">
                   {c.autoMetric === 'rejection_rate' ? '自動:差し戻し率' :
@@ -4512,7 +4532,7 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
                    c.autoMetric === 'task_count' ? '自動:タスク数' :
                    c.autoMetric === 'deadline_compliance' ? '自動:期限遵守率' : ''}
                 </span>}
-                <button onClick={() => { setEditCritId(c.id); setCritForm({ name: c.name, description: c.description, maxScore: c.maxScore, subject: c.subject || null, autoMetric: c.autoMetric || null }); }}
+                <button onClick={() => { setEditCritId(c.id); setCritForm({ name: c.name, description: c.description, maxScore: c.maxScore, basePoints: c.basePoints || 1, subject: c.subject || null, autoMetric: c.autoMetric || null }); }}
                   className="text-blue-500 hover:text-blue-700 text-xs">編集</button>
                 <button onClick={() => { if (confirm(`「${c.name}」を削除しますか？`)) deleteEvaluationCriteria(c.id); }}
                   className="text-red-400 hover:text-red-600 text-xs">×</button>
@@ -4687,19 +4707,42 @@ const CorrectorEvaluationTab = ({ activeSubjects }) => {
               <div className="space-y-3">
                 {criteria.map(c => {
                   const score = getEvalScore(c.id);
+                  const bp = c.basePoints || 1;
+                  const levels = bp > 1 ? Math.floor(c.maxScore / bp) : c.maxScore;
+                  const currentLevel = bp > 1 ? Math.round(score / bp) : score;
                   return (
                     <div key={c.id} className="flex items-center gap-3">
                       <div className="w-32 shrink-0">
                         <p className="text-sm font-medium text-gray-700">{c.name}</p>
                         <p className="text-xs text-gray-400">{c.description}</p>
+                        {bp > 1 && <p className="text-xs text-amber-600">素点{bp} / {levels}段階</p>}
                       </div>
-                      <input
-                        type="range" min="0" max={c.maxScore} step="1"
-                        value={score}
-                        onChange={e => handleScoreChange(c.id, e.target.value)}
-                        className="flex-1 accent-blue-600"
-                      />
-                      <span className="w-12 text-right text-sm font-semibold text-blue-600">{score} / {c.maxScore}</span>
+                      {bp > 1 ? (
+                        <div className="flex-1 flex items-center gap-1">
+                          {Array.from({length: levels + 1}, (_, i) => i).map(level => (
+                            <button
+                              key={level}
+                              onClick={() => handleScoreChange(c.id, level * bp)}
+                              className={`px-2 py-1 text-xs rounded-lg border transition ${currentLevel === level
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-gray-600 border-gray-300 hover:bg-blue-50'}`}
+                            >
+                              {level === 0 ? '0' : level * bp}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <input
+                          type="range" min="0" max={c.maxScore} step="1"
+                          value={score}
+                          onChange={e => handleScoreChange(c.id, e.target.value)}
+                          className="flex-1 accent-blue-600"
+                        />
+                      )}
+                      <span className="w-16 text-right text-sm font-semibold text-blue-600">
+                        {score} / {c.maxScore}
+                        {bp > 1 && <span className="block text-xs text-gray-400 font-normal">Lv.{currentLevel}</span>}
+                      </span>
                       {c.autoMetric && (() => {
                         const metrics = calcAllMetrics(selectedUser, evalSubject, getAllData());
                         const allCorrectors = correctors;

@@ -1,11 +1,12 @@
 # 制作アプリ
 
 ## プロジェクト概要
-制作業務を全てアプリ内に集約させる
+制作業務を全てアプリ内に集約させるWebアプリ。添削業務のリーダーが添削者への工数振り分け・進捗管理・評価を一元管理する。
 
 ## 技術スタック
 - React 18 + Vite + Tailwind CSS + Recharts
 - データ保存: **localStorage**（バックエンドなし）
+- Excel出力: xlsx-js-style
 - パッケージマネージャー: npm
 
 ## 起動方法
@@ -17,58 +18,135 @@ npm run dev  # → http://localhost:5173
 ## テストアカウント（パスワード共通: password）
 | ロール | 管理ID | メール | 担当科目 |
 |--------|--------|--------|----------|
-| リーダー | 100001 | leader@test.com | 算数, マクロ |
-| リーダー | 100002 | sato-leader@test.com | 国語, 社会 |
-| リーダー | 100003 | suzuki-leader@test.com | 理科 |
-| 添削者 | 200001 | yamada@test.com | 国語, 算数 |
-| 添削者 | 200002 | suzuki@test.com | 算数, 理科 |
-| 添削者 | 200003 | sato@test.com | 国語, 社会 |
-| 添削者 | 200004 | mtanaka@test.com | 理科, 社会, 国語 |
+| リーダー | 100001 | leader@test.com | （全科目） |
+| リーダー | 100002 | sato-leader@test.com | 小学国語, 小学社会 |
+| リーダー | 100003 | suzuki-leader@test.com | 小学理科 |
+| 添削者 | 200001 | yamada@test.com | 小学国語, 小学算数 |
+| 添削者 | 200002 | suzuki@test.com | 小学算数, 小学理科, 小学国語, 小学社会 |
+| 添削者 | 200003 | sato@test.com | 小学国語, 小学社会 |
+| 添削者 | 200004 | mtanaka@test.com | 小学理科, 小学社会, 小学国語 |
+| 添削者 | 200005-200044 | （デモ用40名） | 各種科目 |
 
 ## ディレクトリ構成
 ```
 src/
-  App.jsx                  # ルーティング（ロール別ダッシュボード振り分け）
+  App.jsx                        # ルーティング（ロール別ダッシュボード振り分け）
   contexts/
-    AuthContext.jsx         # 認証（localStorage）
-    DataContext.jsx         # 全データCRUD
-    SheetsContext.jsx       # Google Sheets連携（オプション）
+    AuthContext.jsx               # 認証（localStorage）
+    DataContext.jsx               # 全データCRUD
+  components/
+    leader/
+      AssignmentTab.jsx           # 振り分けタブ
+      ProgressTab.jsx             # 進捗管理タブ
   pages/
-    LoginPage.jsx           # ログイン画面
-    LeaderDashboard.jsx     # リーダー用（7タブ）
-    CorrectorDashboard.jsx  # 添削者用
+    LoginPage.jsx                 # ログイン画面
+    LeaderDashboard.jsx           # リーダー用（12タブ）
+    CorrectorDashboard.jsx        # 添削者用（6タブ）
   utils/
-    storage.js              # localStorage操作 + 初期データ
-    autoAssign.js           # 自動振り分けロジック
-    excelExport.js          # Excel出力
-    sheetsApi.js            # Google Sheets API
+    storage.js                    # localStorage操作 + 初期データ + マイグレーション
+    autoAssign.js                 # 自動振り分けロジック
+    excelExport.js                # Excel出力（科目別テンプレート対応）
+    excelMerge.js                 # Excelファイル統合
+    csvUtils.js                   # CSV入出力 + バリデーション
+    evaluationMetrics.js          # 評価メトリクス自動計算
+    prediction.js                 # タスク完了予測
+    fileStorage.js                # ファイル添付（IndexedDB）
+    filePreview.js                # ファイルプレビュー
+    schoolList.js                 # 学校名サジェストリスト
 ```
 
-## リーダーダッシュボードのタブ
-1. 概要 - KPIサマリー、円グラフ
-2. 工数分析 - 棒グラフ、キャパシティ管理
-3. 試験種管理 - タスク一覧・追加・削除
-4. 振り分け - 自動/手動アサイン
-5. 評価管理 - 添削者評価（スター）
-6. 作業者管理 - ユーザー追加・削除
-7. マスタ - 学校・試験種・評価基準管理
+## リーダーダッシュボードのタブ（12タブ）
+1. 概要 - KPIサマリー、業務完了予測
+2. 試験種管理 - タスク一覧・追加・削除・CSV一括登録
+3. 振り分け - 自動/手動アサイン
+4. 作業者管理 - ユーザー追加・削除・CSV登録
+5. 工数分析 - 棒グラフ・キャパシティ管理
+6. 進捗管理 - タスク進捗・検証・差し戻し
+7. 業務募集 - 作業者向け業務公開・応募管理
+8. 作業者評価 - 評価基準管理・スコア入力・作業時間分析・FB集約・素点（basePoints）システム
+9. ファイル統合 - Excel結合ツール
+10. マスタ - 学校・試験種・評価基準・分野・業務種別・マニュアル管理
+11. 質問管理 - 作業者からの質問対応
+12. 使い方 - ヘルプガイド
+
+## 添削者ダッシュボードのタブ（6タブ）
+1. 工数登録 - 工数入力
+2. 担当業務 - 割当タスク・入力フォーム・大問タイマー・外部作業タイマー
+3. 業務募集 - 募集中業務への応募
+4. 通知 - リーダーからの通知
+5. 質問 - リーダーへの質問送信
+6. 使い方 - ヘルプガイド
+
+## 科目一覧・業務種別
+- 科目: 小学国語, 小学算数, 小学理科, 小学社会
+- 業務種別: 新年度試験種, タグ付け, 解答出し, 部分点, tensakitインポート, takos作成, マクロ
+
+## 科目別入力フォームテンプレート
+- **算数**: 年度, 学校名, 回数, 科目, 大問, 大問ごとの満点, 試験時間
+- **理科**: 年度, 学校名, 回数, 科目, 大問, 大問ごとの満点, テーマ, 試験時間
+- **社会**: 年度, 学校名, 回数, 科目, 大問, 大問ごとの満点（試験時間なし）
+- **国語**: 年度, 学校名, 回数, 科目, 大問, 大問ごとの満点, 文種, 出典, 著者
+
+## 大問管理（3段階構造）
+- **大問** → 問（小問）→ 枝問（最下層・回答データ）
+- 科目固有フィールド:
+  - 国語: 文種・出典・著者、採点基準（項目+付記の多段構造）
+  - 算数: 解答画像・解説画像、完答・順不同・別解
+  - 理科: テーマ、条件指定要素、採点基準テキスト
+  - 社会: 条件指定、不可解答
 
 ## データモデル（localStorage: seiseki_kanri_v1）
-- `users` - ユーザー（role: leader | corrector）
+- `users` - ユーザー（role: leader | corrector, managementId, subjects[], employeeId）
 - `schools` - 学校マスタ
 - `examTypes` - 試験種（schoolId + subject）
-- `capacities` - 工数登録（userId, startDate, endDate, hoursPerDay）
-- `tasks` - 試験種タスク（status: pending | assigned | completed）
-- `assignments` - 振り分け結果
-- `examInputs` - 入力作業記録
-- `evaluationCriteria` - 評価基準マスタ
-- `evaluations` - 評価スコア
+- `capacities` - 工数登録（userId, startDate, endDate, hoursPerDay, totalHours）
+- `tasks` - タスク（status: pending | assigned | in_progress | submitted | completed, subject, workType, daimonList）
+- `assignments` - 振り分け結果（userId, taskId, assignedHours, status, verificationStatus）
+- `examInputs` - 入力作業記録（科目別テンプレート、大問リスト内に問リスト埋め込み）
+- `evaluationCriteria` - 評価基準マスタ（maxScore, basePoints, subject, autoMetric）
+- `evaluations` - 評価スコア（userId, criteriaId, score, autoScore, isOverridden）
 - `notifications` - 通知
+- `recruitments` - 業務募集
+- `applications` - 応募
+- `timeLogs` - 作業時間ログ（assignmentId, taskId, userId, daimonId, startTime, endTime, duration）
+- `rejectionCategories` - 差し戻しカテゴリ
+- `rejectionSeverities` - 差し戻し重大度
+- `rejections` - 差し戻し記録
+- `verificationItems` - 検証項目
+- `verificationResults` - 検証結果
+- `feedbacks` - FB（フィードバック）
+- `fields` - 分野マスタ
+- `userFields` - ユーザー×分野対応
+- `workflowStatuses` - ワークフローステータス定義
+- `workTypes` - 業務種別マスタ
+- `manuals` - マニュアル
+- `questions` - 質問
+- `questionSettings` - 質問設定
+- `externalWorkSettings` - 外部作業設定
+- `reviewMemos` - レビューメモ
+
+## 主な機能
+- **自動振り分け**: 工数・科目・評価に基づく自動アサイン
+- **完了予測**: タスク完了予測（順調/注意/遅延リスク/工数不足）
+- **検証フロー**: 提出 → 検証 → 承認/差し戻し
+- **差し戻し管理**: カテゴリ・重大度付き差し戻し
+- **作業時間管理**: 大問別タイマー、外部作業タイマー
+- **分野システム**: 作業者の得意分野管理
+- **マクロフロー**: 業務種別「マクロ」のワークフロー
+- **外部作業タイマー**: 外部ツールでの作業時間追跡
+- **評価システム**: 手動評価 + 自動メトリクス（差し戻し率・重大度・作業時間等）、素点（basePoints）による段階評価
+- **Excel出力**: 科目別テンプレートでの構成・内容シート出力（理科用フォント・テキスト変換対応）
+- **CSV入出力**: タスク・ユーザー・工数・評価の一括CSV登録・出力
+- **ファイル統合**: 複数Excelファイルの結合
+- **業務募集**: リーダーが業務を公開、作業者が応募
+- **質問管理**: 作業者↔リーダー間の質問・回答
 
 ## 注意事項
 - データはブラウザのlocalStorageに保存。**ブラウザをまたいでデータは共有されない**
+- ファイル添付はIndexedDBに保存
 - デプロイ先: Netlify（`npm run build` → distフォルダをドラッグ&ドロップ）
 - パスワードはbtoa()でエンコード（本番用途には不向き、デモ用）
+- 初期データにデモ用添削者40名（200005-200044）、学校15校含む
 
 ## 次にやりたいこと（未実装・検討中）
 - （ここに追記していく）

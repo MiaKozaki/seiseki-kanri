@@ -399,6 +399,8 @@ export const EVALUATION_CSV_COLUMNS = [
   { key: 'criteriaName', header: '評価基準' },
   { key: 'score', header: 'スコア' },
   { key: 'maxScore', header: '最大スコア' },
+  { key: 'basePoints', header: '素点' },
+  { key: 'level', header: '段階' },
   { key: 'note', header: '備考' },
 ];
 
